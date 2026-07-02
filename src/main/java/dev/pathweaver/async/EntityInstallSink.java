@@ -19,6 +19,11 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         inFlight.put(entityId, navigation);
     }
 
+    /** True if this mob already has a search in flight (avoid double-dispatch). */
+    public boolean isRegistered(int entityId) {
+        return inFlight.containsKey(entityId);
+    }
+
     @Override
     public boolean isStale(int entityId, long dispatchTick, double x, double y, double z) {
         PWNavigation nav = inFlight.get(entityId);
@@ -28,12 +33,17 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     @Override
     public void install(int entityId, Path path) {
         PWNavigation nav = inFlight.remove(entityId);
-        if (nav != null) nav.pathweaver$install(path);
+        if (nav != null) {
+            nav.pathweaver$install(path);
+            dev.pathweaver.PathWeaverRuntime.get().markInstalled();
+        }
     }
 
     @Override
     public void discard(int entityId) {
-        inFlight.remove(entityId);
+        if (inFlight.remove(entityId) != null) {
+            dev.pathweaver.PathWeaverRuntime.get().markDiscarded();
+        }
     }
 
     public int inFlightCount() { return inFlight.size(); }

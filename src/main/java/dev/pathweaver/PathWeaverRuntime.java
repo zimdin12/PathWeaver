@@ -22,6 +22,14 @@ public final class PathWeaverRuntime {
     private final EntityInstallSink entitySink = new EntityInstallSink();
     private volatile boolean running;
 
+    private final java.util.concurrent.atomic.AtomicLong dispatched = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong installed = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong discarded = new java.util.concurrent.atomic.AtomicLong();
+
+    public void markDispatched() { dispatched.incrementAndGet(); }
+    public void markInstalled() { installed.incrementAndGet(); }
+    public void markDiscarded() { discarded.incrementAndGet(); }
+
     private PathWeaverRuntime() {}
 
     public PathWorkerPool pool() { return pool; }
@@ -41,6 +49,8 @@ public final class PathWeaverRuntime {
     public void onServerStopping(MinecraftServer server) {
         running = false;
         pool.shutdown();
+        PathWeaver.LOG.info("PathWeaver stats: dispatched={}, installed={}, discarded={} (async pathfinding).",
+            dispatched.get(), installed.get(), discarded.get());
     }
 
     /** Main thread, end of each server tick: install ready paths, then evict stale snapshots. */

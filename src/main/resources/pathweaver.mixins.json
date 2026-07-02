@@ -2,7 +2,7 @@
   "required": true,
   "package": "dev.pathweaver.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["PathNavigationMixin"],
+  "mixins": ["PathFinderAccessor", "PathNavigationMixin"],
   "client": [],
   "injectors": {
     "defaultRequire": 1

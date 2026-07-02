@@ -80,24 +80,48 @@ public abstract class PathNavigationMixin implements PWNavigation {
         if (!canUpdatePath()) return;
         if (this.path != null && !this.path.isDone() && targets.contains(this.targetPos)) return;
 
+        final Mob theMob = this.mob;
+        final int entityId = theMob.getId();
+        EntityInstallSink sink = rt.entitySink();
+
+        // Avoid stacking a second search on a mob that already has one in flight; keep current path.
+        if (sink.isRegistered(entityId)) {
+            cir.setReturnValue(this.path);
+            return;
+        }
+
         // Build the region EXACTLY as vanilla does (guarantees async == sync).
-        BlockPos mobPos = offsetUpward ? this.mob.blockPosition().above() : this.mob.blockPosition();
+        BlockPos mobPos = offsetUpward ? theMob.blockPosition().above() : theMob.blockPosition();
         int radius = (int) (followRange + (float) regionOffset);
         PathNavigationRegion region = new PathNavigationRegion(this.level,
             mobPos.offset(-radius, -radius, -radius), mobPos.offset(radius, radius, radius));
 
-        // Capture everything the worker needs; it must not read live mob/world state beyond this.
+        // CRITICAL: the PathFinder + NodeEvaluator hold per-search scratch state (open-set, node pool,
+        // PathfindingContext) and are NOT safe to reuse across threads. Build a fresh, isolated finder
+        // for this search so the worker shares zero mutable state with the main thread. Config flags
+        // are copied from the mob's evaluator so results match vanilla exactly.
+        final PathFinder finder;
+        try {
+            NodeEvaluator src = this.nodeEvaluator;
+            NodeEvaluator freshEval = src.getClass().getDeclaredConstructor().newInstance();
+            freshEval.setCanPassDoors(src.canPassDoors());
+            freshEval.setCanOpenDoors(src.canOpenDoors());
+            freshEval.setCanFloat(src.canFloat());
+            freshEval.setCanWalkOverFences(src.canWalkOverFences());
+            int maxNodes = ((PathFinderAccessor) (Object) this.pathFinder).pathweaver$getMaxVisitedNodes();
+            finder = new PathFinder(freshEval, maxNodes);
+        } catch (Throwable t) {
+            return; // cannot isolate this evaluator -> let vanilla run synchronously
+        }
+
+        // Capture everything the worker needs; it must not read live mutable world state beyond this.
         final Set<BlockPos> targetsCopy = new HashSet<>(targets);
-        final PathFinder finder = this.pathFinder;
-        final Mob theMob = this.mob;
         final float mult = this.maxVisitedNodesMultiplier;
-        final int entityId = theMob.getId();
         final double dx = theMob.getX(), dy = theMob.getY(), dz = theMob.getZ();
         final long tick = ((ServerLevel) this.level).getServer().getTickCount();
 
         Callable<Path> search = () -> finder.findPath(region, theMob, targetsCopy, followRange, reachRange, mult);
 
-        EntityInstallSink sink = rt.entitySink();
         sink.register(entityId, this);
         boolean accepted = rt.pool().submit(new PathRequest(entityId, tick, search,
             result -> rt.installer().enqueue(entityId, tick, result, dx, dy, dz)));
@@ -106,6 +130,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
             sink.discard(entityId);   // pool saturated -> let vanilla run synchronously
             return;
         }
+        rt.markDispatched();
         // Keep moving on the current path this tick; the async result installs next tick.
         cir.setReturnValue(this.path);
     }
