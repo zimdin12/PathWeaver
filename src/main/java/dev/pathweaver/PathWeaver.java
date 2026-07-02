@@ -11,5 +11,6 @@ public class PathWeaver implements ModInitializer {
     @Override
     public void onInitialize() {
         LOG.info("PathWeaver initializing");
+        dev.pathweaver.gate.ForeignMixinScanner.scanAndPopulate();
     }
 }
