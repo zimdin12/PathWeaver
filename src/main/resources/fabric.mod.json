@@ -3,8 +3,13 @@
   "id": "pathweaver",
   "version": "${version}",
   "name": "PathWeaver",
-  "description": "Async mob pathfinding on a read-only snapshot. Safe by construction.",
+  "description": "Async mob pathfinding on a read-only snapshot. Safe by construction: only the A* search runs off-thread, on an immutable snapshot with a freshly-isolated finder. No async ticking, no async collision. Coordinates with Lithium.",
   "authors": ["Zimdin"],
+  "contact": {
+    "homepage": "https://modrinth.com/mod/pathweaver",
+    "sources": "https://github.com/Zimdin12/PathWeaver",
+    "issues": "https://github.com/Zimdin12/PathWeaver/issues"
+  },
   "license": "MIT",
   "environment": "*",
   "entrypoints": {
@@ -17,5 +22,8 @@
     "fabricloader": "*",
     "fabric-api": "*",
     "cloth-config": "*"
+  },
+  "suggests": {
+    "lithium": "*"
   }
 }
