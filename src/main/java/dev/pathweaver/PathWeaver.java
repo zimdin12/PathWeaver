@@ -12,5 +12,12 @@ public class PathWeaver implements ModInitializer {
     public void onInitialize() {
         LOG.info("PathWeaver initializing");
         dev.pathweaver.gate.ForeignMixinScanner.scanAndPopulate();
+
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTING
+            .register(s -> PathWeaverRuntime.get().onServerStarting(s));
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING
+            .register(s -> PathWeaverRuntime.get().onServerStopping(s));
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK
+            .register(s -> PathWeaverRuntime.get().onEndTick(s));
     }
 }
