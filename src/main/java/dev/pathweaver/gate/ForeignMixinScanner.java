@@ -45,7 +45,25 @@ public final class ForeignMixinScanner {
     );
     private static final String PATHFINDER = "net.minecraft.world.level.pathfinder.PathFinder";
 
+    /**
+     * Mod-id prefixes we trust to mix into allowlisted evaluators safely. Fabric API's only
+     * pathfinder mixin (content-registries' WalkNodeEvaluatorMixin) injects into
+     * {@code getCommonNodeType(BlockGetter, ...)} and reads the PASSED BlockGetter (the read-only
+     * snapshot during A*) plus the immutable LandPathTypeRegistry — no live mutable state. Verified
+     * against fabric-api 0.153.0+26.1.2. Denying it would wrongly bench every walking mob, since this
+     * module is always present. Third-party mixins stay untrusted (default-deny) to catch the real
+     * hazard (e.g. salts_animal_farm reading live rain/entities).
+     */
+    private static final List<String> TRUSTED_OWNER_PREFIXES = List.of("fabric-", "fabric", "fabricloader");
+
     private ForeignMixinScanner() {}
+
+    private static boolean isTrustedOwner(String modId) {
+        for (String p : TRUSTED_OWNER_PREFIXES) {
+            if (modId.equals(p) || modId.startsWith("fabric-")) return true;
+        }
+        return false;
+    }
 
     /** Pure, testable: map fully-qualified mixin target names to the allowlisted classes they hit. */
     public static Set<Class<?>> targetsTouchingAllowlist(Collection<String> targetClassNames) {
@@ -92,7 +110,13 @@ public final class ForeignMixinScanner {
             if (PathWeaver.MOD_ID.equals(id)) continue;
             try {
                 Collection<String> targets = collectMixinTargets(mod);
-                for (Class<?> c : targetsTouchingAllowlist(targets)) {
+                Set<Class<?>> hits = targetsTouchingAllowlist(targets);
+                if (!hits.isEmpty() && isTrustedOwner(id)) {
+                    PathWeaver.LOG.debug("Trusted mod '{}' mixes into {} (snapshot-based); allowing async.",
+                        id, hits);
+                    hits = Set.of();
+                }
+                for (Class<?> c : hits) {
                     SafetyGate.deniedBySafety.add(c);
                     PathWeaver.LOG.warn("Mod '{}' mixes into {}; forcing that evaluator family to sync pathing.",
                         id, c.getSimpleName());

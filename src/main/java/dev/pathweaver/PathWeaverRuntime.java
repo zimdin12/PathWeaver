@@ -1,5 +1,6 @@
 package dev.pathweaver;
 
+import dev.pathweaver.async.EntityInstallSink;
 import dev.pathweaver.async.PathWorkerPool;
 import dev.pathweaver.async.ResultInstaller;
 import dev.pathweaver.config.PathWeaverConfig;
@@ -18,7 +19,7 @@ public final class PathWeaverRuntime {
     private final PathWorkerPool pool = new PathWorkerPool();
     private final ResultInstaller installer = new ResultInstaller();
     private final SnapshotProvider snapshots = new SnapshotProvider();
-    private volatile ResultInstaller.InstallSink sink;
+    private final EntityInstallSink entitySink = new EntityInstallSink();
     private volatile boolean running;
 
     private PathWeaverRuntime() {}
@@ -26,8 +27,8 @@ public final class PathWeaverRuntime {
     public PathWorkerPool pool() { return pool; }
     public ResultInstaller installer() { return installer; }
     public SnapshotProvider snapshots() { return snapshots; }
+    public EntityInstallSink entitySink() { return entitySink; }
     public boolean isRunning() { return running; }
-    public void setSink(ResultInstaller.InstallSink s) { this.sink = s; }
 
     public void onServerStarting(MinecraftServer server) {
         PathWeaverConfig c = PathWeaverConfig.get();
@@ -44,7 +45,7 @@ public final class PathWeaverRuntime {
 
     /** Main thread, end of each server tick: install ready paths, then evict stale snapshots. */
     public void onEndTick(MinecraftServer server) {
-        if (sink != null) installer.drain(sink);
+        installer.drain(entitySink);
         snapshots.clearTick(server.getTickCount());
     }
 }
