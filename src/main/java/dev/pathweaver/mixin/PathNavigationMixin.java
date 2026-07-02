@@ -55,6 +55,19 @@ public abstract class PathNavigationMixin implements PWNavigation {
                                             int reachRange, float followRange,
                                             CallbackInfoReturnable<Path> cir) {
         PathWeaverConfig cfg = PathWeaverConfig.get();
+
+        // Feature B: conservative repath elision. Independent of async + gate. Reuse the live path
+        // when a requested target is within tolerance of the current target (widens vanilla's exact
+        // match). tolerance 0 == vanilla behaviour.
+        if (cfg.repathElisionEnabled
+                && this.path != null && !this.path.isDone()
+                && dev.pathweaver.elision.RepathTolerance.anyWithinTolerance(
+                        targets, this.targetPos, cfg.repathToleranceBlocks)) {
+            cir.setReturnValue(this.path);
+            return;
+        }
+
+        // Feature A: async dispatch.
         if (!cfg.asyncEnabled || cfg.syncFallbackOnly) return;
         PathWeaverRuntime rt = PathWeaverRuntime.get();
         if (!rt.isRunning()) return;
