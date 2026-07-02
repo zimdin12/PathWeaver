@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "pathweaver",
+  "version": "${version}",
+  "name": "PathWeaver",
+  "description": "Async mob pathfinding on a read-only snapshot. Safe by construction.",
+  "authors": ["Zimdin"],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["dev.pathweaver.PathWeaver"]
+  },
+  "mixins": ["pathweaver.mixins.json"],
+  "depends": {
+    "minecraft": ">=26.1 <26.2",
+    "java": ">=25",
+    "fabricloader": "*",
+    "fabric-api": "*",
+    "cloth-config": "*"
+  }
+}

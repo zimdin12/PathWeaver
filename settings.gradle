@@ -1,0 +1,10 @@
+pluginManagement {
+    repositories {
+        maven { url "https://maven.fabricmc.net/" }
+        maven { url "https://maven.shedaniel.me/" }
+        maven { url "https://maven.terraformersmc.com/releases/" }
+        gradlePluginPortal()
+    }
+}
+
+rootProject.name = "pathweaver"
