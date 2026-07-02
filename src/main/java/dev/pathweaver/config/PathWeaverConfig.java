@@ -1,17 +1,38 @@
 package dev.pathweaver.config;
 
+import me.shedaniel.autoconfig.ConfigData;
+import me.shedaniel.autoconfig.annotation.Config;
+import me.shedaniel.autoconfig.annotation.ConfigEntry;
+
 /**
- * Plain config model the engine reads. Cloth-config GUI/serialization is layered on in Task 11;
- * this POJO stays free of MC/cloth types so it is unit-testable off-game.
+ * Runtime config the engine reads, and the Cloth AutoConfig model (persists to
+ * {@code config/pathweaver.json}, GUI via ModMenu when present). Kept free of MC types so it stays
+ * unit-testable; Cloth annotations + the marker {@link ConfigData} interface are inert at runtime.
  */
-public class PathWeaverConfig {
+@Config(name = "pathweaver")
+public class PathWeaverConfig implements ConfigData {
+    @ConfigEntry.Gui.Tooltip
     public boolean asyncEnabled = true;
+
+    @ConfigEntry.Gui.Tooltip
     public boolean repathElisionEnabled = true;
+
+    @ConfigEntry.Gui.Tooltip
     public int poolThreads = 0;          // 0 = auto (cores/4)
+
+    @ConfigEntry.Gui.Tooltip
     public int maxInFlight = 256;
+
+    @ConfigEntry.Gui.Tooltip
     public boolean distanceThrottleEnabled = false;  // opt-in: makes far mobs dumber
+
+    @ConfigEntry.Gui.Tooltip
     public boolean syncFallbackOnly = false;         // panic switch: never dispatch async
+
+    @ConfigEntry.Gui.Tooltip
     public int repathToleranceBlocks = 1;
+
+    @ConfigEntry.Gui.Tooltip
     public double stalenessMoveThreshold = 4.0;      // blocks moved since dispatch -> discard
 
     private static PathWeaverConfig INSTANCE = new PathWeaverConfig();

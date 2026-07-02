@@ -102,12 +102,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // are copied from the mob's evaluator so results match vanilla exactly.
         final PathFinder finder;
         try {
-            NodeEvaluator src = this.nodeEvaluator;
-            NodeEvaluator freshEval = src.getClass().getDeclaredConstructor().newInstance();
-            freshEval.setCanPassDoors(src.canPassDoors());
-            freshEval.setCanOpenDoors(src.canOpenDoors());
-            freshEval.setCanFloat(src.canFloat());
-            freshEval.setCanWalkOverFences(src.canWalkOverFences());
+            NodeEvaluator freshEval = dev.pathweaver.async.EvaluatorCloner.cloneWithConfig(this.nodeEvaluator);
             int maxNodes = ((PathFinderAccessor) (Object) this.pathFinder).pathweaver$getMaxVisitedNodes();
             finder = new PathFinder(freshEval, maxNodes);
         } catch (Throwable t) {

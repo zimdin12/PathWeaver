@@ -11,6 +11,20 @@ public class PathWeaver implements ModInitializer {
     @Override
     public void onInitialize() {
         LOG.info("PathWeaver initializing");
+
+        // Register Cloth AutoConfig (persists config/pathweaver.json; GUI via ModMenu when present).
+        // Guarded so a config-API mismatch degrades to built-in defaults rather than breaking the mod.
+        try {
+            me.shedaniel.autoconfig.AutoConfig.register(
+                dev.pathweaver.config.PathWeaverConfig.class,
+                me.shedaniel.autoconfig.serializer.GsonConfigSerializer::new);
+            dev.pathweaver.config.PathWeaverConfig.set(
+                me.shedaniel.autoconfig.AutoConfig
+                    .getConfigHolder(dev.pathweaver.config.PathWeaverConfig.class).getConfig());
+        } catch (Throwable t) {
+            LOG.warn("PathWeaver config registration failed; using defaults.", t);
+        }
+
         dev.pathweaver.gate.ForeignMixinScanner.scanAndPopulate();
 
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTING
