@@ -8,6 +8,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Bounded worker pool that runs A* searches off the main thread. Threads are daemon and one notch
@@ -19,8 +20,24 @@ public class PathWorkerPool {
     private final AtomicInteger inFlight = new AtomicInteger();
     private volatile int maxInFlight;
 
-    public void start(int threads, int maxInFlight) {
+    // FIX 4b: rate-limit the failure log so a deterministically-failing search can't spam stack traces.
+    private final AtomicLong failCount = new AtomicLong();
+    private volatile long lastFailLogMs = 0L;
+    private static final long FAIL_LOG_INTERVAL_MS = 60_000L;
+
+    /**
+     * FIX 5: idempotent start that resets lifecycle counters. Over a world reload the old pool is
+     * discarded; {@code inFlight} MUST return to 0 or async silently ratchets off forever (a dropped
+     * {@code shutdownNow} task never runs its finally, so its in-flight decrement is lost).
+     */
+    public synchronized void start(int threads, int maxInFlight) {
+        if (exec != null && !exec.isShutdown()) {
+            exec.shutdownNow(); // start() called twice without stop(): replace cleanly.
+        }
         this.maxInFlight = maxInFlight;
+        this.inFlight.set(0);
+        this.failCount.set(0);
+        this.lastFailLogMs = 0L;
         this.exec = new ThreadPoolExecutor(threads, threads, 30, TimeUnit.SECONDS,
             new LinkedBlockingQueue<>(),
             r -> {
@@ -40,12 +57,14 @@ public class PathWorkerPool {
         try {
             exec.execute(() -> {
                 Path result = null;
+                PathWeaverThread.enterWorker(); // FIX 1a: cover ALL worker execution with the worker flag.
                 try {
                     result = req.search().call();
                 } catch (Throwable t) {
-                    PathWeaver.LOG.warn("Async path search failed; falling back to sync.", t);
+                    logFailure(t);
                     result = null;
                 } finally {
+                    PathWeaverThread.exitWorker();
                     inFlight.decrementAndGet();
                     try {
                         req.onDone().accept(result);
@@ -61,9 +80,28 @@ public class PathWorkerPool {
         }
     }
 
+    private void logFailure(Throwable t) {
+        long n = failCount.incrementAndGet();
+        long now = System.currentTimeMillis();
+        if (n == 1) {
+            PathWeaver.LOG.warn("Async path search failed; that entity falls back to sync. "
+                + "Further failures are counted and summarised at most once/min.", t);
+            lastFailLogMs = now;
+        } else if (now - lastFailLogMs >= FAIL_LOG_INTERVAL_MS) {
+            PathWeaver.LOG.warn("Async path search failures so far: {} (latest: {}).", n, t.toString());
+            lastFailLogMs = now;
+        }
+    }
+
     public int inFlight() { return inFlight.get(); }
 
-    public void shutdown() {
-        if (exec != null) exec.shutdownNow();
+    public long failureCount() { return failCount.get(); }
+
+    public synchronized void shutdown() {
+        if (exec != null) {
+            exec.shutdownNow();
+            exec = null;
+        }
+        inFlight.set(0); // FIX 5: dropped queued tasks never run their finally; reset explicitly.
     }
 }

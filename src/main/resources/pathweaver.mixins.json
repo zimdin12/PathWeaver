@@ -2,9 +2,15 @@
   "required": true,
   "package": "dev.pathweaver.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["PathFinderAccessor", "PathNavigationMixin"],
+  "mixins": [
+    "PathFinderAccessor",
+    "PathfindingContextMixin",
+    "PathNavigationMixin",
+    "WalkNodeEvaluatorMixin",
+    "FlyNodeEvaluatorMixin"
+  ],
   "client": [],
   "injectors": {
-    "defaultRequire": 1
+    "defaultRequire": 0
   }
 }

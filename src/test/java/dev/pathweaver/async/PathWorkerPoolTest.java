@@ -53,4 +53,35 @@ class PathWorkerPoolTest {
         assertTrue(done.await(2, TimeUnit.SECONDS));
         assertNull(got.get());
     }
+
+    /**
+     * FIX 5: shutdown() drops queued tasks via shutdownNow(), so their finally (which decrements
+     * inFlight) never runs. start() must reset inFlight to 0 or async permanently ratchets off after a
+     * world reload. Here we wedge the pool, shut it down mid-flight, restart, and prove it accepts work.
+     */
+    @Test void restartAfterStuckTaskResetsInFlightAndAcceptsWork() throws Exception {
+        CountDownLatch block = new CountDownLatch(1);
+        CountDownLatch started = new CountDownLatch(2);
+        for (int i = 0; i < 4; i++) {
+            pool.submit(new PathRequest(i, 0L, () -> { started.countDown(); block.await(); return null; }, p -> {}));
+        }
+        assertTrue(started.await(2, TimeUnit.SECONDS));
+        assertTrue(pool.inFlight() > 0);
+
+        pool.shutdown();                 // shutdownNow(): queued tasks dropped, running ones interrupted
+        pool.start(2, 4);                // simulate a world reload
+        assertEquals(0, pool.inFlight(), "inFlight must reset on start()");
+
+        CountDownLatch done = new CountDownLatch(1);
+        assertTrue(pool.submit(new PathRequest(9, 1L, () -> null, p -> done.countDown())),
+            "a restarted pool must accept new work");
+        assertTrue(done.await(2, TimeUnit.SECONDS));
+        block.countDown();
+    }
+
+    @Test void doubleStartIsIdempotent() {
+        pool.start(2, 4);                // second start without stop: must not throw or leak inFlight
+        assertEquals(0, pool.inFlight());
+        assertTrue(pool.submit(new PathRequest(1, 0L, () -> null, p -> {})));
+    }
 }

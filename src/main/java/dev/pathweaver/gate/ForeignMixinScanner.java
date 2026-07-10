@@ -46,21 +46,31 @@ public final class ForeignMixinScanner {
     private static final String PATHFINDER = "net.minecraft.world.level.pathfinder.PathFinder";
 
     /**
-     * Mod-id prefixes we trust to mix into allowlisted evaluators safely. Fabric API's only
-     * pathfinder mixin (content-registries' WalkNodeEvaluatorMixin) injects into
-     * {@code getCommonNodeType(BlockGetter, ...)} and reads the PASSED BlockGetter (the read-only
-     * snapshot during A*) plus the immutable LandPathTypeRegistry — no live mutable state. Verified
-     * against fabric-api 0.153.0+26.1.2. Denying it would wrongly bench every walking mob, since this
-     * module is always present. Third-party mixins stay untrusted (default-deny) to catch the real
-     * hazard (e.g. salts_animal_farm reading live rain/entities).
+     * Mods trusted to mix into allowlisted evaluators safely — their pathfinder mixins read only the
+     * PASSED BlockGetter (the read-only A* snapshot) and immutable registries/caches, never live
+     * mutable world state. Denying these would wrongly force whole mob families to sync, since they
+     * are common/always-present. Unknown third-party mixins stay untrusted (default-deny) to catch the
+     * real hazard (e.g. salts_animal_farm, which reads live rain + does live entity scans in its
+     * WalkNodeEvaluator.getPathType mixin — that one MUST force sync).
+     *
+     * Trusted (verified/reasoned safe on 26.1.2):
+     *  - fabric* / fabricloader: content-registries' getCommonNodeType -> LandPathTypeRegistry (snapshot + immutable registry).
+     *  - lithium: PathNodeCache / BlockStateBase precompute — the snapshot-safe node-eval optimization PathWeaver coordinates with.
+     *  - diagonal* (Diagonal Fences/Blocks): pathfinding compat for diagonally-placed blocks — reads the block snapshot only.
      */
-    private static final List<String> TRUSTED_OWNER_PREFIXES = List.of("fabric-", "fabric", "fabricloader");
+    // "pathweaver" is also skipped outright by the MOD_ID check in scanAndPopulate() (a mod never
+    // scans itself), so PathWeaver mixing into Walk/Fly/PathfindingContext can never self-trip this
+    // scanner. It's listed here too as belt-and-suspenders and to document intent.
+    private static final java.util.Set<String> TRUSTED_IDS = java.util.Set.of("lithium", PathWeaver.MOD_ID);
+    private static final List<String> TRUSTED_PREFIXES = List.of("fabric", "diagonal");
 
     private ForeignMixinScanner() {}
 
     private static boolean isTrustedOwner(String modId) {
-        for (String p : TRUSTED_OWNER_PREFIXES) {
-            if (modId.equals(p) || modId.startsWith("fabric-")) return true;
+        if (modId == null) return false;
+        if (TRUSTED_IDS.contains(modId)) return true;
+        for (String p : TRUSTED_PREFIXES) {
+            if (modId.startsWith(p)) return true;
         }
         return false;
     }

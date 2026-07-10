@@ -2,7 +2,6 @@ package dev.pathweaver.gate;
 
 import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
 import net.minecraft.world.level.pathfinder.SwimNodeEvaluator;
-import net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator;
 import net.minecraft.world.level.pathfinder.FlyNodeEvaluator;
 
 import java.util.Collections;
@@ -16,12 +15,17 @@ import java.util.Set;
  * Exact-class ({@code getClass() ==}), never {@code instanceof}: a mod evaluator that
  * {@code extends WalkNodeEvaluator} (e.g. stormiespiders' AdvancedWalkNodeProcessor) reads live
  * world state during node evaluation, so {@code instanceof} would wrongly pass it. Default-deny.
+ *
+ * {@code AmphibiousNodeEvaluator} is deliberately EXCLUDED: verified on 26.1.2, its {@code prepare}/
+ * {@code done} save-and-restore the live mob's WATER/WATER_BORDER pathfinding malus via
+ * {@code mob.setPathfindingMalus(...)} — a WRITE to live entity state that would race off-thread (and
+ * can't be reproduced faithfully off-thread anyway). It stays synchronous. {@code SwimNodeEvaluator}
+ * is safe: its prepare/done only touch the evaluator's own fields and never the live mob.
  */
 public final class SafetyGate {
     private static final Set<Class<?>> ALLOWED = Set.of(
         WalkNodeEvaluator.class,
         SwimNodeEvaluator.class,
-        AmphibiousNodeEvaluator.class,
         FlyNodeEvaluator.class
     );
 

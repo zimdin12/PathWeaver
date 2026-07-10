@@ -35,8 +35,27 @@ class ResultInstallerTest {
         r.enqueue(5, 0L, null, 0, 0, 0);
         FakeSink sink = new FakeSink(Set.of());
         r.drain(sink);
+        // Default failed() delegates to discard(), so an old sink still sees it in the discard list.
         assertEquals(List.of(5), sink.discarded);
         assertTrue(sink.installed.isEmpty());
+    }
+
+    /** FIX 4: a null (failed) result routes to failed(), distinct from a stale-but-valid discard(). */
+    @Test void nullRoutesToFailedNotDiscardWhenSinkDistinguishes() {
+        ResultInstaller r = new ResultInstaller();
+        r.enqueue(1, 0L, null, 0, 0, 0);   // failed
+        r.enqueue(2, 0L, DUMMY, 0, 0, 0);  // stale
+        var failed = new ArrayList<Integer>();
+        var discarded = new ArrayList<Integer>();
+        ResultInstaller.InstallSink sink = new ResultInstaller.InstallSink() {
+            public boolean isStale(int id, long t, double x, double y, double z) { return id == 2; }
+            public void install(int id, Path p) { fail("nothing should install"); }
+            public void discard(int id) { discarded.add(id); }
+            @Override public void failed(int id) { failed.add(id); }
+        };
+        r.drain(sink);
+        assertEquals(List.of(1), failed);
+        assertEquals(List.of(2), discarded);
     }
 
     @Test void drainDeliversEachResultOnce() {

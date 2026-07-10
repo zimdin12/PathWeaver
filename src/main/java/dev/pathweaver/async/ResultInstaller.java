@@ -16,6 +16,14 @@ public class ResultInstaller {
         boolean isStale(int entityId, long dispatchTick, double x, double y, double z);
         void install(int entityId, Path path);
         void discard(int entityId);
+
+        /**
+         * FIX 4: a {@code null} result means the worker search FAILED (threw), as opposed to a stale
+         * but valid result. Distinguished so the sink can flag the entity to run synchronously next
+         * tick instead of re-dispatching a deterministically-failing async search forever. Defaults to
+         * {@link #discard} for callers that don't care (keeps older sinks source-compatible).
+         */
+        default void failed(int entityId) { discard(entityId); }
     }
 
     private record Result(int entityId, long dispatchTick, Path path, double x, double y, double z) {}
@@ -32,7 +40,7 @@ public class ResultInstaller {
         Result r;
         while ((r = queue.poll()) != null) {
             if (r.path() == null) {
-                sink.discard(r.entityId());
+                sink.failed(r.entityId());
             } else if (sink.isStale(r.entityId(), r.dispatchTick(), r.x(), r.y(), r.z())) {
                 sink.discard(r.entityId());
             } else {
@@ -42,4 +50,7 @@ public class ResultInstaller {
     }
 
     public int pending() { return queue.size(); }
+
+    /** FIX 5: drop any results left over from a previous server session on start/stop. */
+    public void clear() { queue.clear(); }
 }

@@ -24,10 +24,14 @@ class SafetyGateTest {
     @Test void unknownEvaluatorDenied() {
         assertFalse(SafetyGate.isEvaluatorAllowed(Object.class));
     }
-    @Test void swimAndAmphibiousAndFlyAllowed() {
+    @Test void swimAndFlyAllowed() {
         assertTrue(SafetyGate.isEvaluatorAllowed(SwimNodeEvaluator.class));
-        assertTrue(SafetyGate.isEvaluatorAllowed(AmphibiousNodeEvaluator.class));
         assertTrue(SafetyGate.isEvaluatorAllowed(FlyNodeEvaluator.class));
+    }
+    @Test void amphibiousDeniedBecauseItMutatesLiveMobMalusOffThread() {
+        // Amphibious prepare/done call mob.setPathfindingMalus(...) - a live-entity WRITE that would
+        // race off-thread. It is intentionally excluded from the allowlist and stays synchronous.
+        assertFalse(SafetyGate.isEvaluatorAllowed(AmphibiousNodeEvaluator.class));
     }
     @Test void foreignMixinDenialOverridesAllowlist() {
         assertTrue(SafetyGate.isAllowed(WalkNodeEvaluator.class));

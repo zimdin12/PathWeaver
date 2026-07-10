@@ -59,9 +59,25 @@ class EvaluatorClonerTest {
         assertTrue(fresh.canFloat());
     }
 
-    @Test void aquaticEvaluatorWithoutNoArgCtorFailsCleanly() {
-        // SwimNodeEvaluator has only a (boolean) constructor -> clone throws -> mixin falls back to sync.
-        assertThrows(ReflectiveOperationException.class,
-            () -> EvaluatorCloner.cloneWithConfig(new SwimNodeEvaluator(false)));
+    @Test void aquaticSwimEvaluatorClonesWithBooleanArg() throws Exception {
+        SwimNodeEvaluator src = new SwimNodeEvaluator(true); // allowBreaching = true
+        src.setCanFloat(true);
+        NodeEvaluator fresh = EvaluatorCloner.cloneWithConfig(src);
+        assertEquals(SwimNodeEvaluator.class, fresh.getClass());
+        assertNotSame(src, fresh);
+        assertTrue(fresh.canFloat());
+        var f = SwimNodeEvaluator.class.getDeclaredField("allowBreaching");
+        f.setAccessible(true);
+        assertTrue(f.getBoolean(fresh), "allowBreaching must be copied to the fresh evaluator");
+    }
+
+    @Test void amphibiousEvaluatorClonesWithBooleanArg() throws Exception {
+        var src = new net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator(true);
+        NodeEvaluator fresh = EvaluatorCloner.cloneWithConfig(src);
+        assertEquals(net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator.class, fresh.getClass());
+        var f = net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator.class
+            .getDeclaredField("prefersShallowSwimming");
+        f.setAccessible(true);
+        assertTrue(f.getBoolean(fresh), "prefersShallowSwimming must be copied");
     }
 }

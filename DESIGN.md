@@ -20,7 +20,13 @@ Mob pathfinding (`WalkNodeEvaluator`, `PathFinder`, `PathNavigation`) is the #1 
 
 ## 2. Core Safety Claim
 
-We never run the tick off-thread. We run **only** the A* search, **only** against `PathNavigationRegion` (already a read-only block copy that excludes entities: `getEntityCollisions → List.of()`), **only** for mobs whose `NodeEvaluator` is proven to read nothing but that snapshot. There is no shared mutable state on the worker thread, so there is nothing to race on. **Safe by construction, not by locking.**
+We never run the tick off-thread. We run **only** the A* search, **only** against `PathNavigationRegion` (already a read-only block copy that excludes entities: `getEntityCollisions → List.of()`), **only** for mobs whose `NodeEvaluator` is allowlisted, and with **every** piece of per-search mutable state made thread-confined:
+
+- a **fresh `PathFinder` + `NodeEvaluator`** per search (open-set, node pool, `PathfindingContext` scratch — never shared);
+- an **isolated `PathTypeCache`** — vanilla `PathfindingContext`'s constructor otherwise grabs the shared `ServerLevel.getPathTypeCache()` and *writes* it during the search; `PathfindingContextMixin` substitutes a fresh per-search cache on worker threads (main thread unchanged);
+- **entity callbacks moved to the main thread** — `onPathfindingStart`/`onPathfindingDone` are skipped in the evaluator off-thread and fired on the main thread at dispatch/install; the step-height attribute is force-resolved at dispatch so nothing is lazily written off-thread.
+
+The one residue is that vanilla `findPath` still *reads* the live mob's position/hitbox/malus during the search; those are reads only, bounded by the install-time staleness discard. **Safe by construction, not by locking.**
 
 ## 3. Features
 
@@ -36,9 +42,9 @@ Vanilla short-circuits a repath only on *exact* target-block equality (`createPa
 
 1. **`PathRequestInterceptor`** — mixin on `PathNavigation.createPath` (main thread). Runs the `SafetyGate` check; if eligible, obtains/builds the shared snapshot, snapshots the mob's malus + capability flags (`canOpenDoors`/`canFloat`/hitbox/`FOLLOW_RANGE`), builds a `PathRequest`, submits it, and returns the mob's *current* path unchanged. If ineligible → vanilla sync path, unchanged.
 
-2. **`SafetyGate`** — **exact-class allowlist** of `NodeEvaluator`: `WalkNodeEvaluator`, `SwimNodeEvaluator`, `AmphibiousNodeEvaluator`, `FlyNodeEvaluator`. `evaluator.getClass() ==` (NOT `instanceof` — `AdvancedWalkNodeProcessor extends WalkNodeEvaluator`, so `instanceof` would wrongly pass stormiespiders). Default-deny. **Plus startup foreign-mixin detection:** scan loaded mixin configs for any *other* jar targeting `WalkNodeEvaluator`/`FlyNodeEvaluator`/`PathFinder`; if found (e.g. salts_animal_farm), force the affected mob families sync (the one hole class-allowlisting can't see, since a mixin keeps the class identity).
+2. **`SafetyGate`** — **exact-class allowlist** of `NodeEvaluator`: `WalkNodeEvaluator`, `SwimNodeEvaluator`, `FlyNodeEvaluator`. (`AmphibiousNodeEvaluator` is deliberately excluded: its `prepare`/`done` *write* the live mob's water malus via `setPathfindingMalus`, which can't run safely off-thread.) `evaluator.getClass() ==` (NOT `instanceof` — `AdvancedWalkNodeProcessor extends WalkNodeEvaluator`, so `instanceof` would wrongly pass stormiespiders). Default-deny. **Plus startup foreign-mixin detection:** scan loaded mixin configs for any *other* jar targeting `WalkNodeEvaluator`/`FlyNodeEvaluator`/`PathFinder`; if found (e.g. salts_animal_farm), force the affected mob families sync (the one hole class-allowlisting can't see, since a mixin keeps the class identity).
 
-3. **`SnapshotProvider`** — builds/caches the right-sized immutable `PathNavigationRegion` per (region, tick). Radius = `min(vanilla radius, actual maxPathLength + margin)`, never below path length. Cache keyed so nearby mobs in the same tick reuse one region. Cleared at tick end. **Worker-thread rule:** the region must carry its own snapshot-local `PathType` cache or per-request map — workers must NOT read `ServerLevel.PathTypeCache` (main-thread-mutated via `invalidate` on block change) and must rely on Lithium's immutable per-`BlockState` precompute where present.
+3. **Per-request region + `PathfindingContextMixin`** — each dispatch builds its own `PathNavigationRegion` on the main thread using vanilla's exact radius formula (`followRange + regionOffset`), so the async result is byte-identical to sync. *(A shared per-tick `SnapshotProvider` was prototyped and removed: sharing one region across mobs+workers would race on Lithium's per-region cache fields, and per-mob regions are cheap and already correct. See git history.)* The **worker-thread rule** — "never touch `ServerLevel.PathTypeCache`" — is now enforced concretely by `PathfindingContextMixin`, which hands worker searches a fresh per-search `PathTypeCache`. Lithium's immutable per-`BlockState` precompute is still used where present.
 
 4. **`PathWorkerPool`** — bounded `ThreadPoolExecutor`, size = config default `max(1, cores/4)`, capped to never starve render/main threads. Runs `findPath` on the snapshot only. Pure compute. Worker exception → that request falls back to sync, logged once.
 
@@ -67,7 +73,7 @@ Mob repaths → Interceptor (main): gate → snapshot flags → PathRequest → 
 ## 7. Mob Coverage (from safety audit)
 
 - **ASYNC-SAFE (default win):** vanilla mobs, MCA villagers (inherit stock `GroundPathNavigation`+`WalkNodeEvaluator`), Animal Garden (26 species), Ecologics, EnderZoology, bees, cats, dogs, horses, warband, herdinstinct, fleeinganimals, smbs, IllagerInvasion.
-- **MUST-STAY-SYNC (gate denies automatically):** stormiespiders (`AdvancedWalkNodeProcessor` reads live level + collision), salts_animal_farm (mixins into vanilla `WalkNodeEvaluator.getPathType`, reads live rain/entities/static map).
+- **MUST-STAY-SYNC (gate denies automatically):** stormiespiders (`AdvancedWalkNodeProcessor` reads live level + collision), salts_animal_farm (mixins into vanilla `WalkNodeEvaluator.getPathType`, reads live rain/entities/static map), and **`AmphibiousNodeEvaluator` mobs** (axolotl/frog/turtle-type — their `prepare`/`done` write the live mob's water malus off-thread). Note `SwimNodeEvaluator` (fish/squid) *is* async-safe — it only touches its own evaluator fields.
 
 ## 8. Testing (the publish-grade bar)
 
