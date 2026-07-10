@@ -2,3 +2,6 @@
 build/
 run/
 *.log
+
+# runtime dev-server logs (never ship)
+logs/
