@@ -11,6 +11,7 @@
     "issues": "https://github.com/Zimdin12/PathWeaver/issues"
   },
   "license": "MIT",
+  "icon": "assets/pathweaver/icon.png",
   "environment": "*",
   "entrypoints": {
     "main": ["dev.pathweaver.PathWeaver"]
