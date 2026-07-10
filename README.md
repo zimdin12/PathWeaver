@@ -2,9 +2,11 @@
 
 **Async mob pathfinding for Minecraft 26.1.2 (Fabric) — safe by construction.**
 
+> ⚠️ **Alpha / work in progress.** This is an early release. The design is careful and it has been unit-tested and soak-tested, but it has **not** been thoroughly tested across many packs, mods, and long real-world sessions yet. Run it with async enabled at your own discretion, keep backups, and please report anything odd. Expect changes.
+
 PathWeaver moves the expensive part of mob pathfinding — the A\* search — off the main server thread, onto a read-only world snapshot. It targets the single biggest steady-state server cost in a busy world (mob pathfinding: `WalkNodeEvaluator`, `PathFinder`, `PathNavigation`) without changing how mobs behave and without fighting Lithium.
 
-> **The one-line pitch:** other async mods make the game *not crash* on unsafe concurrent access. PathWeaver is safe *by construction* — the worker thread only ever touches an immutable snapshot and a private, freshly-built search, so there is nothing to race on.
+> **The one-line pitch:** other async mods make the game *not crash* on unsafe concurrent access. PathWeaver is safe *by construction* — the worker thread runs a private, freshly-built search with its own per-thread path-type cache, so it never writes shared main-thread state. (It reads block data through a read-only region view; those are reads only, bounded by a staleness check, and any error degrades cleanly to synchronous pathfinding.)
 
 ## Why this is safe when naive async isn't
 
