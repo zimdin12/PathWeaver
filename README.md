@@ -45,6 +45,17 @@ On top of that, at startup PathWeaver scans every other mod's mixin configs: if 
 - **Async today:** land + flying + fish-style aquatic mobs (`WalkNodeEvaluator`, `FlyNodeEvaluator`, `SwimNodeEvaluator`) — villagers, most animals, zombies, squid/fish, etc.
 - **Sync fallback (safe, no benefit):** `AmphibiousNodeEvaluator` mobs (axolotl, frog, turtle-type) — their evaluator *writes* the live mob's water pathfinding-malus during the search, which can't be done safely off-thread — and any mob touched by an untrusted third-party pathfinding mixin.
 
+## Compatibility
+
+PathWeaver is built to coexist. When it can't safely accelerate a mob, it silently falls back to vanilla synchronous pathfinding for that mob — never a crash, never a behaviour change.
+
+- **Coordinates with [Lithium](https://modrinth.com/mod/lithium).** Lithium optimizes *node evaluation*; PathWeaver moves the *search* off-thread. They complement each other — PathWeaver trusts Lithium's pathfinding mixins rather than fighting them.
+- **Fabric API** — required and trusted.
+- **Mods that touch pathfinding are auto-detected and kept safe.** At startup PathWeaver scans every other mod's mixins; any mod that mixes into the vanilla pathfinding classes (e.g. its evaluator reads live world state) forces the affected mob family back to synchronous pathing. Those mobs still work perfectly — they just don't get the async speedup. Seen in the wild: weather-aware animal-pathing mods and some spider-behaviour mods.
+- **No known hard incompatibilities.** The worst case for any mod is "no speedup for those mobs," not a break. Works alongside chunk/performance mods (c2me, ServerCore, etc.).
+
+Found a mod PathWeaver misbehaves with? Please [open an issue](https://github.com/zimdin12/PathWeaver/issues) — the safe-by-default gate should catch it, and reports help tighten the scanner.
+
 ## Configuration
 
 `config/pathweaver.json` (in-game GUI via ModMenu). Key options:
