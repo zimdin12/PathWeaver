@@ -1,5 +1,7 @@
 package dev.pathweaver.mixin;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.pathweaver.PathWeaverRuntime;
 import dev.pathweaver.async.EntityInstallSink;
 import dev.pathweaver.async.PathRequest;
@@ -8,7 +10,9 @@ import dev.pathweaver.duck.PWNavigation;
 import dev.pathweaver.gate.SafetyGate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.PathNavigationRegion;
 import net.minecraft.world.level.pathfinder.FlyNodeEvaluator;
@@ -59,6 +63,76 @@ public abstract class PathNavigationMixin implements PWNavigation {
     // returns, so this.speedModifier is stale (or 0) at dispatch. Remember the last requested speed via
     // moveTo so the installed path never moves at speed 0.
     @Unique private double pathweaver$lastRequestedSpeed = 1.0;
+    /**
+     * Non-zero only while one of PathNavigation's genuine movement/recompute entry points is making
+     * its virtual createPath call. Direct/query-only createPath calls remain synchronous by construction.
+     */
+    @Unique private int pathweaver$navigationRequestDepth;
+
+    @WrapOperation(
+        method = "recomputePath()V",
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/ai/navigation/PathNavigation;createPath(Lnet/minecraft/core/BlockPos;I)Lnet/minecraft/world/level/pathfinder/Path;"),
+        require = 1,
+        expect = 1
+    )
+    private Path pathweaver$armRecomputePath(PathNavigation instance, BlockPos target, int reachRange,
+                                             Operation<Path> original) {
+        pathweaver$navigationRequestDepth++;
+        try {
+            return original.call(instance, target, reachRange);
+        } finally {
+            pathweaver$navigationRequestDepth--;
+        }
+    }
+
+    @WrapOperation(
+        method = "moveTo(DDDD)Z",
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/ai/navigation/PathNavigation;createPath(DDDI)Lnet/minecraft/world/level/pathfinder/Path;"),
+        require = 1,
+        expect = 1
+    )
+    private Path pathweaver$armCoordinateMove(PathNavigation instance, double x, double y, double z,
+                                              int reachRange, Operation<Path> original) {
+        pathweaver$navigationRequestDepth++;
+        try {
+            return original.call(instance, x, y, z, reachRange);
+        } finally {
+            pathweaver$navigationRequestDepth--;
+        }
+    }
+
+    @WrapOperation(
+        method = "moveTo(DDDID)Z",
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/ai/navigation/PathNavigation;createPath(DDDI)Lnet/minecraft/world/level/pathfinder/Path;"),
+        require = 1,
+        expect = 1
+    )
+    private Path pathweaver$armCoordinateMoveWithReach(PathNavigation instance,
+                                                       double x, double y, double z, int reachRange,
+                                                       Operation<Path> original) {
+        pathweaver$navigationRequestDepth++;
+        try {
+            return original.call(instance, x, y, z, reachRange);
+        } finally {
+            pathweaver$navigationRequestDepth--;
+        }
+    }
+
+    @WrapOperation(
+        method = "moveTo(Lnet/minecraft/world/entity/Entity;D)Z",
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/ai/navigation/PathNavigation;createPath(Lnet/minecraft/world/entity/Entity;I)Lnet/minecraft/world/level/pathfinder/Path;"),
+        require = 1,
+        expect = 1
+    )
+    private Path pathweaver$armEntityMove(PathNavigation instance, Entity target, int reachRange,
+                                          Operation<Path> original) {
+        pathweaver$navigationRequestDepth++;
+        try {
+            return original.call(instance, target, reachRange);
+        } finally {
+            pathweaver$navigationRequestDepth--;
+        }
+    }
 
     /** FIX 3a: capture the caller's intended speed on every moveTo(path, speed), before its null-check. */
     @Inject(
@@ -77,6 +151,10 @@ public abstract class PathNavigationMixin implements PWNavigation {
     private void pathweaver$asyncCreatePath(Set<BlockPos> targets, int regionOffset, boolean offsetUpward,
                                             int reachRange, float followRange,
                                             CallbackInfoReturnable<Path> cir) {
+        // Only the four wrapped genuine-navigation call sites may opt into elision or async dispatch.
+        // All direct/external createPath calls — including unknown mod queries — stay vanilla sync.
+        if (pathweaver$navigationRequestDepth == 0) return;
+
         PathWeaverConfig cfg = PathWeaverConfig.get();
 
         // Feature B: opt-in repath elision. A zero tolerance disables this injection entirely; the

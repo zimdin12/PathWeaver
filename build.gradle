@@ -38,6 +38,15 @@ dependencies {
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
+fabricApi {
+    configureTests {
+        createSourceSet = true
+        modId = "pathweaver_gametest"
+        enableGameTests = true
+        eula = true
+    }
+}
+
 processResources {
     inputs.property "version", project.version
     filesMatching("fabric.mod.json") {

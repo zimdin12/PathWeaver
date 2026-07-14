@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "pathweaver_gametest",
+  "version": "1.0.0",
+  "name": "PathWeaver Game Tests",
+  "environment": "server",
+  "entrypoints": {
+    "fabric-gametest": [
+      "dev.pathweaver.gametest.PathNavigationRoutingGameTest"
+    ]
+  },
+  "depends": {
+    "fabric-gametest-api-v1": "*",
+    "pathweaver": "*"
+  }
+}
