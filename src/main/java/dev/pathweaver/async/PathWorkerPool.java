@@ -12,8 +12,9 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Bounded worker pool that runs A* searches off the main thread. Threads are daemon and one notch
- * below normal priority so they never starve the render/main threads. On saturation ({@code submit}
- * returns false) or task exception (result delivered as {@code null}), the caller falls back to sync.
+ * below normal priority. Saturation/rejection returns false so the current caller can continue sync.
+ * A task exception is delivered as {@code null}; it is not recomputed here and instead causes the
+ * install sink to put later requests for that entity into a synchronous cooldown.
  */
 public class PathWorkerPool {
     private ThreadPoolExecutor exec;
@@ -26,9 +27,9 @@ public class PathWorkerPool {
     private static final long FAIL_LOG_INTERVAL_MS = 60_000L;
 
     /**
-     * FIX 5: idempotent start that resets lifecycle counters. Over a world reload the old pool is
-     * discarded; {@code inFlight} MUST return to 0 or async silently ratchets off forever (a dropped
-     * {@code shutdownNow} task never runs its finally, so its in-flight decrement is lost).
+     * Start/restart the executor and reset the shared counter. This prevents dropped queued tasks from
+     * permanently consuming capacity, but 0.1.1 has no epoch: an interrupt-ignoring old task may still
+     * decrement this counter after restart. The v0.2 lifecycle protocol must isolate generations.
      */
     public synchronized void start(int threads, int maxInFlight) {
         if (exec != null && !exec.isShutdown()) {
@@ -84,7 +85,8 @@ public class PathWorkerPool {
         long n = failCount.incrementAndGet();
         long now = System.currentTimeMillis();
         if (n == 1) {
-            PathWeaver.LOG.warn("Async path search failed; that entity falls back to sync. "
+            PathWeaver.LOG.warn("Async path search failed; this request is discarded and later requests "
+                + "for that entity temporarily run sync. "
                 + "Further failures are counted and summarised at most once/min.", t);
             lastFailLogMs = now;
         } else if (now - lastFailLogMs >= FAIL_LOG_INTERVAL_MS) {
@@ -102,6 +104,7 @@ public class PathWorkerPool {
             exec.shutdownNow();
             exec = null;
         }
-        inFlight.set(0); // FIX 5: dropped queued tasks never run their finally; reset explicitly.
+        // Releases capacity held by dropped queued tasks. Old running tasks are not epoch-isolated yet.
+        inFlight.set(0);
     }
 }

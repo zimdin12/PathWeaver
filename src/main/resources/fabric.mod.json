@@ -3,7 +3,7 @@
   "id": "pathweaver",
   "version": "${version}",
   "name": "PathWeaver",
-  "description": "Async mob pathfinding: only the A* search runs off the server thread, on a read-only region with a freshly-isolated finder and a per-thread path-type cache, so no shared mutable state is written off-thread. No async ticking, no async collision. Coordinates with Lithium.",
+  "description": "Experimental opt-in A* offload for eligible Walk/Swim mobs. Default-off while immutable inputs, lifecycle safety, and fail-closed compatibility detection are reworked.",
   "authors": ["Zimdin"],
   "contact": {
     "homepage": "https://modrinth.com/mod/pathweaver",

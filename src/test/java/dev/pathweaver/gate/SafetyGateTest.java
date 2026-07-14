@@ -24,9 +24,9 @@ class SafetyGateTest {
     @Test void unknownEvaluatorDenied() {
         assertFalse(SafetyGate.isEvaluatorAllowed(Object.class));
     }
-    @Test void swimAndFlyAllowed() {
+    @Test void swimAllowedButFlyDeniedBecauseFlyConsumesLiveMobRngOffThread() {
         assertTrue(SafetyGate.isEvaluatorAllowed(SwimNodeEvaluator.class));
-        assertTrue(SafetyGate.isEvaluatorAllowed(FlyNodeEvaluator.class));
+        assertFalse(SafetyGate.isEvaluatorAllowed(FlyNodeEvaluator.class));
     }
     @Test void amphibiousDeniedBecauseItMutatesLiveMobMalusOffThread() {
         // Amphibious prepare/done call mob.setPathfindingMalus(...) - a live-entity WRITE that would

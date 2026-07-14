@@ -7,8 +7,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 /**
  * Collects completed paths from worker threads and installs them on the main thread. Staleness is
  * decided by the {@link InstallSink} (which owns the live entity); the installer only guarantees
- * thread-safe hand-off and one-shot delivery. A {@code null} path (worker failed) is discarded so
- * the mob re-requests via the normal sync route.
+ * thread-safe hand-off and one-shot delivery. A {@code null} path (worker failed) is discarded; the
+ * entity sink then forces later requests sync during a cooldown. The failed request is not recomputed.
  */
 public class ResultInstaller {
 

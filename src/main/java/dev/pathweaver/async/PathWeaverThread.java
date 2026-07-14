@@ -7,7 +7,7 @@ package dev.pathweaver.async;
  * state: when {@link #isWorker()} is true, {@code PathfindingContextMixin} hands the search a fresh,
  * thread-confined {@code PathTypeCache} instead of the {@code ServerLevel}'s shared one, and the
  * evaluator mixins skip the live-mob {@code onPathfindingStart/Done} callbacks. On the main thread
- * {@link #isWorker()} is always false, so vanilla pathfinding is 100% unchanged.</p>
+ * {@link #isWorker()} is false, so these particular redirects call vanilla's original targets.</p>
  *
  * <p>The flag is set/cleared around every search in {@link PathWorkerPool}, so ALL worker execution is
  * covered regardless of which Callable was submitted.</p>

@@ -1,88 +1,95 @@
 # PathWeaver
 
-**Async mob pathfinding for Minecraft 26.1.2 (Fabric) — safe by construction.**
+**Experimental, opt-in asynchronous mob pathfinding for Minecraft 26.1.2 (Fabric).**
 
-> ⚠️ **Alpha / work in progress.** This is an early release. The design is careful and it has been unit-tested and soak-tested, but it has **not** been thoroughly tested across many packs, mods, and long real-world sessions yet. Run it with async enabled at your own discretion, keep backups, and please report anything odd. Expect changes.
+PathWeaver can move the A* search used by eligible land and aquatic mobs off the server thread. It does not run entity ticks or collision off-thread. Version 0.1.1 defaults asynchronous search **off** while the v0.2 input/lifecycle rework is developed.
 
-PathWeaver moves the expensive part of mob pathfinding — the A\* search — off the main server thread, onto a read-only world snapshot. It targets the single biggest steady-state server cost in a busy world (mob pathfinding: `WalkNodeEvaluator`, `PathFinder`, `PathNavigation`) without changing how mobs behave and without fighting Lithium.
+## Status and safety
 
-> **The one-line pitch:** other async mods make the game *not crash* on unsafe concurrent access. PathWeaver is safe *by construction* — the worker thread runs a private, freshly-built search with its own per-thread path-type cache, so it never writes shared main-thread state. (It reads block data through a read-only region view; those are reads only, bounded by a staleness check, and any error degrades cleanly to synchronous pathfinding.)
+PathWeaver 0.1.1 is an alpha honesty release, not a claim of proven thread safety or vanilla-equivalent behavior.
 
-## Why this is safe when naive async isn't
+When explicitly enabled, the worker receives:
 
-Running Minecraft's *entity tick* on multiple threads is unsafe: the tick mutates shared world state, so it races no matter how many locks you add. That's why other async mods disable the vanilla race detector rather than fix the races.
+- a fresh `PathFinder` and exact vanilla `WalkNodeEvaluator` or `SwimNodeEvaluator`;
+- a per-thread `PathTypeCache`, avoiding writes to the level's shared cache;
+- a `PathNavigationRegion`, which is a read-only **view** of live chunks, not an immutable copy.
 
-PathWeaver never runs the tick off-thread. It runs **only the A\* search**, and only when these conditions hold:
+The eligible worker path avoids known shared-state writes, but it still reads live chunk and mob state. Those inputs can change during a search. The current general `createPath` interception can also change query-only call semantics, and lifecycle/staleness/foreign-mixin detection are not yet complete safety boundaries. Dispatch-time guards and pool rejection leave that invocation synchronous. A worker exception does not recompute the failed request; it forces later requests for that mob synchronous during a cooldown.
 
-1. **Immutable inputs.** Vanilla already runs A\* against a `PathNavigationRegion` — a read-only copy of the blocks that excludes entities. PathWeaver builds that region on the main thread and hands the worker an immutable snapshot.
-2. **Zero shared search state.** The `PathFinder` and `NodeEvaluator` objects hold per-search scratch state (open-set, node pool, `PathfindingContext`) and are **not** safe to reuse across threads — the subtle trap that corrupts naive implementations. PathWeaver builds a **fresh, isolated** `PathFinder` + `NodeEvaluator` for every search, with the mob's config flags copied exactly.
-3. **Isolated `PathTypeCache`.** Vanilla's `PathfindingContext` constructor grabs the *shared* `ServerLevel.getPathTypeCache()` and writes into it during the search — a hidden shared-state write that ignores the read-only region. PathWeaver mixes into that constructor and, **only on a worker thread**, substitutes a fresh per-search `PathTypeCache`, so an off-thread search recomputes path types into thread-confined storage and never touches the cache that synchronous mobs use. On the main thread the real shared cache is returned, unchanged.
-4. **Main-thread entity callbacks.** `WalkNodeEvaluator`/`FlyNodeEvaluator` call `mob.onPathfindingStart()`/`onPathfindingDone()` and lazily resolve the mob's step-height attribute. PathWeaver skips those calls on the worker thread and fires the balanced start/done pair on the **main thread** (at dispatch, and at install-or-discard), and force-resolves the attribute at dispatch so nothing is written off-thread.
+**Back up worlds and opt in only if you accept those limitations.** The v0.2 plan is to replace live inputs with immutable copies, preserve query-only `createPath` behavior, add complete request epochs/staleness checks, balance every callback path, and make compatibility discovery fail closed.
 
-The result installs next tick via vanilla's own `moveTo(path, speed)`, followed by a faithful replay of vanilla `createPath`'s tail (`targetPos`, `reachRange`, `resetStuckTimeout`) so async mobs repath around new obstacles exactly like sync ones. Until the result lands the mob keeps its current path, so it never stalls. **The computed path is identical to what vanilla would produce** — same region, same `findPath`, same evaluator config.
+## Defaults in 0.1.1
 
-### The one honest caveat (block/entity reads)
+```json
+{
+  "asyncEnabled": false,
+  "repathElisionEnabled": true,
+  "poolThreads": 0,
+  "maxInFlight": 256,
+  "distanceThrottleEnabled": false,
+  "syncFallbackOnly": false,
+  "repathToleranceBlocks": 0,
+  "stalenessMoveThreshold": 4.0
+}
+```
 
-Vanilla `findPath` still *reads* the live mob's position, hitbox and pathfinding-malus map during the search. These are **reads, not writes**, and they are bounded by the staleness check at install (if the mob moved past `stalenessMoveThreshold` since dispatch, the result is discarded and it re-requests). PathWeaver does **not** take a full mob-state snapshot — the one genuine *write* hazard (the `PathTypeCache`) is eliminated as above; the residual live reads are deliberately left un-snapshotted rather than grow a large, fragile mixin surface.
+- `asyncEnabled=false`: explicit opt-in is required on a newly generated config.
+- `repathToleranceBlocks=0`: Feature B does not widen vanilla's short-circuit by default.
+- Invalid numeric values are clamped before executor startup.
+- `syncFallbackOnly=true` remains a panic switch that prevents async dispatch.
 
-## What it does NOT do (by design)
+Existing `config/pathweaver.json` files are preserved on upgrade; review them explicitly if they came from 0.1.0.
 
-- **No async entity ticking** — that's the unsafe thing; PathWeaver deliberately avoids it.
-- **No async collision.**
-- **No faster node evaluation** — [Lithium](https://modrinth.com/mod/lithium) already optimizes that (`PathNodeCache`), and PathWeaver is built to *coordinate* with Lithium, not duplicate or conflict with it.
+## Eligibility gate
 
-## Two features (both toggleable)
+Only exact vanilla evaluator classes are eligible—never subclasses:
 
-- **Async pathfinding** — the A\* search runs on a bounded worker pool. Only mobs whose evaluator is an exact-match allowlisted vanilla class are eligible; everything else uses unchanged vanilla sync pathing.
-- **Conservative repath elision** — vanilla only reuses a live path when the target block matches *exactly*, so a target drifting one block forces a full recompute. PathWeaver widens that to a small tolerance (default 1; `0` = vanilla behaviour). Lithium already handles the block-change repath trigger; this only addresses the goal-driven cadence.
+- Experimental async eligibility: `WalkNodeEvaluator`, `SwimNodeEvaluator`
+- Always synchronous in 0.1.1:
+  - `FlyNodeEvaluator`: its start-node search consumes the live mob RNG off-thread
+  - `AmphibiousNodeEvaluator`: its `prepare`/`done` mutate live mob water malus
+  - custom evaluator subclasses
+  - evaluator families denied by the startup foreign-mixin scan
 
-## Safety gate
+The current scanner reduces coverage when it recognizes a foreign evaluator mixin, but it is not yet fail closed: nonstandard/plugin-provided configs, scan failures, navigation/base/context targets, and broad trust rules remain v0.2 work. A clean scan is not proof that an arbitrary pack is safe.
 
-Async is enabled only for mobs whose `NodeEvaluator` is **exactly** `WalkNodeEvaluator`, `SwimNodeEvaluator`, `AmphibiousNodeEvaluator`, or `FlyNodeEvaluator` — never a subclass (`instanceof` would wrongly wave through mod evaluators that read live state). Default-deny.
+## What the benchmark proved
 
-On top of that, at startup PathWeaver scans every other mod's mixin configs: if a mod mixes *into* one of those vanilla classes (keeping its identity), the affected mob family is forced back to sync. Fabric API's own snapshot-based pathfinding mixin is trusted; unknown third-party mixins are not.
+Four paired, real Spark profiles in an isolated Fabric server with 160 pathfinding zombies showed that async ON moved measured A* work off the **Server thread**:
 
-- **Async today:** land + flying + fish-style aquatic mobs (`WalkNodeEvaluator`, `FlyNodeEvaluator`, `SwimNodeEvaluator`) — villagers, most animals, zombies, squid/fish, etc.
-- **Sync fallback (safe, no benefit):** `AmphibiousNodeEvaluator` mobs (axolotl, frog, turtle-type) — their evaluator *writes* the live mob's water pathfinding-malus during the search, which can't be done safely off-thread — and any mob touched by an untrusted third-party pathfinding mixin.
+- `WalkNodeEvaluator` inclusive samples: 2613 → 236 ms per run on average (-90.97%)
+- `WalkNodeEvaluator` self samples: 94 → 22 ms (-76.60%)
+- `PathfindingContext` inclusive samples: 499 → 76 ms (-84.77%)
+- `PathFinder` inclusive samples: 787 → 0 ms
+
+It did **not** prove an overall MSPT speedup. Average mean MSPT was 2.927 ms OFF and 3.012 ms ON; paired results were noisy. The honest conclusion is measured server-thread pathfinding offload under that isolated Walk workload—not a universal TPS/MSPT improvement. Performance evidence does not resolve the correctness limitations above.
+
+Raw profile URLs are listed in [`MODRINTH-COPY-v0.1.1.md`](MODRINTH-COPY-v0.1.1.md#what-the-benchmark-actually-proved). The raw sampler/health protobufs, complete logs, extraction JSON, scripts, hashes and baseline world are retained in the evidence bundle delivered with the release handoff.
 
 ## Compatibility
 
-PathWeaver is built to coexist. When it can't safely accelerate a mob, it silently falls back to vanilla synchronous pathfinding for that mob — never a crash, never a behaviour change.
+- Server-side; vanilla clients can connect.
+- Fabric API and Cloth Config are required.
+- Lithium is supported in the audited isolated stack, but no blanket compatibility guarantee is made for all versions/configurations.
+- Exact-class gating keeps custom navigators/evaluators synchronous.
+- Unknown or missed mixins can still evade the 0.1.1 scanner; use async only in a pack you have tested.
 
-- **Coordinates with [Lithium](https://modrinth.com/mod/lithium).** Lithium optimizes *node evaluation*; PathWeaver moves the *search* off-thread. They complement each other — PathWeaver trusts Lithium's pathfinding mixins rather than fighting them.
-- **Fabric API** — required and trusted.
-- **Mods that touch pathfinding are auto-detected and kept safe.** At startup PathWeaver scans every other mod's mixins; any mod that mixes into the vanilla pathfinding classes (e.g. its evaluator reads live world state) forces the affected mob family back to synchronous pathing. Those mobs still work perfectly — they just don't get the async speedup. Seen in the wild: weather-aware animal-pathing mods and some spider-behaviour mods.
-- **No known hard incompatibilities.** The worst case for any mod is "no speedup for those mobs," not a break. Works alongside chunk/performance mods (c2me, ServerCore, etc.).
+## Building and testing
 
-Found a mod PathWeaver misbehaves with? Please [open an issue](https://github.com/zimdin12/PathWeaver/issues) — the safe-by-default gate should catch it, and reports help tighten the scanner.
+Requires JDK 25:
 
-## Configuration
+```bash
+./gradlew clean test build
+```
 
-`config/pathweaver.json` (in-game GUI via ModMenu). Key options:
+## Reporting issues
 
-| Option | Default | Meaning |
-|---|---|---|
-| `asyncEnabled` | `true` | Master switch for async pathfinding |
-| `repathElisionEnabled` | `true` | Conservative repath elision (Feature B) |
-| `poolThreads` | `0` (auto) | Worker threads; `0` = `max(1, cores/4)`, deliberately conservative so it never starves the main/render threads |
-| `maxInFlight` | `256` | Cap on concurrent searches; over the cap → sync |
-| `syncFallbackOnly` | `false` | Panic switch — never dispatch async |
-| `distanceThrottleEnabled` | `false` | Opt-in; makes distant mobs path less often (they get visibly dumber) |
-| `repathToleranceBlocks` | `1` | Feature B tolerance; `0` = vanilla exact-match |
-| `stalenessMoveThreshold` | `4.0` | Blocks the mob may drift between dispatch and install before the async result is discarded and re-requested |
+Include:
 
-## Requirements
+- Minecraft/Fabric/PathWeaver versions
+- `config/pathweaver.json`
+- complete mod list and `latest.log`
+- whether async was enabled
+- reproduction steps and, for performance claims, a real Spark profile
 
-- Minecraft **26.1.2**, Fabric loader, Java **25**
-- [Fabric API](https://modrinth.com/mod/fabric-api), [Cloth Config](https://modrinth.com/mod/cloth-config)
-- Server-side (works on dedicated servers, LAN hosts, and singleplayer). Pairs well with Lithium.
-
-## Correctness & verification
-
-- **By construction:** async and sync run the *same* `findPath` on the *same* region with a config-identical evaluator, and the worker touches only thread-confined state (fresh finder + evaluator + isolated `PathTypeCache`) → identical `Path`, nothing shared to race on.
-- **Unit tests** cover the safety gate, the foreign-mixin scanner (JSON + ASM), the worker pool (isolation, saturation fallback, exception→sync, lifecycle reset on restart), the result installer (staleness, once-only delivery, failed-vs-stale routing), the post-failure sync cooldown, repath tolerance, and the equivalence-critical evaluator clone.
-- **Soak-tested:** 80 mobs pathfinding continuously on a dev server produced **835 off-thread dispatches / 834 installs / 0 discards, with zero exceptions and zero mixin-injection failures**.
-
-## License
-
-MIT © 2026 Zimdin
+Source and issues: <https://github.com/Zimdin12/PathWeaver>

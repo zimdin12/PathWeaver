@@ -30,10 +30,11 @@ import java.util.stream.Stream;
 /**
  * At startup, detects whether any OTHER mod mixes into one of our allowlisted vanilla evaluator
  * classes (or {@code PathFinder}). Such a mixin keeps the class identity intact, so the exact-class
- * allowlist cannot see it — this scanner is what closes that hole. Any hit is added to
+ * allowlist cannot see it. Recognized untrusted evaluator hits are added to
  * {@link SafetyGate#deniedBySafety}, forcing that evaluator family back to synchronous pathing.
  *
- * Everything here is defensive: a scan failure must never crash startup, only reduce coverage.
+ * This 0.1.1 scanner is best-effort and fail-open: errors do not crash startup, but they can leave
+ * coverage unchanged. It is defense in depth, not a complete safety boundary.
  */
 public final class ForeignMixinScanner {
 
@@ -46,17 +47,13 @@ public final class ForeignMixinScanner {
     private static final String PATHFINDER = "net.minecraft.world.level.pathfinder.PathFinder";
 
     /**
-     * Mods trusted to mix into allowlisted evaluators safely — their pathfinder mixins read only the
-     * PASSED BlockGetter (the read-only A* snapshot) and immutable registries/caches, never live
-     * mutable world state. Denying these would wrongly force whole mob families to sync, since they
-     * are common/always-present. Unknown third-party mixins stay untrusted (default-deny) to catch the
-     * real hazard (e.g. salts_animal_farm, which reads live rain + does live entity scans in its
-     * WalkNodeEvaluator.getPathType mixin — that one MUST force sync).
+     * Owners currently exempted by the legacy broad trust rules. This is compatibility policy, not a
+     * proof that every version/config/provider reached through these mixins is worker-safe. v0.2 must
+     * replace it with exact ID+version+mixin+target audit entries and fail closed when unverifiable.
      *
-     * Trusted (verified/reasoned safe on 26.1.2):
-     *  - fabric* / fabricloader: content-registries' getCommonNodeType -> LandPathTypeRegistry (snapshot + immutable registry).
-     *  - lithium: PathNodeCache / BlockStateBase precompute — the snapshot-safe node-eval optimization PathWeaver coordinates with.
-     *  - diagonal* (Diagonal Fences/Blocks): pathfinding compat for diagonally-placed blocks — reads the block snapshot only.
+     * The prefixes cover Fabric and DiagonalBlocks families; Lithium is an exact ID. Their inspected
+     * installed versions did not expose another direct worker write, but broad/transitive trust remains
+     * an acknowledged gap.
      */
     // "pathweaver" is also skipped outright by the MOD_ID check in scanAndPopulate() (a mod never
     // scans itself), so PathWeaver mixing into Walk/Fly/PathfindingContext can never self-trip this
@@ -122,7 +119,7 @@ public final class ForeignMixinScanner {
                 Collection<String> targets = collectMixinTargets(mod);
                 Set<Class<?>> hits = targetsTouchingAllowlist(targets);
                 if (!hits.isEmpty() && isTrustedOwner(id)) {
-                    PathWeaver.LOG.debug("Trusted mod '{}' mixes into {} (snapshot-based); allowing async.",
+                    PathWeaver.LOG.debug("Legacy-trusted mod '{}' mixes into {}; 0.1.1 leaves eligibility unchanged.",
                         id, hits);
                     hits = Set.of();
                 }

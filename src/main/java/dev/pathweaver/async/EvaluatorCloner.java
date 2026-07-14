@@ -3,17 +3,15 @@ package dev.pathweaver.async;
 import net.minecraft.world.level.pathfinder.NodeEvaluator;
 
 /**
- * Builds a fresh, independent {@link NodeEvaluator} of the same class as a mob's evaluator, with its
- * configuration flags copied. This is the equivalence-critical step: the async search runs on this
- * fresh evaluator instead of the shared {@code this.nodeEvaluator}, so it holds zero cross-thread
- * state — while producing the identical path, because the config that steers A* is copied exactly.
- * (The region and the {@code findPath} call itself are vanilla's own, byte-for-byte.)
+ * Builds a fresh {@link NodeEvaluator} of the same class as a mob's evaluator and copies the supported
+ * configuration flags. This isolates evaluator scratch state from the navigation's evaluator. It does
+ * not prove path equivalence because the search still consumes live-backed region and mob inputs.
  *
  * Handles both evaluator constructor shapes: no-arg ({@code WalkNodeEvaluator}, {@code FlyNodeEvaluator})
  * and the aquatic single-boolean form ({@code SwimNodeEvaluator(allowBreaching)},
  * {@code AmphibiousNodeEvaluator(prefersShallowSwimming)}). For the boolean form, the arg is stored in
  * a {@code final boolean} field on the concrete class, so we read that field off the source instance
- * and pass it to the matching constructor — the fresh evaluator is behaviourally identical.
+ * and pass it to the matching constructor so that constructor option is preserved.
  */
 public final class EvaluatorCloner {
     private EvaluatorCloner() {}

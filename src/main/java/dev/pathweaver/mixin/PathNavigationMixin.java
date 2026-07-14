@@ -29,10 +29,10 @@ import java.util.concurrent.Callable;
 
 /**
  * Feature A: dispatch the innermost {@code createPath} A* search to the worker pool when the mob's
- * evaluator is allowlisted. The region is built identically to vanilla (same radius formula) so the
- * async result is byte-for-byte the path vanilla would have produced; it is installed next tick via
- * vanilla's own {@code moveTo(path, speedModifier)} plus a replay of {@code createPath}'s tail. On any
- * guard hit or pool saturation we simply do NOT cancel — vanilla runs synchronously, unchanged.
+ * evaluator is allowlisted. The region uses vanilla's radius formula but is a live-backed view, not
+ * an immutable copy, and the live mob remains an input. Completion is installed later through
+ * {@code moveTo(path, speedModifier)} plus selected {@code createPath} bookkeeping. Dispatch-time
+ * guard hits and pool rejection do not cancel, so that invocation continues synchronously.
  */
 @Mixin(net.minecraft.world.entity.ai.navigation.PathNavigation.class)
 public abstract class PathNavigationMixin implements PWNavigation {
@@ -79,10 +79,9 @@ public abstract class PathNavigationMixin implements PWNavigation {
                                             CallbackInfoReturnable<Path> cir) {
         PathWeaverConfig cfg = PathWeaverConfig.get();
 
-        // Feature B: conservative repath elision. Independent of async + gate. Reuse the live path
-        // when a requested target is within tolerance of the current target (widens vanilla's exact
-        // match). tolerance 0 == vanilla behaviour.
-        if (cfg.repathElisionEnabled
+        // Feature B: opt-in repath elision. A zero tolerance disables this injection entirely; the
+        // v0.2 changed-block/endpoint validity work is required before it can become a default.
+        if (cfg.repathElisionEnabled && cfg.repathToleranceBlocks > 0
                 && this.path != null && !this.path.isDone()
                 && dev.pathweaver.elision.RepathTolerance.anyWithinTolerance(
                         targets, this.targetPos, cfg.repathToleranceBlocks)) {
@@ -125,25 +124,24 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // read of maxUpStep() hits a clean cached value instead of lazily writing it off-thread.
             theMob.maxUpStep();
 
-            // Build the region EXACTLY as vanilla does (guarantees async == sync).
+            // Use vanilla's bounds formula. The region is still backed by live chunks, so matching
+            // construction does not guarantee a temporally identical result.
             BlockPos mobPos = offsetUpward ? theMob.blockPosition().above() : theMob.blockPosition();
             int radius = (int) (followRange + (float) regionOffset);
             PathNavigationRegion region = new PathNavigationRegion(this.level,
                 mobPos.offset(-radius, -radius, -radius), mobPos.offset(radius, radius, radius));
 
-            // CRITICAL: the PathFinder + NodeEvaluator hold per-search scratch state (open-set, node
-            // pool, PathfindingContext) and are NOT safe to reuse across threads. Build a fresh,
-            // isolated finder so the worker shares zero mutable state with the main thread. Config flags
-            // are copied from the mob's evaluator so results match vanilla exactly.
+            // The PathFinder + NodeEvaluator hold per-search scratch state (open-set, node pool,
+            // PathfindingContext) and are not reusable across threads. A fresh pair isolates that
+            // scratch state; it does not isolate the live region/mob inputs. Copy the supported flags.
             NodeEvaluator freshEval = dev.pathweaver.async.EvaluatorCloner.cloneWithConfig(this.nodeEvaluator);
             int maxNodes = ((PathFinderAccessor) (Object) this.pathFinder).pathweaver$getMaxVisitedNodes();
             final PathFinder finder = new PathFinder(freshEval, maxNodes);
 
-            // Capture everything the worker needs; it must not read live mutable world state beyond this.
-            // NOTE (block-read caveat): the vanilla findPath below still reads the LIVE mob's position,
-            // malus map and hitbox during the search. Those are reads (not writes) and are bounded by
-            // the staleness discard at install; the PathTypeCache (the one WRITE hazard) is isolated by
-            // PathfindingContextMixin. A full mob-state snapshot is deliberately not attempted here.
+            // Copy request scalars/targets. The search still reads live chunks plus the live mob's
+            // position, malus map, hitbox and level. Install-distance staleness only rejects some old
+            // results; it cannot make those reads immutable. PathfindingContextMixin isolates the
+            // known shared PathTypeCache write.
             final Set<BlockPos> targetsCopy = new HashSet<>(targets);
             final float mult = this.maxVisitedNodesMultiplier;
             final float fRange = followRange;
@@ -201,8 +199,8 @@ public abstract class PathNavigationMixin implements PWNavigation {
         double speed = pathweaver$lastRequestedSpeed > 0.0 ? pathweaver$lastRequestedSpeed : this.speedModifier;
         moveTo(path, speed);
 
-        // FIX 3b: replay the tail of vanilla createPath so async mobs behave like sync ones -
-        // recomputePath() repaths around new obstacles, stuck-timeout resets, and Feature B stays live.
+        // Replay selected createPath bookkeeping needed by recompute/stuck handling. This does not
+        // repair the general query-only createPath contract; that remains v0.2 work.
         BlockPos target = path.getTarget();
         if (target != null) {
             this.targetPos = target;

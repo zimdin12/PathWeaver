@@ -2,6 +2,9 @@
 build/
 run/
 *.log
+*.zip
 
-# runtime dev-server logs (never ship)
+# runtime dev-server/evidence outputs (never ship)
 logs/
+.minecraft-dev*/
+benchmarks/

@@ -1,97 +1,79 @@
-# PathWeaver — Design Spec
+# PathWeaver design status
 
-**Date:** 2026-07-02
-**Status:** Design approved, pending final user review before implementation plan.
-**Target:** Minecraft 26.1.2, Fabric loader, Java 25. Server-side, no rendering.
-**Tagline:** *Async mob pathfinding that cannot corrupt your world — because it only ever touches a read-only snapshot.*
+**Release line:** 0.1.1 alpha honesty patch
 
----
+**Target:** Minecraft 26.1.2, Fabric Loader, Java 25
 
-## 1. Problem & Goal
+**Default:** asynchronous search off; repath tolerance zero
 
-Mob pathfinding (`WalkNodeEvaluator`, `PathFinder`, `PathNavigation`) is the #1 steady-state server hotspot in a dense modded world (spark: `WalkNodeEvaluator` 794 samples; mean MSPT 17–24 ms in a 40-villager village). The expensive part — the A* search — runs on the main server thread every time a mob repaths.
+This document describes what 0.1.1 actually does and the boundaries that remain. It supersedes the original design claims that `PathNavigationRegion` was an immutable snapshot or that async paths were proven identical/safe by construction.
 
-**Goal:** Move the A* *search* off the main thread onto a read-only world snapshot, safely, and reduce how often mobs repath at all — without changing observable mob behavior and without duplicating or conflicting with Lithium.
+## 1. Current mechanism
 
-**Non-goals (explicit, for credibility):**
-- NOT async entity ticking (unsafe by construction — races on live world state; this is what the `Async` mod does and why it silences the vanilla race detector).
-- NOT async collision.
-- NOT faster node/neighbor evaluation — **Lithium already owns that** (`PathNodeCache`, `BlockStateBaseMixin`). We coordinate with it.
+PathWeaver intercepts `PathNavigation.createPath`. For an eligible exact vanilla evaluator and an enabled config, it builds a `PathNavigationRegion` and submits A* to a bounded executor. Each request uses a fresh evaluator/finder. A worker-local `PathTypeCache` prevents the search from writing the level's shared path-type cache. Completion is returned to the main thread and installed through navigation state.
 
-## 2. Core Safety Claim
+`PathNavigationRegion` is a read-only API view backed by live `LevelChunk` objects. It is **not a block/fluid copy**. The worker also receives the live `Mob`; vanilla evaluator code reads its position, bounding box, attributes, malus values and level. Consequently 0.1.1 is experimental opt-in behavior, not a thread-safety proof.
 
-We never run the tick off-thread. We run **only** the A* search, **only** against `PathNavigationRegion` (already a read-only block copy that excludes entities: `getEntityCollisions → List.of()`), **only** for mobs whose `NodeEvaluator` is allowlisted, and with **every** piece of per-search mutable state made thread-confined:
+## 2. Eligibility in 0.1.1
 
-- a **fresh `PathFinder` + `NodeEvaluator`** per search (open-set, node pool, `PathfindingContext` scratch — never shared);
-- an **isolated `PathTypeCache`** — vanilla `PathfindingContext`'s constructor otherwise grabs the shared `ServerLevel.getPathTypeCache()` and *writes* it during the search; `PathfindingContextMixin` substitutes a fresh per-search cache on worker threads (main thread unchanged);
-- **entity callbacks moved to the main thread** — `onPathfindingStart`/`onPathfindingDone` are skipped in the evaluator off-thread and fired on the main thread at dispatch/install; the step-height attribute is force-resolved at dispatch so nothing is lazily written off-thread.
+Exact-class allowlist:
 
-The one residue is that vanilla `findPath` still *reads* the live mob's position/hitbox/malus during the search; those are reads only, bounded by the install-time staleness discard. **Safe by construction, not by locking.**
+- `WalkNodeEvaluator`
+- `SwimNodeEvaluator`
 
-## 3. Features
+Forced synchronous:
 
-PathWeaver ships two independently-toggleable features:
+- `FlyNodeEvaluator`: flying start-node selection advances the live mob RNG
+- `AmphibiousNodeEvaluator`: `prepare`/`done` write live mob water malus
+- every subclass/custom evaluator
+- evaluator classes denied by the startup foreign-mixin scan
 
-### Feature A — Async A* on a shared, right-sized snapshot
-Move `PathFinder.findPath` off-thread. Backbone = a per-tick, right-sized, immutable `PathNavigationRegion` shared across nearby mobs. Snapshot-sharing + radius-right-sizing is behavior-neutral and is a main-thread win *even before* async.
+The scanner is defense in depth, not a complete safety boundary. It can miss metadata-declared nonstandard configs, plugin/dynamic mixins, and navigation/base/context targets; scan failures currently do not deny globally. The v0.2 rework must make incomplete evidence fail closed.
 
-### Feature B — Conservative repath elision (behavior-preserving)
-Vanilla short-circuits a repath only on *exact* target-block equality (`createPath` ~line 153), so a target moving 1 block forces a full A*. Lithium optimizes the *block-change* trigger but not this *goal-driven cadence*. Widen the short-circuit to a small tolerance, and repath on a block change only if the changed block lies on the *remaining* path. (This is the Mobtimizations 1.20.1 approach.)
+## 3. Current safeguards
 
-## 4. Architecture — 6 components
+- New configs default `asyncEnabled=false`.
+- Repath tolerance defaults to zero.
+- `poolThreads`, `maxInFlight`, repath tolerance and staleness distance are clamped after load.
+- Fresh finder/evaluator per request.
+- Per-thread path-type cache.
+- Main-thread completion/install path.
+- Exact evaluator class gate.
+- Dispatch-time saturation/rejection leaves that invocation synchronous.
+- Worker exceptions mark the result failed and force later requests synchronous during a cooldown;
+  the failed request itself is not recomputed synchronously.
 
-1. **`PathRequestInterceptor`** — mixin on `PathNavigation.createPath` (main thread). Runs the `SafetyGate` check; if eligible, obtains/builds the shared snapshot, snapshots the mob's malus + capability flags (`canOpenDoors`/`canFloat`/hitbox/`FOLLOW_RANGE`), builds a `PathRequest`, submits it, and returns the mob's *current* path unchanged. If ineligible → vanilla sync path, unchanged.
+These safeguards reduce risk; they do not repair the unresolved contract/input/lifecycle defects below.
 
-2. **`SafetyGate`** — **exact-class allowlist** of `NodeEvaluator`: `WalkNodeEvaluator`, `SwimNodeEvaluator`, `FlyNodeEvaluator`. (`AmphibiousNodeEvaluator` is deliberately excluded: its `prepare`/`done` *write* the live mob's water malus via `setPathfindingMalus`, which can't run safely off-thread.) `evaluator.getClass() ==` (NOT `instanceof` — `AdvancedWalkNodeProcessor extends WalkNodeEvaluator`, so `instanceof` would wrongly pass stormiespiders). Default-deny. **Plus startup foreign-mixin detection:** scan loaded mixin configs for any *other* jar targeting `WalkNodeEvaluator`/`FlyNodeEvaluator`/`PathFinder`; if found (e.g. salts_animal_farm), force the affected mob families sync (the one hole class-allowlisting can't see, since a mixin keeps the class identity).
+## 4. Known 0.1.1 defects
 
-3. **Per-request region + `PathfindingContextMixin`** — each dispatch builds its own `PathNavigationRegion` on the main thread using vanilla's exact radius formula (`followRange + regionOffset`), so the async result is byte-identical to sync. *(A shared per-tick `SnapshotProvider` was prototyped and removed: sharing one region across mobs+workers would race on Lithium's per-region cache fields, and per-mob regions are cheap and already correct. See git history.)* The **worker-thread rule** — "never touch `ServerLevel.PathTypeCache`" — is now enforced concretely by `PathfindingContextMixin`, which hands worker searches a fresh per-search `PathTypeCache`. Lithium's immutable per-`BlockState` precompute is still used where present.
+1. **General `createPath` contract:** callers may use `createPath` only to query reachability. Returning old/null immediately and later installing the completed path can give a wrong answer and force movement that was never requested.
+2. **Live inputs:** region reads reach live chunks; evaluators read a live mob. A staleness distance check cannot make those inputs immutable.
+3. **Incomplete staleness identity:** target generation, maximum age, dimension/world identity, server epoch, entity UUID and exact navigation/request identity are not all bound and checked.
+4. **Lifecycle generations:** shutdown does not await/epoch-isolate every interrupt-ignoring A* completion.
+5. **Callbacks:** every rejection/clear/shutdown/exception path is not yet proven balanced; evaluator-specific multiplicity is not modeled.
+6. **Result typing:** ordinary vanilla `null`/no-path is conflated with worker failure.
+7. **Foreign-mixin discovery:** not fail closed and not complete over Fabric metadata/JiJ/plugins/expanded target classes/exact versioned trust.
+8. **Repath elision:** no changed-block guard; therefore the default tolerance is zero.
 
-4. **`PathWorkerPool`** — bounded `ThreadPoolExecutor`, size = config default `max(1, cores/4)`, capped to never starve render/main threads. Runs `findPath` on the snapshot only. Pure compute. Worker exception → that request falls back to sync, logged once.
+## 5. Performance evidence
 
-5. **`ResultInstaller`** — drained on the main thread at entity-tick start. Installs completed `Path`s. **Staleness check:** if the mob moved beyond a threshold or the target changed since dispatch, discard and let it re-request. Never blocks — if no result yet, the mob keeps its current path.
+Four real paired Spark runs in an isolated 160-zombie Walk workload measured a 90.97% reduction in Server-thread `WalkNodeEvaluator` inclusive samples and a 76.60% reduction in self samples. `PathFinder` samples moved fully off the Server thread in those captures.
 
-6. **`PathWeaverConfig`** (cloth-config) — feature-A toggle, feature-B toggle, pool size, max in-flight requests, per-dimension toggle, "sync-fallback-only" panic switch, optional distance-scaled throttle (opt-in, off by default — it makes far mobs visibly dumber), debug counters (async'd vs synced, avg latency).
+Net MSPT did not improve reliably: average mean MSPT was 2.927 ms OFF versus 3.012 ms ON, with paired deltas ranging from -12.70% to +19.89%. The evidence supports an **offload** claim only. A v0.2 benchmark must also use a pathfinding load near the tick budget before any TPS/MSPT improvement claim is considered.
 
-## 5. Data Flow
+## 6. v0.2 acceptance boundary
 
-```
-Mob repaths → Interceptor (main): gate → snapshot flags → PathRequest → queue
-                                    │ (ineligible) → vanilla sync path
-   worker thread: A* on shared immutable snapshot → completed Path → result queue
-   next tick start (main): Installer: staleness check → assign Path | discard+rerequest
-```
-**Latency = 1 tick (50 ms)** request→install. Imperceptible; mob keeps old path meanwhile, never freezes.
+Only restore safety/equivalence language after tests and runtime evidence prove:
 
-## 6. Correctness & Failure Handling
+- real-navigation-only async dispatch while query-only `createPath` remains synchronous;
+- immutable block/fluid and mob-derived worker inputs, including captured RNG/world identity;
+- request/server epochs and complete install identity/staleness checks;
+- balanced callback accounting on every terminal path;
+- tagged `SUCCESS` / `NO_PATH` / `FAILED` outcomes;
+- fail-closed mixin discovery with exact versioned trust;
+- sync/async node-sequence equivalence across the required Walk/Swim matrix;
+- mutation/lifecycle/restart stress coverage;
+- proof-based near-budget Spark benchmark.
 
-- **Snapshot immutability is the whole game.** Only audited evaluator classes allowed; any that reads live state is off the list.
-- **Determinism:** async A* on the same snapshot yields the identical `Path` as sync. Asserted in tests; any divergence is a bug, not a knob.
-- **Worker exception → sync fallback**, logged once. Never silent, never crash, never block main thread.
-- **Lithium coordination:** mixin `@At`/priority set to compose with Lithium's `WalkNodeEvaluatorMixin`/`BlockStateBaseMixin`/`inactive_navigations`; never duplicate node-eval caching.
-- **Feature B fidelity:** tolerance short-circuit must not skip a repath that vanilla would have taken when the path is genuinely invalidated (changed block on remaining path always repaths).
-
-## 7. Mob Coverage (from safety audit)
-
-- **ASYNC-SAFE (default win):** vanilla mobs, MCA villagers (inherit stock `GroundPathNavigation`+`WalkNodeEvaluator`), Animal Garden (26 species), Ecologics, EnderZoology, bees, cats, dogs, horses, warband, herdinstinct, fleeinganimals, smbs, IllagerInvasion.
-- **MUST-STAY-SYNC (gate denies automatically):** stormiespiders (`AdvancedWalkNodeProcessor` reads live level + collision), salts_animal_farm (mixins into vanilla `WalkNodeEvaluator.getPathType`, reads live rain/entities/static map), and **`AmphibiousNodeEvaluator` mobs** (axolotl/frog/turtle-type — their `prepare`/`done` write the live mob's water malus off-thread). Note `SwimNodeEvaluator` (fish/squid) *is* async-safe — it only touches its own evaluator fields.
-
-## 8. Testing (the publish-grade bar)
-
-- **Equivalence tests (headline):** corpus of start/target/terrain fixtures; assert `asyncPath == syncPath`. This is the safety proof.
-- **Gate tests:** modded/unsafe evaluator → routed to sync; foreign-mixin detection → affected family forced sync.
-- **Repath-elision fidelity tests:** tolerance never skips a genuinely-required repath.
-- **Soak/stress:** N mobs, dense scenario, 1 h on LAN world; assert zero desync/CME/corruption + measure MSPT delta.
-
-## 9. Build & Publish
-
-- Fabric Loom, no-remap, `fabric.loom.disableObfuscation=true`, JDK 25, Gradle 9.5 (the pack's 26.1.2 build recipe). Deps: fabric-api, cloth-config.
-- Repo split common/fabric for a later NeoForge port.
-- Modrinth + GitHub, MIT. README leads with the safety argument + equivalence-test proof and an explicit "what this does NOT do" section (no async ticking/collision — that honesty is the credibility).
-
-## 10. Estimated Effort
-
-Prototype (Feature A, vanilla+MCA, sync fallback, no config polish): ~6–10 h. Full publishable (both features, config, gate hardening, test suite, docs): ~15–30 h.
-
-## 11. Expected Payoff
-
-~4–8 ms off mean MSPT in dense village/high-mob scenes (moves ~25–40% of AI cost off-thread), on top of existing throttles/ZGC/Lithium. Feature B additionally cuts full-A* recomputes for chasing mobs. Meaningful for holding 20 TPS; not transformative.
+Until those gates pass, 0.1.1 remains default-off and experimental.

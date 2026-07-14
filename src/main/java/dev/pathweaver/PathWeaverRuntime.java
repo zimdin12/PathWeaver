@@ -9,8 +9,9 @@ import net.minecraft.server.MinecraftServer;
 /**
  * Holds PathWeaver's live services and drives their per-server / per-tick lifecycle. The interceptor
  * (Feature A) dispatches into {@link #pool()} and {@link #installer()}; the installer is drained once
- * per tick on the main thread. start/stop are idempotent and reset all in-flight state (FIX 5), so
- * async never silently ratchets off across world reloads.
+ * per tick on the main thread. Start/stop clear the currently tracked queues/maps/counter. Version
+ * 0.1.1 does not yet epoch or await interrupt-ignoring workers, so complete cross-session isolation
+ * remains v0.2 work.
  */
 public final class PathWeaverRuntime {
     private static final PathWeaverRuntime INSTANCE = new PathWeaverRuntime();
@@ -38,7 +39,7 @@ public final class PathWeaverRuntime {
 
     public void onServerStarting(MinecraftServer server) {
         PathWeaverConfig c = PathWeaverConfig.get();
-        // Reset all cross-session state BEFORE arming, so a prior reload can't leave async wedged.
+        // Clear currently tracked state before arming. A full worker epoch/await protocol is v0.2 work.
         entitySink.clear();
         installer.clear();
         pool.start(c.resolvedPoolThreads(), c.maxInFlight); // start() itself resets inFlight to 0.

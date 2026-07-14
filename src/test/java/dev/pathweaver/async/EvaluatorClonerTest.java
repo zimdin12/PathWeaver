@@ -10,9 +10,8 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Proves the equivalence-critical clone: a fresh evaluator is a DIFFERENT instance of the SAME class
- * with IDENTICAL config flags. If this holds, the async search steers A* exactly as the sync search
- * would (region + findPath are vanilla's own), so async path == sync path.
+ * Verifies the narrow cloner contract: a distinct evaluator of the same class receives the supported
+ * flags/constructor option. It does not assert async/sync path equivalence.
  */
 class EvaluatorClonerTest {
     @BeforeAll static void boot() {
@@ -29,7 +28,7 @@ class EvaluatorClonerTest {
 
         NodeEvaluator fresh = EvaluatorCloner.cloneWithConfig(src);
 
-        assertNotSame(src, fresh, "must be an independent instance (no shared state)");
+        assertNotSame(src, fresh, "must not reuse evaluator scratch state");
         assertEquals(WalkNodeEvaluator.class, fresh.getClass(), "same evaluator class");
         assertTrue(fresh.canPassDoors());
         assertTrue(fresh.canOpenDoors());
