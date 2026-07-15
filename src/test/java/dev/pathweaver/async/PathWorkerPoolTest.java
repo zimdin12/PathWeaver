@@ -19,7 +19,7 @@ class PathWorkerPoolTest {
     @Test void runsOffCallingThreadAndCompletes() throws Exception {
         CountDownLatch done = new CountDownLatch(1);
         AtomicReference<Thread> ran = new AtomicReference<>();
-        PathRequest req = new PathRequest(1, 0L,
+        PathRequest req = new PathRequest(key(1), 0L,
             () -> { ran.set(Thread.currentThread()); return null; },
             p -> done.countDown());
         assertTrue(pool.submit(req));
@@ -27,61 +27,115 @@ class PathWorkerPoolTest {
         assertNotSame(Thread.currentThread(), ran.get());
     }
 
-    @Test void inFlightCapRejects() throws Exception {
+    @Test void inFlightCapRejects() {
         CountDownLatch block = new CountDownLatch(1);
-        CountDownLatch started = new CountDownLatch(2);
         for (int i = 0; i < 4; i++) {
-            pool.submit(new PathRequest(i, 0L, () -> {
-                started.countDown();
+            int id = i;
+            assertTrue(pool.submit(new PathRequest(key(id), 0L, () -> {
                 block.await();
                 return null;
-            }, p -> {}));
+            }, p -> { })));
         }
-        // ensure the pool is saturated (all 4 counted in-flight)
         assertEquals(4, pool.inFlight());
-        boolean accepted = pool.submit(new PathRequest(99, 0L, () -> null, p -> {}));
-        assertFalse(accepted); // cap hit
+        assertFalse(pool.submit(new PathRequest(key(99), 0L, () -> null, p -> { })));
         block.countDown();
     }
 
     @Test void taskExceptionCompletesWithNull() throws Exception {
         CountDownLatch done = new CountDownLatch(1);
         AtomicReference<Object> got = new AtomicReference<>("sentinel");
-        pool.submit(new PathRequest(2, 0L,
+        pool.submit(new PathRequest(key(2), 0L,
             () -> { throw new RuntimeException("boom"); },
             p -> { got.set(p); done.countDown(); }));
         assertTrue(done.await(2, TimeUnit.SECONDS));
         assertNull(got.get());
     }
 
-    /**
-     * FIX 5: shutdown() drops queued tasks via shutdownNow(), so their finally (which decrements
-     * inFlight) never runs. start() must reset inFlight to 0 or async permanently ratchets off after a
-     * world reload. Here we wedge the pool, shut it down mid-flight, restart, and prove it accepts work.
-     */
     @Test void restartAfterStuckTaskResetsInFlightAndAcceptsWork() throws Exception {
         CountDownLatch block = new CountDownLatch(1);
         CountDownLatch started = new CountDownLatch(2);
         for (int i = 0; i < 4; i++) {
-            pool.submit(new PathRequest(i, 0L, () -> { started.countDown(); block.await(); return null; }, p -> {}));
+            int id = i;
+            pool.submit(new PathRequest(key(id), 0L, () -> {
+                started.countDown();
+                block.await();
+                return null;
+            }, p -> { }));
         }
         assertTrue(started.await(2, TimeUnit.SECONDS));
         assertTrue(pool.inFlight() > 0);
 
-        pool.shutdown();                 // shutdownNow(): queued tasks dropped, running ones interrupted
-        pool.start(2, 4);                // simulate a world reload
-        assertEquals(0, pool.inFlight(), "inFlight must reset on start()");
+        pool.shutdown();
+        pool.start(2, 4);
+        assertEquals(0, pool.inFlight());
 
         CountDownLatch done = new CountDownLatch(1);
-        assertTrue(pool.submit(new PathRequest(9, 1L, () -> null, p -> done.countDown())),
-            "a restarted pool must accept new work");
+        assertTrue(pool.submit(new PathRequest(key(9), 1L, () -> null, p -> done.countDown())));
         assertTrue(done.await(2, TimeUnit.SECONDS));
         block.countDown();
     }
 
     @Test void doubleStartIsIdempotent() {
-        pool.start(2, 4);                // second start without stop: must not throw or leak inFlight
+        pool.start(2, 4);
         assertEquals(0, pool.inFlight());
-        assertTrue(pool.submit(new PathRequest(1, 0L, () -> null, p -> {})));
+        assertTrue(pool.submit(new PathRequest(key(1), 0L, () -> null, p -> { })));
+    }
+
+    @Test void interruptIgnoringOldGenerationCannotDecrementNewGenerationCapacity() throws Exception {
+        pool.shutdown();
+        pool.start(1, 1);
+        CountDownLatch oldStarted = new CountDownLatch(1);
+        CountDownLatch releaseOld = new CountDownLatch(1);
+        CountDownLatch oldDone = new CountDownLatch(1);
+        assertTrue(pool.submit(new PathRequest(key(1), 0L, () -> {
+            oldStarted.countDown();
+            while (releaseOld.getCount() > 0) {
+                try { releaseOld.await(); } catch (InterruptedException ignored) { }
+            }
+            return null;
+        }, p -> oldDone.countDown())));
+        assertTrue(oldStarted.await(2, TimeUnit.SECONDS));
+
+        pool.shutdown();
+        pool.start(1, 1);
+        CountDownLatch releaseNew = new CountDownLatch(1);
+        assertTrue(pool.submit(new PathRequest(key(2), 0L, () -> {
+            releaseNew.await();
+            return null;
+        }, p -> { })));
+        assertEquals(1, pool.inFlight());
+
+        releaseOld.countDown();
+        assertTrue(oldDone.await(2, TimeUnit.SECONDS));
+        assertEquals(1, pool.inFlight(),
+            "an old worker completion must only decrement its own generation");
+        releaseNew.countDown();
+    }
+
+    @Test void oldGenerationFailureCannotIncrementNewGenerationFailureCount() throws Exception {
+        pool.shutdown();
+        pool.start(1, 1);
+        CountDownLatch oldStarted = new CountDownLatch(1);
+        CountDownLatch releaseOld = new CountDownLatch(1);
+        CountDownLatch oldDone = new CountDownLatch(1);
+        assertTrue(pool.submit(new PathRequest(key(3), 0L, () -> {
+            oldStarted.countDown();
+            while (releaseOld.getCount() > 0) {
+                try { releaseOld.await(); } catch (InterruptedException ignored) { }
+            }
+            throw new IllegalStateException("old generation failure");
+        }, p -> oldDone.countDown())));
+        assertTrue(oldStarted.await(2, TimeUnit.SECONDS));
+
+        pool.shutdown();
+        pool.start(1, 1);
+        assertEquals(0L, pool.failureCount());
+        releaseOld.countDown();
+        assertTrue(oldDone.await(2, TimeUnit.SECONDS));
+        assertEquals(0L, pool.failureCount());
+    }
+
+    private static RequestKey key(int entityId) {
+        return new RequestKey(1L, entityId + 1L, entityId);
     }
 }

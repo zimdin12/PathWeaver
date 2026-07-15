@@ -5,6 +5,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.pathweaver.PathWeaverRuntime;
 import dev.pathweaver.async.EntityInstallSink;
 import dev.pathweaver.async.PathRequest;
+import dev.pathweaver.async.RequestKey;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.duck.PWNavigation;
 import dev.pathweaver.gate.SafetyGate;
@@ -197,6 +198,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // Everything below can fail on unusual mods/data; degrade to sync rather than escape into the
         // entity tick (FIX 6a). If we've already registered in the sink, unwind that registration.
         boolean registered = false;
+        RequestKey requestKey = null;
         try {
             // FIX 2c: force-resolve the mob's step-height attribute on the MAIN thread so the worker's
             // read of maxUpStep() hits a clean cached value instead of lazily writing it off-thread.
@@ -228,13 +230,15 @@ public abstract class PathNavigationMixin implements PWNavigation {
 
             Callable<Path> search = () -> finder.findPath(region, theMob, targetsCopy, fRange, rRange, mult);
 
-            sink.register(entityId, this);
+            requestKey = rt.nextRequestKey(entityId);
+            final RequestKey submittedKey = requestKey;
+            sink.register(requestKey, this);
             registered = true;
-            boolean accepted = rt.pool().submit(new PathRequest(entityId, tick, search,
-                result -> rt.installer().enqueue(entityId, tick, result, dx, dy, dz)));
+            boolean accepted = rt.pool().submit(new PathRequest(submittedKey, tick, search,
+                result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz)));
 
             if (!accepted) {
-                sink.discard(entityId);   // pool saturated -> let vanilla run synchronously
+                sink.discard(requestKey); // pool saturated -> let vanilla run synchronously
                 return;
             }
 
@@ -256,7 +260,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // Keep moving on the current path this tick; the async result installs next tick.
             cir.setReturnValue(this.path);
         } catch (Throwable t) {
-            if (registered) sink.discard(entityId); // unwind; onPathfindingDone is a no-op if not started.
+            if (registered) sink.discard(requestKey);
             // No cir.cancel(): fall through so vanilla computes the path synchronously this tick.
         }
     }

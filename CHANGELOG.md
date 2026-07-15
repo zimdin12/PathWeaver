@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — v0.2 lifecycle identity
+
+### Changed
+
+- Server start/stop advances an epoch; every async dispatch carries that epoch plus a process-unique
+  request token and entity ID through worker completion and main-thread install.
+- Late results, failures, and cooldown updates require an exact request-key match and cannot consume a
+  replacement registration that happens to reuse the same numeric entity ID.
+- Every worker-pool generation owns its executor, in-flight capacity, and failure counters. An
+  interrupt-ignoring old worker can finish after restart without decrementing or incrementing the new
+  generation's counters.
+
+### Still pending
+
+Complete install staleness must additionally bind UUID, navigation/world/dimension identity, target
+revision, removal state and maximum result age. Callback accounting and tagged result semantics remain
+separate reviewed slices.
+
 ## 0.1.2 — Default-on routing and fail-closed compatibility (2026-07-15)
 
 ### Changed

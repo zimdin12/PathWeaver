@@ -11,65 +11,75 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ResultInstallerTest {
     static class FakeSink implements ResultInstaller.InstallSink {
-        final Set<Integer> stale;
-        final List<Integer> installed = new ArrayList<>();
-        final List<Integer> discarded = new ArrayList<>();
-        FakeSink(Set<Integer> stale) { this.stale = stale; }
-        public boolean isStale(int id, long t, double x, double y, double z) { return stale.contains(id); }
-        public void install(int id, Path p) { installed.add(id); }
-        public void discard(int id) { discarded.add(id); }
+        final Set<RequestKey> stale;
+        final List<RequestKey> installed = new ArrayList<>();
+        final List<RequestKey> discarded = new ArrayList<>();
+        FakeSink(Set<RequestKey> stale) { this.stale = stale; }
+        public boolean isStale(RequestKey key, long t, double x, double y, double z) {
+            return stale.contains(key);
+        }
+        public void install(RequestKey key, Path path) { installed.add(key); }
+        public void discard(RequestKey key) { discarded.add(key); }
     }
 
-    @Test void installsFreshDiscardsStale() {
-        ResultInstaller r = new ResultInstaller();
-        r.enqueue(1, 0L, DUMMY, 0, 0, 0);
-        r.enqueue(2, 0L, DUMMY, 0, 0, 0);
-        FakeSink sink = new FakeSink(Set.of(2));
-        r.drain(sink);
-        assertEquals(List.of(1), sink.installed);
-        assertEquals(List.of(2), sink.discarded);
+    @Test void installsFreshDiscardsStaleWithExactKeys() {
+        ResultInstaller installer = new ResultInstaller();
+        RequestKey fresh = key(1L, 1L, 1);
+        RequestKey stale = key(1L, 2L, 2);
+        installer.enqueue(fresh, 0L, DUMMY, 0, 0, 0);
+        installer.enqueue(stale, 0L, DUMMY, 0, 0, 0);
+        FakeSink sink = new FakeSink(Set.of(stale));
+        installer.drain(sink);
+        assertEquals(List.of(fresh), sink.installed);
+        assertEquals(List.of(stale), sink.discarded);
     }
 
-    @Test void nullPathIsDiscarded() {
-        ResultInstaller r = new ResultInstaller();
-        r.enqueue(5, 0L, null, 0, 0, 0);
+    @Test void nullPathIsDiscardedByDefaultFailureHandler() {
+        ResultInstaller installer = new ResultInstaller();
+        RequestKey key = key(1L, 5L, 5);
+        installer.enqueue(key, 0L, null, 0, 0, 0);
         FakeSink sink = new FakeSink(Set.of());
-        r.drain(sink);
-        // Default failed() delegates to discard(), so an old sink still sees it in the discard list.
-        assertEquals(List.of(5), sink.discarded);
+        installer.drain(sink);
+        assertEquals(List.of(key), sink.discarded);
         assertTrue(sink.installed.isEmpty());
     }
 
-    /** FIX 4: a null (failed) result routes to failed(), distinct from a stale-but-valid discard(). */
     @Test void nullRoutesToFailedNotDiscardWhenSinkDistinguishes() {
-        ResultInstaller r = new ResultInstaller();
-        r.enqueue(1, 0L, null, 0, 0, 0);   // failed
-        r.enqueue(2, 0L, DUMMY, 0, 0, 0);  // stale
-        var failed = new ArrayList<Integer>();
-        var discarded = new ArrayList<Integer>();
+        ResultInstaller installer = new ResultInstaller();
+        RequestKey failedKey = key(1L, 1L, 1);
+        RequestKey staleKey = key(1L, 2L, 2);
+        installer.enqueue(failedKey, 0L, null, 0, 0, 0);
+        installer.enqueue(staleKey, 0L, DUMMY, 0, 0, 0);
+        var failed = new ArrayList<RequestKey>();
+        var discarded = new ArrayList<RequestKey>();
         ResultInstaller.InstallSink sink = new ResultInstaller.InstallSink() {
-            public boolean isStale(int id, long t, double x, double y, double z) { return id == 2; }
-            public void install(int id, Path p) { fail("nothing should install"); }
-            public void discard(int id) { discarded.add(id); }
-            @Override public void failed(int id) { failed.add(id); }
+            public boolean isStale(RequestKey key, long t, double x, double y, double z) {
+                return key.equals(staleKey);
+            }
+            public void install(RequestKey key, Path path) { fail("nothing should install"); }
+            public void discard(RequestKey key) { discarded.add(key); }
+            @Override public void failed(RequestKey key) { failed.add(key); }
         };
-        r.drain(sink);
-        assertEquals(List.of(1), failed);
-        assertEquals(List.of(2), discarded);
+        installer.drain(sink);
+        assertEquals(List.of(failedKey), failed);
+        assertEquals(List.of(staleKey), discarded);
     }
 
     @Test void drainDeliversEachResultOnce() {
-        ResultInstaller r = new ResultInstaller();
-        r.enqueue(1, 0L, DUMMY, 0, 0, 0);
+        ResultInstaller installer = new ResultInstaller();
+        RequestKey key = key(1L, 1L, 1);
+        installer.enqueue(key, 0L, DUMMY, 0, 0, 0);
         FakeSink sink = new FakeSink(Set.of());
-        r.drain(sink);
-        r.drain(sink); // nothing left
-        assertEquals(List.of(1), sink.installed);
-        assertEquals(0, r.pending());
+        installer.drain(sink);
+        installer.drain(sink);
+        assertEquals(List.of(key), sink.installed);
+        assertEquals(0, installer.pending());
     }
 
-    // A non-null Path sentinel; the installer only null-checks it, never dereferences it.
-    // Allocate without invoking the constructor (avoids pulling in MC world internals).
+    private static RequestKey key(long epoch, long token, int entityId) {
+        return new RequestKey(epoch, token, entityId);
+    }
+
     private static final Path DUMMY = dummyPath();
     private static Path dummyPath() {
         try {

@@ -12,5 +12,5 @@ import java.util.function.Consumer;
  * the live world. Identity fields let the main-thread installer match the result to its entity and
  * decide staleness.
  */
-public record PathRequest(int entityId, long dispatchTick,
+public record PathRequest(RequestKey key, long dispatchTick,
                           Callable<Path> search, Consumer<Path> onDone) {}

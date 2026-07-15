@@ -44,10 +44,13 @@ Each item requires a failing regression first, a focused green result, the full 
 
 ### Request and lifecycle identity
 
-- Carry server epoch and request generation through dispatch, completion and install.
-- Check epoch, world/dimension, entity UUID/removal state, navigation identity, target generation and maximum tick age.
-- Supersede materially changed targets.
-- Stop acceptance, cancel, await and generation-reject late tasks during shutdown/restart.
+- [x] Carry server epoch and process-unique request token through dispatch, completion, and install.
+- [x] Require exact epoch/token/entity-ID registration matching before install, discard, failure cooldown,
+  or callback mutation.
+- [x] Isolate executor capacity and failure counters per generation so interrupt-ignoring old workers
+  cannot mutate restart state.
+- [ ] Check world/dimension, entity UUID/removal state, navigation identity, target revision, and maximum age.
+- [ ] Supersede materially changed targets.
 
 ### Completion semantics
 

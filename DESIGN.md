@@ -8,6 +8,11 @@
 
 This document describes v0.1.2. It does not restore the original unsupported claims that `PathNavigationRegion` was an immutable snapshot or that async paths were safe by construction, vanilla-identical, or universally faster.
 
+Development master additionally carries the first v0.2 lifecycle slice: server epochs, process-unique
+request tokens, exact completion-to-registration matching, and capacity/failure counters owned by one
+worker generation. These prevent prior-session completions from mutating a restarted session; they do
+not yet constitute the complete install-staleness contract.
+
 ## 1. Current mechanism
 
 PathWeaver arms async interception only around four proven genuine-navigation `createPath` invocations in `PathNavigation`: coordinate movement, coordinate movement with explicit reach, entity movement, and recomputation. Direct/external/query-only `createPath` calls remain vanilla synchronous.
@@ -74,11 +79,11 @@ These measures reduce known risk; they do not repair the unresolved live-input a
 ## 6. Remaining defects
 
 1. **Live inputs:** region reads reach live chunks and evaluators read a live mob.
-2. **Incomplete staleness identity:** target generation, maximum age, dimension/world identity, server epoch, entity UUID, navigation identity, and request identity are not all bound and checked.
-3. **Lifecycle generations:** shutdown does not epoch-isolate every interrupt-ignoring worker completion.
-4. **Callbacks:** rejection, clear, shutdown, and exception paths are not yet proven evaluator-specifically balanced.
-5. **Result typing:** ordinary vanilla `null`/no-path is conflated with worker failure.
-6. **Repath elision:** positive tolerance has no complete endpoint/navigation/changed-block validity proof.
+2. **Incomplete staleness identity:** entity UUID/removal, navigation, world/dimension, target revision,
+   and maximum age are not yet all bound and checked. Epoch/request/entity-ID matching has landed.
+3. **Callbacks:** rejection, clear, shutdown, and exception paths are not yet proven evaluator-specifically balanced.
+4. **Result typing:** ordinary vanilla `null`/no-path is conflated with worker failure.
+5. **Repath elision:** positive tolerance has no complete endpoint/navigation/changed-block validity proof.
 
 ## 7. Performance evidence
 

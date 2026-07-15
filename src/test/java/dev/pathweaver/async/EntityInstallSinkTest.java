@@ -6,13 +6,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * FIX 4: a failed async search must flag the entity so the NEXT createPath runs synchronously (a short
- * self-expiring cooldown), instead of re-dispatching a deterministically-failing search forever.
- */
 class EntityInstallSinkTest {
 
-    /** Minimal PWNavigation stub - counts the balanced onPathfindingDone calls. */
     static class FakeNav implements PWNavigation {
         int installs, dones;
         boolean stale;
@@ -24,18 +19,16 @@ class EntityInstallSinkTest {
     @Test void failedMarksEntityForSyncThenCooldownExpires() {
         EntityInstallSink sink = new EntityInstallSink();
         FakeNav nav = new FakeNav();
+        RequestKey key = key(1L, 1L, 1);
         sink.setTick(100L);
-        sink.register(1, nav);
+        sink.register(key, nav);
 
-        assertFalse(sink.shouldForceSync(1, 100L), "not failed yet -> async allowed");
-        sink.failed(1);
+        assertFalse(sink.shouldForceSync(1, 100L));
+        sink.failed(key);
 
-        // Immediately after a failure the mob must run sync (skip async dispatch).
         assertTrue(sink.shouldForceSync(1, 101L));
         assertTrue(sink.shouldForceSync(1, 139L));
-        // After the cooldown window it may try async again.
-        assertFalse(sink.shouldForceSync(1, 100L + 40L));
-        // Balanced callback fired exactly once for the failure.
+        assertFalse(sink.shouldForceSync(1, 140L));
         assertEquals(1, nav.dones);
         assertEquals(0, nav.installs);
     }
@@ -44,14 +37,15 @@ class EntityInstallSinkTest {
         EntityInstallSink sink = new EntityInstallSink();
         sink.setTick(10L);
         FakeNav nav1 = new FakeNav();
-        sink.register(7, nav1);
-        sink.failed(7);
+        RequestKey first = key(1L, 1L, 7);
+        sink.register(first, nav1);
+        sink.failed(first);
         assertTrue(sink.shouldForceSync(7, 11L));
 
-        // A later successful install for the same entity must wipe the cooldown.
         FakeNav nav2 = new FakeNav();
-        sink.register(7, nav2);
-        sink.install(7, dummyPath());
+        RequestKey second = key(1L, 2L, 7);
+        sink.register(second, nav2);
+        sink.install(second, dummyPath());
         assertFalse(sink.shouldForceSync(7, 12L));
         assertEquals(1, nav2.installs);
     }
@@ -59,14 +53,51 @@ class EntityInstallSinkTest {
     @Test void clearForgetsEverything() {
         EntityInstallSink sink = new EntityInstallSink();
         sink.setTick(5L);
-        sink.register(3, new FakeNav());
-        sink.failed(3);
+        RequestKey key = key(1L, 1L, 3);
+        sink.register(key, new FakeNav());
+        sink.failed(key);
         sink.clear();
         assertFalse(sink.shouldForceSync(3, 6L));
         assertEquals(0, sink.inFlightCount());
     }
 
-    // Non-null Path sentinel; install only null-checks upstream, the FakeNav never dereferences it.
+    @Test void lateOldResultCannotInstallIntoReplacementRegistrationForSameEntityId() {
+        EntityInstallSink sink = new EntityInstallSink();
+        FakeNav oldNavigation = new FakeNav();
+        FakeNav replacementNavigation = new FakeNav();
+        RequestKey oldKey = key(1L, 40L, 11);
+        RequestKey replacementKey = key(3L, 41L, 11);
+        sink.register(oldKey, oldNavigation);
+        sink.clear();
+        sink.register(replacementKey, replacementNavigation);
+
+        sink.install(oldKey, dummyPath());
+
+        assertEquals(0, replacementNavigation.installs);
+        assertTrue(sink.isRegistered(11));
+        sink.install(replacementKey, dummyPath());
+        assertEquals(1, replacementNavigation.installs);
+    }
+
+    @Test void lateOldFailureCannotCooldownOrConsumeReplacement() {
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(20L);
+        RequestKey oldKey = key(1L, 5L, 12);
+        RequestKey replacementKey = key(3L, 6L, 12);
+        FakeNav replacement = new FakeNav();
+        sink.register(replacementKey, replacement);
+
+        sink.failed(oldKey);
+
+        assertFalse(sink.shouldForceSync(12, 21L));
+        assertTrue(sink.isRegistered(12));
+        assertEquals(0, replacement.dones);
+    }
+
+    private static RequestKey key(long epoch, long token, int entityId) {
+        return new RequestKey(epoch, token, entityId);
+    }
+
     private static Path dummyPath() {
         try {
             var f = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe");
