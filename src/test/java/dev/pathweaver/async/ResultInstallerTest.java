@@ -14,61 +14,67 @@ class ResultInstallerTest {
         final Set<RequestKey> stale;
         final List<RequestKey> installed = new ArrayList<>();
         final List<RequestKey> discarded = new ArrayList<>();
+        final List<RequestKey> noPaths = new ArrayList<>();
+        final List<RequestKey> failures = new ArrayList<>();
         FakeSink(Set<RequestKey> stale) { this.stale = stale; }
         public boolean isStale(RequestKey key, long t, double x, double y, double z) {
             return stale.contains(key);
         }
         public void install(RequestKey key, Path path) { installed.add(key); }
         public void discard(RequestKey key) { discarded.add(key); }
+        public void noPath(RequestKey key) { noPaths.add(key); }
+        public void failed(RequestKey key, Throwable failure) { failures.add(key); }
     }
 
-    @Test void installsFreshDiscardsStaleWithExactKeys() {
+    @Test void successInstallsFreshAndDiscardsStaleWithExactKeys() {
         ResultInstaller installer = new ResultInstaller();
         RequestKey fresh = key(1L, 1L, 1);
         RequestKey stale = key(1L, 2L, 2);
-        installer.enqueue(fresh, 0L, DUMMY, 0, 0, 0);
-        installer.enqueue(stale, 0L, DUMMY, 0, 0, 0);
+        installer.enqueue(fresh, 0L, PathOutcome.success(DUMMY), 0, 0, 0);
+        installer.enqueue(stale, 0L, PathOutcome.success(DUMMY), 0, 0, 0);
         FakeSink sink = new FakeSink(Set.of(stale));
         installer.drain(sink);
         assertEquals(List.of(fresh), sink.installed);
         assertEquals(List.of(stale), sink.discarded);
+        assertTrue(sink.noPaths.isEmpty());
+        assertTrue(sink.failures.isEmpty());
     }
 
-    @Test void nullPathIsDiscardedByDefaultFailureHandler() {
+    @Test void vanillaNullRoutesToNoPathNotFailureOrCooldownPath() {
         ResultInstaller installer = new ResultInstaller();
-        RequestKey key = key(1L, 5L, 5);
-        installer.enqueue(key, 0L, null, 0, 0, 0);
+        RequestKey noPath = key(1L, 5L, 5);
+        installer.enqueue(noPath, 0L, PathOutcome.noPath(), 0, 0, 0);
         FakeSink sink = new FakeSink(Set.of());
         installer.drain(sink);
-        assertEquals(List.of(key), sink.discarded);
+        assertEquals(List.of(noPath), sink.noPaths);
+        assertTrue(sink.failures.isEmpty());
+        assertTrue(sink.discarded.isEmpty());
         assertTrue(sink.installed.isEmpty());
     }
 
-    @Test void nullRoutesToFailedNotDiscardWhenSinkDistinguishes() {
+    @Test void workerThrowableRoutesOnlyToFailedWithExactCause() {
         ResultInstaller installer = new ResultInstaller();
-        RequestKey failedKey = key(1L, 1L, 1);
-        RequestKey staleKey = key(1L, 2L, 2);
-        installer.enqueue(failedKey, 0L, null, 0, 0, 0);
-        installer.enqueue(staleKey, 0L, DUMMY, 0, 0, 0);
-        var failed = new ArrayList<RequestKey>();
-        var discarded = new ArrayList<RequestKey>();
-        ResultInstaller.InstallSink sink = new ResultInstaller.InstallSink() {
-            public boolean isStale(RequestKey key, long t, double x, double y, double z) {
-                return key.equals(staleKey);
+        RequestKey failed = key(1L, 6L, 6);
+        IllegalStateException cause = new IllegalStateException("boom");
+        installer.enqueue(failed, 0L, PathOutcome.failed(cause), 0, 0, 0);
+        List<Throwable> causes = new ArrayList<>();
+        FakeSink sink = new FakeSink(Set.of()) {
+            @Override public void failed(RequestKey key, Throwable failure) {
+                super.failed(key, failure);
+                causes.add(failure);
             }
-            public void install(RequestKey key, Path path) { fail("nothing should install"); }
-            public void discard(RequestKey key) { discarded.add(key); }
-            @Override public void failed(RequestKey key) { failed.add(key); }
         };
         installer.drain(sink);
-        assertEquals(List.of(failedKey), failed);
-        assertEquals(List.of(staleKey), discarded);
+        assertEquals(List.of(failed), sink.failures);
+        assertEquals(List.of(cause), causes);
+        assertTrue(sink.noPaths.isEmpty());
+        assertTrue(sink.discarded.isEmpty());
     }
 
     @Test void drainDeliversEachResultOnce() {
         ResultInstaller installer = new ResultInstaller();
         RequestKey key = key(1L, 1L, 1);
-        installer.enqueue(key, 0L, DUMMY, 0, 0, 0);
+        installer.enqueue(key, 0L, PathOutcome.success(DUMMY), 0, 0, 0);
         FakeSink sink = new FakeSink(Set.of());
         installer.drain(sink);
         installer.drain(sink);

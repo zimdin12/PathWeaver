@@ -33,7 +33,7 @@ class EntityInstallSinkTest {
         sink.register(key, nav);
 
         assertFalse(sink.shouldForceSync(1, 100L));
-        sink.failed(key);
+        sink.failed(key, new IllegalStateException("search failed"));
 
         assertTrue(sink.shouldForceSync(1, 101L));
         assertTrue(sink.shouldForceSync(1, 139L));
@@ -48,7 +48,7 @@ class EntityInstallSinkTest {
         FakeNav nav1 = new FakeNav();
         RequestKey first = key(1L, 1L, 7);
         sink.register(first, nav1);
-        sink.failed(first);
+        sink.failed(first, new IllegalStateException("search failed"));
         assertTrue(sink.shouldForceSync(7, 11L));
 
         FakeNav nav2 = new FakeNav();
@@ -64,7 +64,7 @@ class EntityInstallSinkTest {
         sink.setTick(5L);
         RequestKey key = key(1L, 1L, 3);
         sink.register(key, new FakeNav());
-        sink.failed(key);
+        sink.failed(key, new IllegalStateException("search failed"));
         sink.clear();
         assertFalse(sink.shouldForceSync(3, 6L));
         assertEquals(0, sink.inFlightCount());
@@ -96,7 +96,7 @@ class EntityInstallSinkTest {
         FakeNav replacement = new FakeNav();
         sink.register(replacementKey, replacement);
 
-        sink.failed(oldKey);
+        sink.failed(oldKey, new IllegalStateException("search failed"));
 
         assertFalse(sink.shouldForceSync(12, 21L));
         assertTrue(sink.isRegistered(12));
@@ -180,6 +180,21 @@ class EntityInstallSinkTest {
         assertTrue(sink.supersede(15));
         assertFalse(sink.isRegistered(15));
         assertEquals(1, nav.dones);
+    }
+
+    @Test void noPathBalancesRegistrationWithoutFailureCooldown() {
+        EntityInstallSink sink = new EntityInstallSink();
+        FakeNav nav = new FakeNav();
+        RequestKey key = key(1L, 20L, 19);
+        sink.setTick(100L);
+        sink.register(key, nav);
+
+        sink.noPath(key);
+
+        assertFalse(sink.isRegistered(19));
+        assertFalse(sink.shouldForceSync(19, 101L));
+        assertEquals(1, nav.dones);
+        assertEquals(0, nav.installs);
     }
 
     @Test void lateOldNavigationStopCannotCancelReplacementRegistration() {

@@ -41,14 +41,61 @@ class PathWorkerPoolTest {
         block.countDown();
     }
 
-    @Test void taskExceptionCompletesWithNull() throws Exception {
+    @Test void nullSearchCompletesAsNoPathWithoutFailureAccounting() throws Exception {
         CountDownLatch done = new CountDownLatch(1);
-        AtomicReference<Object> got = new AtomicReference<>("sentinel");
-        pool.submit(new PathRequest(key(2), 0L,
-            () -> { throw new RuntimeException("boom"); },
-            p -> { got.set(p); done.countDown(); }));
+        AtomicReference<PathOutcome> got = new AtomicReference<>();
+        assertTrue(pool.submit(new PathRequest(key(2), 0L, () -> null,
+            outcome -> { got.set(outcome); done.countDown(); })));
         assertTrue(done.await(2, TimeUnit.SECONDS));
-        assertNull(got.get());
+        assertEquals(PathOutcome.Status.NO_PATH, got.get().status());
+        assertEquals(0L, pool.failureCount());
+    }
+
+    @Test void taskExceptionCompletesAsFailedWithItsCause() throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<PathOutcome> got = new AtomicReference<>();
+        assertTrue(pool.submit(new PathRequest(key(3), 0L,
+            () -> { throw new IllegalStateException("boom"); },
+            outcome -> { got.set(outcome); done.countDown(); })));
+        assertTrue(done.await(2, TimeUnit.SECONDS));
+        assertEquals(PathOutcome.Status.FAILED, got.get().status());
+        assertEquals("boom", got.get().failure().getMessage());
+        assertEquals(1L, pool.failureCount());
+    }
+
+    @Test void throwingCompletionConsumerIsCountedRatherThanSwallowed() throws Exception {
+        CountDownLatch attempted = new CountDownLatch(1);
+        assertTrue(pool.submit(new PathRequest(key(4), 0L, () -> null, outcome -> {
+            attempted.countDown();
+            throw new IllegalStateException("delivery boom");
+        })));
+        assertTrue(attempted.await(2, TimeUnit.SECONDS));
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (pool.completionFailureCount() == 0L && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        assertEquals(1L, pool.completionFailureCount());
+        assertEquals(0L, pool.failureCount());
+    }
+
+    @Test void throwingFailureReporterCannotPreventFailedDelivery() throws Exception {
+        pool.shutdown();
+        pool = new PathWorkerPool() {
+            @Override protected void reportSearchFailure(long count, Throwable failure) {
+                throw new IllegalStateException("logger boom");
+            }
+        };
+        pool.start(1, 1);
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<PathOutcome> got = new AtomicReference<>();
+        assertTrue(pool.submit(new PathRequest(key(5), 0L,
+            () -> { throw new IllegalArgumentException("search boom"); },
+            outcome -> { got.set(outcome); done.countDown(); })));
+
+        assertTrue(done.await(2, TimeUnit.SECONDS));
+        assertEquals(PathOutcome.Status.FAILED, got.get().status());
+        assertEquals("search boom", got.get().failure().getMessage());
+        assertEquals(1L, pool.failureCount());
     }
 
     @Test void restartAfterStuckTaskResetsInFlightAndAcceptsWork() throws Exception {

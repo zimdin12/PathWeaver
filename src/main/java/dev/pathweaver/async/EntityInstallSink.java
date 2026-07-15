@@ -138,17 +138,23 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     public void discard(RequestKey key) {
         Registration registration = matching(key);
         if (registration != null && inFlight.remove(key.entityId(), registration)) {
-            registration.navigation().pathweaver$onPathfindingDone();
-            dev.pathweaver.PathWeaverRuntime.get().markDiscarded();
+            finishDiscard(registration);
         }
     }
 
     @Override
-    public void failed(RequestKey key) {
+    public void noPath(RequestKey key) {
         Registration registration = matching(key);
         if (registration != null && inFlight.remove(key.entityId(), registration)) {
-            registration.navigation().pathweaver$onPathfindingDone();
-            dev.pathweaver.PathWeaverRuntime.get().markDiscarded();
+            finishDiscard(registration);
+        }
+    }
+
+    @Override
+    public void failed(RequestKey key, Throwable failure) {
+        Registration registration = matching(key);
+        if (registration != null && inFlight.remove(key.entityId(), registration)) {
+            finishDiscard(registration);
             failUntilTick.put(key.entityId(), currentTick + FAIL_COOLDOWN_TICKS);
         }
     }

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — v0.2 lifecycle identity
+## Unreleased — v0.2 correctness rework
 
 ### Changed
 
@@ -16,11 +16,15 @@
   target supersedes and balances the prior registration; an accepted same-target pending request remains
   authoritative across mid-flight config toggles. `stop()` invalidates pending work at an exact, required
   injection, and a throwing mod callback is contained/logged once so cancellation remains terminal.
+- Worker completion is now explicitly tagged `SUCCESS`, `NO_PATH`, or `FAILED`. Vanilla `null` is an
+  ordinary no-path completion and does not trigger the exception cooldown. Actual search exceptions retain
+  their cause and take the failure path. Completion-consumer exceptions are counted and logged instead of
+  being silently swallowed.
 
 ### Still pending
 
-Callback accounting and tagged result semantics remain separate reviewed slices. The worker inputs are
-still live-backed until the approved immutable snapshot/private A* replaces the current evaluator reuse.
+Evaluator-specific callback accounting remains a separate reviewed slice. The worker inputs are still
+live-backed until the approved immutable snapshot/private A* replaces the current evaluator reuse.
 
 ## 0.1.2 — Default-on routing and fail-closed compatibility (2026-07-15)
 

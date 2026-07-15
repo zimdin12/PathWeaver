@@ -25,6 +25,7 @@ public class PathWorkerPool {
         final AtomicInteger inFlight = new AtomicInteger();
         final int maxInFlight;
         final AtomicLong failCount = new AtomicLong();
+        final AtomicLong completionFailCount = new AtomicLong();
         volatile long lastFailLogMs;
 
         Generation(int threads, int maxInFlight) {
@@ -64,20 +65,22 @@ public class PathWorkerPool {
         }
         try {
             generation.exec.execute(() -> {
-                Path result = null;
+                PathOutcome outcome;
                 PathWeaverThread.enterWorker();
                 try {
-                    result = req.search().call();
+                    Path result = req.search().call();
+                    outcome = result == null ? PathOutcome.noPath() : PathOutcome.success(result);
                 } catch (Throwable t) {
+                    outcome = PathOutcome.failed(t);
                     logFailure(generation, t);
                 } finally {
                     PathWeaverThread.exitWorker();
                     generation.inFlight.decrementAndGet();
-                    try {
-                        req.onDone().accept(result);
-                    } catch (Throwable ignored) {
-                        // Completion callbacks only enqueue. Callback reporting is a separate v0.2 slice.
-                    }
+                }
+                try {
+                    req.onDone().accept(outcome);
+                } catch (Throwable callbackFailure) {
+                    logCompletionFailure(generation, callbackFailure);
                 }
             });
             return true;
@@ -90,14 +93,35 @@ public class PathWorkerPool {
     private void logFailure(Generation generation, Throwable t) {
         long n = generation.failCount.incrementAndGet();
         long now = System.currentTimeMillis();
-        if (n == 1) {
+        if (n == 1 || now - generation.lastFailLogMs >= FAIL_LOG_INTERVAL_MS) {
+            generation.lastFailLogMs = now;
+            try {
+                reportSearchFailure(n, t);
+            } catch (Throwable ignored) {
+                // Reporting must never suppress the already-constructed FAILED outcome.
+            }
+        }
+    }
+
+    /** Test seam around a third-party logging backend; callers contain every Throwable from this method. */
+    protected void reportSearchFailure(long count, Throwable failure) {
+        if (count == 1L) {
             PathWeaver.LOG.warn("Async path search failed; this request is discarded and later requests "
                 + "for that entity temporarily run sync. "
-                + "Further failures are counted and summarised at most once/min.", t);
-            generation.lastFailLogMs = now;
-        } else if (now - generation.lastFailLogMs >= FAIL_LOG_INTERVAL_MS) {
-            PathWeaver.LOG.warn("Async path search failures so far: {} (latest: {}).", n, t.toString());
-            generation.lastFailLogMs = now;
+                + "Further failures are counted and summarised at most once/min.", failure);
+        } else {
+            PathWeaver.LOG.warn("Async path search failures so far: {} (latest: {}).",
+                count, failure.toString());
+        }
+    }
+
+    private void logCompletionFailure(Generation generation, Throwable failure) {
+        generation.completionFailCount.incrementAndGet();
+        try {
+            PathWeaver.LOG.error("Async path completion callback failed; the result could not be "
+                + "delivered to the main thread.", failure);
+        } catch (Throwable ignored) {
+            // The counter remains observable even if a third-party logging backend also fails.
         }
     }
 
@@ -109,6 +133,11 @@ public class PathWorkerPool {
     public long failureCount() {
         Generation generation = current;
         return generation == null ? 0L : generation.failCount.get();
+    }
+
+    public long completionFailureCount() {
+        Generation generation = current;
+        return generation == null ? 0L : generation.completionFailCount.get();
     }
 
     public synchronized void shutdown() {

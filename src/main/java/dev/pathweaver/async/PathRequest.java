@@ -13,4 +13,4 @@ import java.util.function.Consumer;
  * decide staleness.
  */
 public record PathRequest(RequestKey key, long dispatchTick,
-                          Callable<Path> search, Consumer<Path> onDone) {}
+                          Callable<Path> search, Consumer<PathOutcome> onDone) {}
