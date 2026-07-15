@@ -39,11 +39,14 @@ Each item requires a failing regression first, a focused green result, the full 
 - [x] Prove vanilla evaluator reuse cannot provide strict immutable worker inputs.
 - [x] Record the field constraint that standard Fabric content registries currently deny Walk + Swim,
   making v0.1.2's async engine effectively inert in a typical pack even though bare-stack offload works.
-- [ ] After remaining correctness slices, profile the 160/320/640 mixed-mob normal pack synchronously
-  to establish whether pathfinding is a meaningful tick-budget cost before funding the private port.
-- [ ] If the load gate shows meaningful benefit, architecture-proof an in-mod immutable snapshot
-  evaluator + private A* as the sole async engine behind `asyncEnabled`, including a proven replacement
-  for sensitive content-registry path-type provider semantics rather than merely removing the denial.
+- [x] Approve the lightweight in-mod immutable snapshot evaluator + private A* as the sole future async
+  engine: the value case is server-thread bottleneck relief onto otherwise-idle worker cores, supported by
+  prior dense-village server-thread Walk offload evidence. This is not a total-work-reduction claim.
+- [ ] After remaining correctness slices, implement the private engine with bounded/lightweight capture,
+  including a proven replacement for sensitive content-registry path-type provider semantics rather than
+  merely removing the denial.
+- [ ] Use the saturated 160/320/640 mixed-mob benchmark to validate and tune the port, not as permission to
+  start it. If main-thread relief does not translate to MSPT/TPS under saturation, report that honestly.
 - [ ] Audit Fabric API `0.153.0` content-registry bytecode and enumerate the actually registered provider
   set. Permit only exact version/provider combinations proven worker-safe; unknown/dynamic providers deny.
 - [ ] Prefer server-thread capture of provider-influenced path-type facts into the immutable snapshot so
@@ -98,9 +101,13 @@ Each item requires a failing regression first, a focused green result, the full 
 - Real Spark profiles under both the isolated workload and a repeatable near-tick-budget pathfinding load.
 - Normal-pack scanner decision plus dispatch/install/discard counters, so an inert fail-closed run is not
   misreported as async performance or behavioral evidence.
-- 160, 320, and 640 nearby mixed mob types in the realistic Fabric stack, with async OFF/ON legs,
-  `dispatched > 0` for every claimed async leg, trajectory/movement-continuity observations, path validity,
-  crashes/errors, MSPT/TPS distribution, and clean shutdown accounting.
+- 160, 320, and 640 nearby mixed mob types in the realistic Fabric stack, with paired/reversed async
+  OFF/ON legs. Drive continuous Walk/Swim work and tune scene load so OFF approaches or exceeds the
+  approximately 50 ms tick budget; mob count alone is not proof of saturation.
+- `dispatched > 0` for every claimed async leg; retain actual entity/request census, worker utilization,
+  dispatch/install/discard and latency accounting, Server-thread pathfinding inclusive/self samples,
+  mean/median/p95/max MSPT, TPS, trajectory/movement continuity, path validity, crashes/errors, and clean
+  shutdown. Report honestly if main-thread offload does not improve end-to-end MSPT/TPS.
 
 ### v0.2 acceptance and release
 
