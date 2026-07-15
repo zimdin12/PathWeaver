@@ -11,8 +11,17 @@ class EntityInstallSinkTest {
     static class FakeNav implements PWNavigation {
         int installs, dones;
         boolean stale;
+        Object uuid = new Object();
+        Object world = new Object();
+        Object dimension = "overworld";
+        Object path;
+        long revision;
+        PWNavigation identityNavigation = this;
         public void pathweaver$install(Path p) { installs++; }
         public boolean pathweaver$stale(double x, double y, double z) { return stale; }
+        public NavigationIdentity pathweaver$identity() {
+            return new NavigationIdentity(uuid, world, dimension, identityNavigation, path, revision);
+        }
         public void pathweaver$onPathfindingDone() { dones++; }
     }
 
@@ -92,6 +101,149 @@ class EntityInstallSinkTest {
         assertFalse(sink.shouldForceSync(12, 21L));
         assertTrue(sink.isRegistered(12));
         assertEquals(0, replacement.dones);
+    }
+
+    @Test void resultAgeHasExactInclusiveBoundaryAndRejectsTickRollback() {
+        dev.pathweaver.config.PathWeaverConfig previous =
+            dev.pathweaver.config.PathWeaverConfig.get();
+        dev.pathweaver.config.PathWeaverConfig configured =
+            new dev.pathweaver.config.PathWeaverConfig();
+        configured.maxResultAgeTicks = 5;
+        dev.pathweaver.config.PathWeaverConfig.set(configured);
+        try {
+            EntityInstallSink sink = new EntityInstallSink();
+            RequestKey key = key(1L, 7L, 13);
+            sink.register(key, new FakeNav());
+
+            sink.setTick(5L);
+            assertFalse(sink.isStale(key, 0L, 0.0, 0.0, 0.0));
+            sink.setTick(6L);
+            assertTrue(sink.isStale(key, 0L, 0.0, 0.0, 0.0));
+            sink.setTick(-1L);
+            assertTrue(sink.isStale(key, 0L, 0.0, 0.0, 0.0));
+        } finally {
+            dev.pathweaver.config.PathWeaverConfig.set(previous);
+        }
+    }
+
+    @Test void everyCapturedNavigationIdentityComponentRejectsAChangedLiveNavigation() {
+        EntityInstallSink sink = new EntityInstallSink();
+        FakeNav nav = new FakeNav();
+        RequestKey key = key(1L, 8L, 14);
+        sink.setTick(1L);
+        sink.register(key, nav);
+        assertFalse(sink.isStale(key, 0L, 0.0, 0.0, 0.0));
+
+        Object original = nav.uuid;
+        nav.uuid = new Object();
+        assertTrue(sink.isStale(key, 0L, 0.0, 0.0, 0.0));
+        nav.uuid = original;
+
+        original = nav.world;
+        nav.world = new Object();
+        assertTrue(sink.isStale(key, 0L, 0.0, 0.0, 0.0));
+        nav.world = original;
+
+        nav.dimension = "the_nether";
+        assertTrue(sink.isStale(key, 0L, 0.0, 0.0, 0.0));
+        nav.dimension = "overworld";
+
+        nav.identityNavigation = new FakeNav();
+        assertTrue(sink.isStale(key, 0L, 0.0, 0.0, 0.0));
+        nav.identityNavigation = nav;
+
+        nav.path = new Object();
+        assertTrue(sink.isStale(key, 0L, 0.0, 0.0, 0.0));
+        nav.path = null;
+
+        nav.revision++;
+        assertTrue(sink.isStale(key, 0L, 0.0, 0.0, 0.0));
+    }
+
+    @Test void changedTargetSupersedesAndBalancesThePriorRegistration() {
+        EntityInstallSink sink = new EntityInstallSink();
+        FakeNav nav = new FakeNav();
+        RequestTarget first = RequestTarget.of(java.util.Set.of("a"), 8, false, 1, 32.0F);
+        RequestTarget changed = RequestTarget.of(java.util.Set.of("b"), 8, false, 1, 32.0F);
+        sink.register(key(1L, 9L, 15), nav, first);
+
+        assertEquals(EntityInstallSink.PendingDecision.PRESERVE,
+            sink.pendingDecision(15, nav, first));
+        assertEquals(EntityInstallSink.PendingDecision.SUPERSEDE,
+            sink.pendingDecision(15, nav, changed));
+        assertEquals(EntityInstallSink.PendingDecision.SUPERSEDE,
+            sink.pendingDecision(15, new FakeNav(), first));
+        nav.path = new Object();
+        assertEquals(EntityInstallSink.PendingDecision.SUPERSEDE,
+            sink.pendingDecision(15, nav, first));
+        nav.path = null;
+        assertTrue(sink.supersede(15));
+        assertFalse(sink.isRegistered(15));
+        assertEquals(1, nav.dones);
+    }
+
+    @Test void lateOldNavigationStopCannotCancelReplacementRegistration() {
+        EntityInstallSink sink = new EntityInstallSink();
+        FakeNav oldNavigation = new FakeNav();
+        FakeNav replacement = new FakeNav();
+        sink.register(key(1L, 1L, 16), oldNavigation);
+        sink.register(key(1L, 2L, 16), replacement);
+
+        assertFalse(sink.cancel(16, oldNavigation));
+        assertTrue(sink.isRegistered(16));
+        assertEquals(0, oldNavigation.dones);
+        assertEquals(0, replacement.dones);
+
+        assertTrue(sink.cancel(16, replacement));
+        assertFalse(sink.isRegistered(16));
+        assertEquals(1, replacement.dones);
+    }
+
+    @Test void acceptedSameTargetIsPreservedAcrossBothMidFlightConfigToggles() {
+        dev.pathweaver.config.PathWeaverConfig previous =
+            dev.pathweaver.config.PathWeaverConfig.get();
+        dev.pathweaver.config.PathWeaverConfig toggled =
+            new dev.pathweaver.config.PathWeaverConfig();
+        EntityInstallSink sink = new EntityInstallSink();
+        FakeNav nav = new FakeNav();
+        RequestTarget target = RequestTarget.of(java.util.Set.of("same"), 8, false, 1, 32.0F);
+        sink.register(key(1L, 3L, 17), nav, target);
+        try {
+            toggled.asyncEnabled = false;
+            toggled.syncFallbackOnly = false;
+            dev.pathweaver.config.PathWeaverConfig.set(toggled);
+            assertEquals(EntityInstallSink.PendingDecision.PRESERVE,
+                sink.pendingDecision(17, nav, target));
+
+            toggled.asyncEnabled = true;
+            toggled.syncFallbackOnly = true;
+            dev.pathweaver.config.PathWeaverConfig.set(toggled);
+            assertEquals(EntityInstallSink.PendingDecision.PRESERVE,
+                sink.pendingDecision(17, nav, target));
+        } finally {
+            dev.pathweaver.config.PathWeaverConfig.set(previous);
+        }
+        assertTrue(sink.isRegistered(17));
+        assertEquals(0, nav.dones);
+    }
+
+    @Test void throwingDoneCallbackCannotEscapeTerminalCancellation() {
+        EntityInstallSink sink = new EntityInstallSink();
+        FakeNav throwing = new FakeNav() {
+            @Override public void pathweaver$onPathfindingDone() {
+                dones++;
+                throw new IllegalStateException("callback boom");
+            }
+        };
+
+        sink.register(key(1L, 4L, 18), throwing);
+        assertDoesNotThrow(() -> sink.cancel(18, throwing));
+        assertFalse(sink.isRegistered(18));
+
+        sink.register(key(1L, 5L, 18), throwing);
+        assertDoesNotThrow(() -> sink.supersede(18));
+        assertFalse(sink.isRegistered(18));
+        assertEquals(2, throwing.dones);
     }
 
     private static RequestKey key(long epoch, long token, int entityId) {

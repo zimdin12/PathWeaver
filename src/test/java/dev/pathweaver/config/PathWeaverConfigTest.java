@@ -26,6 +26,7 @@ class PathWeaverConfigTest {
         assertFalse(c.distanceThrottleEnabled);
         assertFalse(c.syncFallbackOnly);
         assertEquals(0, c.repathToleranceBlocks);
+        assertEquals(40, c.maxResultAgeTicks);
     }
     @Test void persistedFalseOverridesDefaultOnInitializer() {
         PathWeaverConfig c = new Gson().fromJson(
@@ -41,6 +42,7 @@ class PathWeaverConfigTest {
         c.poolThreads = -7;
         c.maxInFlight = 0;
         c.repathToleranceBlocks = -4;
+        c.maxResultAgeTicks = Integer.MIN_VALUE;
         c.stalenessMoveThreshold = Double.NaN;
 
         c.validatePostLoad();
@@ -48,6 +50,7 @@ class PathWeaverConfigTest {
         assertEquals(0, c.poolThreads);
         assertEquals(1, c.maxInFlight);
         assertEquals(0, c.repathToleranceBlocks);
+        assertEquals(1, c.maxResultAgeTicks);
         assertEquals(0.0, c.stalenessMoveThreshold);
     }
     @Test void extremeValuesAreClampedPostLoad() {
@@ -55,6 +58,7 @@ class PathWeaverConfigTest {
         c.poolThreads = Integer.MAX_VALUE;
         c.maxInFlight = Integer.MAX_VALUE;
         c.repathToleranceBlocks = Integer.MAX_VALUE;
+        c.maxResultAgeTicks = Integer.MAX_VALUE;
         c.stalenessMoveThreshold = Double.POSITIVE_INFINITY;
 
         c.validatePostLoad();
@@ -62,6 +66,7 @@ class PathWeaverConfigTest {
         assertEquals(PathWeaverConfig.MAX_POOL_THREADS, c.poolThreads);
         assertEquals(PathWeaverConfig.MAX_IN_FLIGHT, c.maxInFlight);
         assertEquals(PathWeaverConfig.MAX_REPATH_TOLERANCE_BLOCKS, c.repathToleranceBlocks);
+        assertEquals(PathWeaverConfig.MAX_RESULT_AGE_TICKS, c.maxResultAgeTicks);
         assertEquals(PathWeaverConfig.MAX_STALENESS_MOVE_THRESHOLD, c.stalenessMoveThreshold);
     }
     @Test void setNormalizesLoadedConfigBeforePublishingIt() {

@@ -60,8 +60,9 @@ Each item requires a failing regression first, a focused green result, the full 
   or callback mutation.
 - [x] Isolate executor capacity and failure counters per generation so interrupt-ignoring old workers
   cannot mutate restart state.
-- [ ] Check world/dimension, entity UUID/removal state, navigation identity, target revision, and maximum age.
-- [ ] Supersede materially changed targets.
+- [x] Check world/dimension, entity UUID/removal state, exact navigation/path identity, semantic target
+  revision, movement threshold, and maximum age.
+- [x] Supersede materially changed targets and invalidate pending work on navigation stop.
 
 ### Completion semantics
 

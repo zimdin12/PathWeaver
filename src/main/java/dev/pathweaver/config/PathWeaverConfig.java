@@ -14,6 +14,7 @@ public class PathWeaverConfig implements ConfigData {
     public static final int MAX_POOL_THREADS = 64;
     public static final int MAX_IN_FLIGHT = 4096;
     public static final int MAX_REPATH_TOLERANCE_BLOCKS = 64;
+    public static final int MAX_RESULT_AGE_TICKS = 1200;
     public static final double MAX_STALENESS_MOVE_THRESHOLD = 1024.0;
 
     @ConfigEntry.Gui.Tooltip
@@ -40,6 +41,9 @@ public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Gui.Tooltip
     public double stalenessMoveThreshold = 4.0;      // blocks moved since dispatch -> discard
 
+    @ConfigEntry.Gui.Tooltip
+    public int maxResultAgeTicks = 40;
+
     private static PathWeaverConfig INSTANCE = new PathWeaverConfig();
     public static PathWeaverConfig get() { return INSTANCE; }
     public static void set(PathWeaverConfig c) {
@@ -58,6 +62,7 @@ public class PathWeaverConfig implements ConfigData {
         maxInFlight = Math.clamp(maxInFlight, 1, MAX_IN_FLIGHT);
         repathToleranceBlocks = Math.clamp(
             repathToleranceBlocks, 0, MAX_REPATH_TOLERANCE_BLOCKS);
+        maxResultAgeTicks = Math.clamp(maxResultAgeTicks, 1, MAX_RESULT_AGE_TICKS);
         if (Double.isNaN(stalenessMoveThreshold) || stalenessMoveThreshold < 0.0) {
             stalenessMoveThreshold = 0.0;
         } else if (!Double.isFinite(stalenessMoveThreshold)

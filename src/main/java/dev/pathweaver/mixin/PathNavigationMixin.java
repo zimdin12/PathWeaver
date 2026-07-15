@@ -4,8 +4,10 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.pathweaver.PathWeaverRuntime;
 import dev.pathweaver.async.EntityInstallSink;
+import dev.pathweaver.async.NavigationIdentity;
 import dev.pathweaver.async.PathRequest;
 import dev.pathweaver.async.RequestKey;
+import dev.pathweaver.async.RequestTarget;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.duck.PWNavigation;
 import dev.pathweaver.gate.SafetyGate;
@@ -69,6 +71,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
      * its virtual createPath call. Direct/query-only createPath calls remain synchronous by construction.
      */
     @Unique private int pathweaver$navigationRequestDepth;
+    @Unique private long pathweaver$targetRevision;
 
     @WrapOperation(
         method = "recomputePath()V",
@@ -157,6 +160,25 @@ public abstract class PathNavigationMixin implements PWNavigation {
         if (pathweaver$navigationRequestDepth == 0) return;
 
         PathWeaverConfig cfg = PathWeaverConfig.get();
+        PathWeaverRuntime rt = PathWeaverRuntime.get();
+        final int entityId = this.mob.getId();
+        EntityInstallSink sink = rt.entitySink();
+        RequestTarget requestTarget = RequestTarget.of(
+            targets, regionOffset, offsetUpward, reachRange, followRange);
+        boolean intentAdvanced = false;
+
+        // A repeated request for the same semantic target shares the accepted pending operation. A
+        // materially different request cancels the old registration before sync/async routing continues.
+        EntityInstallSink.PendingDecision pendingDecision = this.level instanceof ServerLevel
+            ? sink.pendingDecision(entityId, this, requestTarget)
+            : EntityInstallSink.PendingDecision.NONE;
+        if (pendingDecision == EntityInstallSink.PendingDecision.PRESERVE) {
+            cir.setReturnValue(this.path);
+            return;
+        } else if (pendingDecision == EntityInstallSink.PendingDecision.SUPERSEDE) {
+            intentAdvanced = sink.supersede(entityId);
+            if (intentAdvanced) pathweaver$targetRevision++;
+        }
 
         // Feature B: opt-in repath elision. A zero tolerance disables this injection entirely; the
         // v0.2 changed-block/endpoint validity work is required before it can become a default.
@@ -170,7 +192,6 @@ public abstract class PathNavigationMixin implements PWNavigation {
 
         // Feature A: async dispatch.
         if (!cfg.asyncEnabled || cfg.syncFallbackOnly) return;
-        PathWeaverRuntime rt = PathWeaverRuntime.get();
         if (!rt.isRunning()) return;
         if (!(this.level instanceof ServerLevel)) return;                       // server-side only
         if (this.nodeEvaluator == null || !SafetyGate.isAllowed(this.nodeEvaluator.getClass())) return;
@@ -182,16 +203,13 @@ public abstract class PathNavigationMixin implements PWNavigation {
         if (this.path != null && !this.path.isDone() && targets.contains(this.targetPos)) return;
 
         final Mob theMob = this.mob;
-        final int entityId = theMob.getId();
         final long tick = ((ServerLevel) this.level).getServer().getTickCount();
-        EntityInstallSink sink = rt.entitySink();
 
         // FIX 4: this entity's last async search failed and it's in cooldown -> run vanilla sync this tick.
         if (sink.shouldForceSync(entityId, tick)) return;
 
-        // Avoid stacking a second search on a mob that already has one in flight; keep current path.
+        // A same-target pending operation returned above; anything still registered is conservatively sync.
         if (sink.isRegistered(entityId)) {
-            cir.setReturnValue(this.path);
             return;
         }
 
@@ -232,7 +250,8 @@ public abstract class PathNavigationMixin implements PWNavigation {
 
             requestKey = rt.nextRequestKey(entityId);
             final RequestKey submittedKey = requestKey;
-            sink.register(requestKey, this);
+            if (!intentAdvanced) pathweaver$targetRevision++;
+            sink.register(requestKey, this, requestTarget);
             registered = true;
             boolean accepted = rt.pool().submit(new PathRequest(submittedKey, tick, search,
                 result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz)));
@@ -294,9 +313,22 @@ public abstract class PathNavigationMixin implements PWNavigation {
 
     @Override
     public boolean pathweaver$stale(double dispatchX, double dispatchY, double dispatchZ) {
-        if (this.mob == null || !this.mob.isAlive()) return true;
+        if (this.mob == null || !this.mob.isAlive() || this.mob.isRemoved()
+                || this.mob.getNavigation() != (Object) this || this.mob.level() != this.level) return true;
         double moveThreshold = PathWeaverConfig.get().stalenessMoveThreshold;
         return this.mob.distanceToSqr(dispatchX, dispatchY, dispatchZ) > moveThreshold * moveThreshold;
+    }
+
+    @Override
+    public NavigationIdentity pathweaver$identity() {
+        return new NavigationIdentity(this.mob.getUUID(), this.mob.level(), this.mob.level().dimension(),
+            this, this.path, this.pathweaver$targetRevision);
+    }
+
+    @Inject(method = "stop()V", at = @At("HEAD"), require = 1, expect = 1)
+    private void pathweaver$invalidateStoppedRequest(org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+        pathweaver$targetRevision++;
+        PathWeaverRuntime.get().entitySink().cancel(this.mob.getId(), this);
     }
 
     @Override

@@ -11,12 +11,16 @@
 - Every worker-pool generation owns its executor, in-flight capacity, and failure counters. An
   interrupt-ignoring old worker can finish after restart without decrementing or incrementing the new
   generation's counters.
+- Install validation now binds entity UUID/removal state, exact world and navigation object, dimension,
+  current path identity, semantic target revision, movement threshold, and a bounded result age. A changed
+  target supersedes and balances the prior registration; an accepted same-target pending request remains
+  authoritative across mid-flight config toggles. `stop()` invalidates pending work at an exact, required
+  injection, and a throwing mod callback is contained/logged once so cancellation remains terminal.
 
 ### Still pending
 
-Complete install staleness must additionally bind UUID, navigation/world/dimension identity, target
-revision, removal state and maximum result age. Callback accounting and tagged result semantics remain
-separate reviewed slices.
+Callback accounting and tagged result semantics remain separate reviewed slices. The worker inputs are
+still live-backed until the approved immutable snapshot/private A* replaces the current evaluator reuse.
 
 ## 0.1.2 — Default-on routing and fail-closed compatibility (2026-07-15)
 

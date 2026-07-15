@@ -1,33 +1,97 @@
 package dev.pathweaver.async;
 
+import dev.pathweaver.PathWeaver;
+import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.duck.PWNavigation;
 import net.minecraft.world.level.pathfinder.Path;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Main-thread bridge from request-keyed async completions to live navigation. A completion may mutate
- * navigation state only when its full server-epoch/request-token/entity identity still matches the
- * registered request; numeric entity ID reuse alone is never authoritative.
+ * Main-thread bridge from request-keyed async completions to live navigation. Installation requires
+ * the exact request key plus unchanged entity UUID, world/dimension, navigation, path and target intent.
  */
 public class EntityInstallSink implements ResultInstaller.InstallSink {
-    private record Registration(RequestKey key, PWNavigation navigation) { }
+    public enum PendingDecision { NONE, PRESERVE, SUPERSEDE }
 
+    private record Registration(RequestKey key, PWNavigation navigation,
+                                NavigationIdentity identity, RequestTarget target) { }
+
+    private static final RequestTarget UNSPECIFIED_TARGET =
+        RequestTarget.of(Set.of(), 0, false, 0, 0.0F);
     private final Map<Integer, Registration> inFlight = new ConcurrentHashMap<>();
     private final Map<Integer, Long> failUntilTick = new ConcurrentHashMap<>();
+    private final AtomicBoolean callbackFailureLogged = new AtomicBoolean();
     private static final long FAIL_COOLDOWN_TICKS = 40L;
     private volatile long currentTick;
 
     public void setTick(long tick) { this.currentTick = tick; }
 
     /** Called from the interceptor on the main thread at dispatch time. */
-    public void register(RequestKey key, PWNavigation navigation) {
-        inFlight.put(key.entityId(), new Registration(key, navigation));
+    public void register(RequestKey key, PWNavigation navigation, RequestTarget target) {
+        inFlight.put(key.entityId(),
+            new Registration(key, navigation, navigation.pathweaver$identity(), target));
+    }
+
+    /** Package-private helper for tests whose target identity is irrelevant. */
+    void register(RequestKey key, PWNavigation navigation) {
+        register(key, navigation, UNSPECIFIED_TARGET);
     }
 
     public boolean isRegistered(int entityId) {
         return inFlight.containsKey(entityId);
+    }
+
+    public PendingDecision pendingDecision(int entityId, PWNavigation navigation, RequestTarget target) {
+        Registration registration = inFlight.get(entityId);
+        if (registration == null) return PendingDecision.NONE;
+        if (registration.navigation() != navigation) return PendingDecision.SUPERSEDE;
+        try {
+            if (!registration.identity().sameLiveIdentity(navigation.pathweaver$identity())) {
+                return PendingDecision.SUPERSEDE;
+            }
+        } catch (Throwable ignored) {
+            return PendingDecision.SUPERSEDE;
+        }
+        return registration.target().equals(target)
+            ? PendingDecision.PRESERVE : PendingDecision.SUPERSEDE;
+    }
+
+    /** Cancel the current exact navigation request because a materially different intent replaced it. */
+    public boolean supersede(int entityId) {
+        Registration registration = inFlight.get(entityId);
+        if (registration == null || !inFlight.remove(entityId, registration)) return false;
+        finishDiscard(registration);
+        return true;
+    }
+
+    /** Stop may invalidate only the registration owned by that exact navigation object. */
+    public boolean cancel(int entityId, PWNavigation navigation) {
+        Registration registration = inFlight.get(entityId);
+        if (registration == null || registration.navigation() != navigation
+                || !inFlight.remove(entityId, registration)) return false;
+        finishDiscard(registration);
+        return true;
+    }
+
+    private void finishDiscard(Registration registration) {
+        try {
+            registration.navigation().pathweaver$onPathfindingDone();
+        } catch (Throwable callbackFailure) {
+            if (callbackFailureLogged.compareAndSet(false, true)) {
+                try {
+                    PathWeaver.LOG.warn("A mod callback threw while cancelling async pathfinding; "
+                        + "the request was discarded and cancellation continued.", callbackFailure);
+                } catch (Throwable ignored) {
+                    // Cancellation must remain terminal even if the logging backend is compromised.
+                }
+            }
+        } finally {
+            dev.pathweaver.PathWeaverRuntime.get().markDiscarded();
+        }
     }
 
     public boolean shouldForceSync(int entityId, long tick) {
@@ -48,7 +112,16 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     @Override
     public boolean isStale(RequestKey key, long dispatchTick, double x, double y, double z) {
         Registration registration = matching(key);
-        return registration == null || registration.navigation().pathweaver$stale(x, y, z);
+        if (registration == null) return true;
+        long age = currentTick - dispatchTick;
+        if (age < 0L || age > PathWeaverConfig.get().maxResultAgeTicks) return true;
+        try {
+            return !registration.identity().sameLiveIdentity(
+                        registration.navigation().pathweaver$identity())
+                || registration.navigation().pathweaver$stale(x, y, z);
+        } catch (Throwable ignored) {
+            return true;
+        }
     }
 
     @Override

@@ -1,5 +1,6 @@
 package dev.pathweaver.duck;
 
+import dev.pathweaver.async.NavigationIdentity;
 import net.minecraft.world.level.pathfinder.Path;
 
 /**
@@ -16,6 +17,9 @@ public interface PWNavigation {
 
     /** Main thread: true if the owning mob is gone or has moved too far from the dispatch position. */
     boolean pathweaver$stale(double dispatchX, double dispatchY, double dispatchZ);
+
+    /** Main thread: current entity/world/navigation/path/intent identity for exact install validation. */
+    NavigationIdentity pathweaver$identity();
 
     /**
      * Main thread: fire {@code mob.onPathfindingDone()} iff a matching {@code onPathfindingStart} was

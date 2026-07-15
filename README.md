@@ -29,9 +29,9 @@ Version 0.1.2 includes two correctness improvements over v0.1.1:
 - async interception is armed only by genuine navigation/recompute operations; direct and query-only `createPath` calls remain synchronous and do not dispatch or mutate navigation path/speed state;
 - compatibility discovery fails closed over Loader-resolved Fabric/JiJ metadata and Mixin's prepared targets, including plugin-expanded configs and shared evaluator/context/navigation/finder targets.
 
-The worker still reads live chunk and mob state. Those inputs can change during a search. Development master now adds server epochs, process-unique request tokens, exact completion matching, and worker-generation-owned counters; v0.1.2 itself does not include that post-release slice. Complete UUID/navigation/world/target/age staleness, callback accounting, and tagged outcomes remain v0.2 work. Dispatch rejection leaves that invocation synchronous. A worker exception does not recompute the failed request; it discards that result and forces later requests for the mob synchronous during a cooldown.
+The worker still reads live chunk and mob state. Those inputs can change during a search. Development master now binds every completion to server epoch/token, UUID/removal state, world/dimension, exact navigation/current-path identity, semantic target revision, movement, and maximum age, with target supersession and stop invalidation. These checks reject obsolete installs; they do not make worker inputs immutable. Callback accounting and tagged outcomes remain v0.2 work. Dispatch rejection leaves that invocation synchronous. A worker exception does not recompute the failed request; it discards that result and forces later requests for the mob synchronous during a cooldown.
 
-A private snapshot evaluator and A* port has been approved in principle as the eventual single async engine, but implementation is gated on the remaining correctness work and a near-tick-budget load benchmark. No immutable-input or path-equivalence claim is made today.
+A private snapshot evaluator and A* port is approved as the eventual single async engine after the remaining correctness slices. Saturated normal-pack benchmarks validate and tune server-thread relief; they no longer gate permission to build the port. No immutable-input or path-equivalence claim is made today.
 
 ## Defaults in 0.1.2
 

@@ -8,10 +8,11 @@
 
 This document describes v0.1.2. It does not restore the original unsupported claims that `PathNavigationRegion` was an immutable snapshot or that async paths were safe by construction, vanilla-identical, or universally faster.
 
-Development master additionally carries the first v0.2 lifecycle slice: server epochs, process-unique
-request tokens, exact completion-to-registration matching, and capacity/failure counters owned by one
-worker generation. These prevent prior-session completions from mutating a restarted session; they do
-not yet constitute the complete install-staleness contract.
+Development master additionally carries the completed v0.2 lifecycle/staleness slices: server epochs,
+process-unique request tokens, generation-owned counters, and install validation over UUID/removal,
+world/dimension, exact navigation/current-path identity, semantic target revision, movement, and maximum
+age. Changed targets and navigation stop cancel the prior registration. These checks prevent late-result
+mutation; they do not make the worker's captured search inputs immutable.
 
 ## 1. Current mechanism
 
@@ -79,8 +80,8 @@ These measures reduce known risk; they do not repair the unresolved live-input a
 ## 6. Remaining defects
 
 1. **Live inputs:** region reads reach live chunks and evaluators read a live mob.
-2. **Incomplete staleness identity:** entity UUID/removal, navigation, world/dimension, target revision,
-   and maximum age are not yet all bound and checked. Epoch/request/entity-ID matching has landed.
+2. **Live-input immutability:** completed install staleness can reject an obsolete result but cannot undo
+   worker reads that raced live chunk/mob state; the private snapshot engine remains required.
 3. **Callbacks:** rejection, clear, shutdown, and exception paths are not yet proven evaluator-specifically balanced.
 4. **Result typing:** ordinary vanilla `null`/no-path is conflated with worker failure.
 5. **Repath elision:** positive tolerance has no complete endpoint/navigation/changed-block validity proof.
@@ -89,10 +90,15 @@ These measures reduce known risk; they do not repair the unresolved live-input a
 
 Four real paired Spark runs in an isolated 160-zombie Walk workload measured a 90.97% reduction in Server-thread `WalkNodeEvaluator` inclusive samples and a 76.60% reduction in self samples. `PathFinder` samples moved fully off the Server thread in those captures.
 
-Net MSPT did not improve reliably: average mean MSPT was 2.927 ms OFF versus 3.012 ms ON. This supports an offload claim only. A near-tick-budget Walk/Swim benchmark is required before deciding whether to begin the large snapshot evaluator/A* port.
+Net MSPT did not improve reliably: average mean MSPT was 2.927 ms OFF versus 3.012 ms ON. This supports
+an offload claim only in that unsaturated workload. A near-tick-budget Walk/Swim benchmark is required to
+validate and tune the snapshot evaluator/A* port; it does not decide whether the approved port may begin.
 
 ## 8. Snapshot-engine acceptance boundary
 
-The approved future architecture is an in-mod immutable snapshot evaluator plus private A* loop as PathWeaver's sole async engine behind `asyncEnabled`. It begins only after the remaining tractable correctness slices and a meaningful near-budget load result.
+The approved future architecture is an in-mod immutable snapshot evaluator plus private A* loop as
+PathWeaver's sole async engine behind `asyncEnabled`. It begins after the remaining tractable correctness
+slices. Saturated near-budget benchmarks validate and tune the implementation and its server-thread relief;
+they are not a pre-port permission gate.
 
 No safety or path-equivalence language is earned until exhaustive sync-versus-snapshot tests prove Walk/Swim path equivalence across offset-upward behavior, multi-target selection, doors, fences, water, height/fall constraints, malus values, and step-height variation.
