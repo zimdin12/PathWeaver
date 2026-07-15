@@ -10,8 +10,8 @@ import net.minecraft.world.level.pathfinder.Path;
 public interface PWNavigation {
     /**
      * Main thread: install an async-computed path using vanilla's own moveTo bookkeeping, then replay
-     * the tail of vanilla {@code createPath} (targetPos / reachRange / resetStuckTimeout) and fire the
-     * balanced {@code onPathfindingDone} for the callback started at dispatch.
+     * the tail of vanilla {@code createPath} (targetPos / reachRange / resetStuckTimeout). Callback
+     * completion is owned centrally by the request registration so install exceptions are also balanced.
      */
     void pathweaver$install(Path path);
 

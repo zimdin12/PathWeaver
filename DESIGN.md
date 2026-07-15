@@ -82,11 +82,14 @@ These measures reduce known risk; they do not repair the unresolved live-input a
 1. **Live inputs:** region reads reach live chunks and evaluators read a live mob.
 2. **Live-input immutability:** completed install staleness can reject an obsolete result but cannot undo
    worker reads that raced live chunk/mob state; the private snapshot engine remains required.
-3. **Callbacks:** rejection, clear, shutdown, and exception paths are not yet proven evaluator-specifically balanced.
-4. **Repath elision:** positive tolerance has no complete endpoint/navigation/changed-block validity proof.
+3. **Repath elision:** positive tolerance has no complete endpoint/navigation/changed-block validity proof.
 
 Worker results are now explicitly tagged `SUCCESS`, `NO_PATH`, or `FAILED`; ordinary vanilla `null` is
 `NO_PATH` and only actual exceptions enter failure cooldown/logging.
+
+Callback replay is evaluator-specific and exact: Walk owns one main-thread start/done pair and Swim owns
+none. Every accepted-registration terminal path, including clear/shutdown and install exceptions, removes
+first and balances completion behind a contained callback boundary.
 
 ## 7. Performance evidence
 

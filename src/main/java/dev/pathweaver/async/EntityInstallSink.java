@@ -25,6 +25,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     private final Map<Integer, Registration> inFlight = new ConcurrentHashMap<>();
     private final Map<Integer, Long> failUntilTick = new ConcurrentHashMap<>();
     private final AtomicBoolean callbackFailureLogged = new AtomicBoolean();
+    private final AtomicBoolean installFailureLogged = new AtomicBoolean();
     private static final long FAIL_COOLDOWN_TICKS = 40L;
     private volatile long currentTick;
 
@@ -32,8 +33,13 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
 
     /** Called from the interceptor on the main thread at dispatch time. */
     public void register(RequestKey key, PWNavigation navigation, RequestTarget target) {
-        inFlight.put(key.entityId(),
-            new Registration(key, navigation, navigation.pathweaver$identity(), target));
+        Registration next = new Registration(
+            key, navigation, navigation.pathweaver$identity(), target);
+        Registration existing = inFlight.putIfAbsent(key.entityId(), next);
+        if (existing != null) {
+            throw new IllegalStateException("Entity " + key.entityId()
+                + " already has an accepted async path registration");
+        }
     }
 
     /** Package-private helper for tests whose target identity is irrelevant. */
@@ -78,6 +84,11 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     }
 
     private void finishDiscard(Registration registration) {
+        finishCallback(registration);
+        dev.pathweaver.PathWeaverRuntime.get().markDiscarded();
+    }
+
+    private void finishCallback(Registration registration) {
         try {
             registration.navigation().pathweaver$onPathfindingDone();
         } catch (Throwable callbackFailure) {
@@ -89,8 +100,6 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
                     // Cancellation must remain terminal even if the logging backend is compromised.
                 }
             }
-        } finally {
-            dev.pathweaver.PathWeaverRuntime.get().markDiscarded();
         }
     }
 
@@ -128,9 +137,24 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     public void install(RequestKey key, Path path) {
         Registration registration = matching(key);
         if (registration != null && inFlight.remove(key.entityId(), registration)) {
-            failUntilTick.remove(key.entityId());
-            registration.navigation().pathweaver$install(path);
-            dev.pathweaver.PathWeaverRuntime.get().markInstalled();
+            try {
+                registration.navigation().pathweaver$install(path);
+                failUntilTick.remove(key.entityId());
+                dev.pathweaver.PathWeaverRuntime.get().markInstalled();
+            } catch (Throwable installFailure) {
+                failUntilTick.put(key.entityId(), currentTick + FAIL_COOLDOWN_TICKS);
+                dev.pathweaver.PathWeaverRuntime.get().markDiscarded();
+                if (installFailureLogged.compareAndSet(false, true)) {
+                    try {
+                        PathWeaver.LOG.warn("Async path installation failed; the request was discarded "
+                            + "and later requests temporarily run sync.", installFailure);
+                    } catch (Throwable ignored) {
+                        // Callback balance and failure cooldown must survive a broken logging backend.
+                    }
+                }
+            } finally {
+                finishCallback(registration);
+            }
         }
     }
 
@@ -163,7 +187,11 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
 
     /** Forget registrations/cooldowns at a server boundary. Late results cannot match a future key. */
     public void clear() {
-        inFlight.clear();
+        for (Registration registration : inFlight.values().toArray(Registration[]::new)) {
+            if (inFlight.remove(registration.key().entityId(), registration)) {
+                finishDiscard(registration);
+            }
+        }
         failUntilTick.clear();
     }
 }

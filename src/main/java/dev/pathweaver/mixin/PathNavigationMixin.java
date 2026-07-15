@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.pathweaver.PathWeaverRuntime;
 import dev.pathweaver.async.EntityInstallSink;
+import dev.pathweaver.async.EvaluatorCallbackContract;
 import dev.pathweaver.async.NavigationIdentity;
 import dev.pathweaver.async.PathRequest;
 import dev.pathweaver.async.RequestKey;
@@ -18,11 +19,9 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.PathNavigationRegion;
-import net.minecraft.world.level.pathfinder.FlyNodeEvaluator;
 import net.minecraft.world.level.pathfinder.NodeEvaluator;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.level.pathfinder.PathFinder;
-import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -61,7 +60,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
 
     // ---- per-in-flight capture (main thread only; the isRegistered guard ensures one search at a time) ----
     @Unique private int pathweaver$pendingReachRange;
-    @Unique private boolean pathweaver$callbackStarted;
+    @Unique private int pathweaver$pendingDoneCallbacks;
     // FIX 3a: the goal sets the intended speed by calling moveTo(path, speed) right AFTER createPath
     // returns, so this.speedModifier is stale (or 0) at dispatch. Remember the last requested speed via
     // moveTo so the installed path never moves at speed 0.
@@ -267,12 +266,14 @@ public abstract class PathNavigationMixin implements PWNavigation {
             this.pathweaver$pendingReachRange = reachRange;
             this.targetPos = targetsCopy.iterator().next();
 
-            // FIX 2b: replay the live-mob onPathfindingStart on the MAIN thread (the evaluator skips it
-            // off-thread). Only for evaluators that vanilla calls it for: Walk + Fly (not Swim). Balanced
-            // by onPathfindingDone at install/discard.
-            if (pathweaver$callsCallbacks(this.nodeEvaluator.getClass())) {
+            // Replay the exact vanilla per-evaluator callback contract on the MAIN thread. Walk has one
+            // start/done pair; Swim has none. Set the balance bit before invoking untrusted mod code so
+            // even a throwing start is terminally balanced by the outer discard path.
+            EvaluatorCallbackContract callbackContract =
+                EvaluatorCallbackContract.forAsyncEvaluator(this.nodeEvaluator.getClass());
+            this.pathweaver$pendingDoneCallbacks = callbackContract.doneCount();
+            for (int i = 0; i < callbackContract.startCount(); i++) {
                 theMob.onPathfindingStart();
-                this.pathweaver$callbackStarted = true;
             }
 
             rt.markDispatched();
@@ -284,12 +285,6 @@ public abstract class PathNavigationMixin implements PWNavigation {
         }
     }
 
-    @Unique
-    private static boolean pathweaver$callsCallbacks(Class<?> evaluatorClass) {
-        // Verified 26.1.2: WalkNodeEvaluator + FlyNodeEvaluator call onPathfindingStart/Done in
-        // prepare/done; SwimNodeEvaluator does not. (Amphibious is not async-eligible.)
-        return evaluatorClass == WalkNodeEvaluator.class || evaluatorClass == FlyNodeEvaluator.class;
-    }
 
     // ---- PWNavigation duck ----
 
@@ -308,7 +303,6 @@ public abstract class PathNavigationMixin implements PWNavigation {
             this.reachRange = this.pathweaver$pendingReachRange;
             resetStuckTimeout();
         }
-        pathweaver$onPathfindingDone();
     }
 
     @Override
@@ -333,8 +327,9 @@ public abstract class PathNavigationMixin implements PWNavigation {
 
     @Override
     public void pathweaver$onPathfindingDone() {
-        if (this.pathweaver$callbackStarted) {
-            this.pathweaver$callbackStarted = false;
+        int callbacks = this.pathweaver$pendingDoneCallbacks;
+        this.pathweaver$pendingDoneCallbacks = 0;
+        for (int i = 0; i < callbacks; i++) {
             this.mob.onPathfindingDone();
         }
     }

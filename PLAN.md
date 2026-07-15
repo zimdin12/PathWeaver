@@ -68,8 +68,8 @@ Each item requires a failing regression first, a focused green result, the full 
 
 - [x] Introduce tagged `SUCCESS`, `NO_PATH`, and `FAILED` outcomes.
 - [x] Reserve failure cooldown/logging for actual exceptions.
-- Balance callbacks for submit rejection, exception, no-path, stale discard, clear and shutdown.
-- Model evaluator-specific callback multiplicity; keep unsupported evaluators synchronous.
+- [x] Balance callbacks for submit rejection, exception, no-path, stale discard, clear and shutdown.
+- [x] Model evaluator-specific callback multiplicity; keep unsupported evaluators synchronous.
 - [x] Do not silently swallow completion callback failures; count and report delivery exceptions.
 - Record dispatch-to-install latency distribution/counters before broader async eligibility.
 - Deterministically prove accepted-pending movement behavior for no current path, a live current path,

@@ -57,17 +57,63 @@ class EntityInstallSinkTest {
         sink.install(second, dummyPath());
         assertFalse(sink.shouldForceSync(7, 12L));
         assertEquals(1, nav2.installs);
+        assertEquals(1, nav2.dones);
     }
 
-    @Test void clearForgetsEverything() {
+    @Test void clearBalancesLiveRegistrationsAndForgetsCooldowns() {
         EntityInstallSink sink = new EntityInstallSink();
         sink.setTick(5L);
-        RequestKey key = key(1L, 1L, 3);
-        sink.register(key, new FakeNav());
-        sink.failed(key, new IllegalStateException("search failed"));
+        FakeNav failed = new FakeNav();
+        sink.register(key(1L, 1L, 3), failed);
+        sink.failed(key(1L, 1L, 3), new IllegalStateException("search failed"));
+        FakeNav live = new FakeNav();
+        sink.register(key(1L, 2L, 4), live);
+
         sink.clear();
+
         assertFalse(sink.shouldForceSync(3, 6L));
         assertEquals(0, sink.inFlightCount());
+        assertEquals(1, failed.dones);
+        assertEquals(1, live.dones);
+    }
+
+    @Test void throwingCallbackDuringClearCannotStrandOtherRegistrations() {
+        EntityInstallSink sink = new EntityInstallSink();
+        FakeNav throwing = new FakeNav() {
+            @Override public void pathweaver$onPathfindingDone() {
+                dones++;
+                throw new IllegalStateException("callback boom");
+            }
+        };
+        FakeNav other = new FakeNav();
+        sink.register(key(1L, 3L, 5), throwing);
+        sink.register(key(1L, 4L, 6), other);
+
+        assertDoesNotThrow(sink::clear);
+
+        assertEquals(0, sink.inFlightCount());
+        assertEquals(1, throwing.dones);
+        assertEquals(1, other.dones);
+    }
+
+    @Test void installExceptionBalancesCallbackAndForcesLaterSync() {
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(30L);
+        FakeNav throwing = new FakeNav() {
+            @Override public void pathweaver$install(Path path) {
+                installs++;
+                throw new IllegalStateException("install boom");
+            }
+        };
+        RequestKey key = key(1L, 5L, 8);
+        sink.register(key, throwing);
+
+        assertDoesNotThrow(() -> sink.install(key, dummyPath()));
+
+        assertEquals(1, throwing.installs);
+        assertEquals(1, throwing.dones);
+        assertFalse(sink.isRegistered(8));
+        assertTrue(sink.shouldForceSync(8, 31L));
     }
 
     @Test void lateOldResultCannotInstallIntoReplacementRegistrationForSameEntityId() {
@@ -197,21 +243,38 @@ class EntityInstallSinkTest {
         assertEquals(0, nav.installs);
     }
 
-    @Test void lateOldNavigationStopCannotCancelReplacementRegistration() {
+    @Test void lateOldNavigationStopCannotCancelExplicitlyBalancedReplacementRegistration() {
         EntityInstallSink sink = new EntityInstallSink();
         FakeNav oldNavigation = new FakeNav();
         FakeNav replacement = new FakeNav();
         sink.register(key(1L, 1L, 16), oldNavigation);
+        assertTrue(sink.supersede(16));
         sink.register(key(1L, 2L, 16), replacement);
 
         assertFalse(sink.cancel(16, oldNavigation));
         assertTrue(sink.isRegistered(16));
-        assertEquals(0, oldNavigation.dones);
+        assertEquals(1, oldNavigation.dones);
         assertEquals(0, replacement.dones);
 
         assertTrue(sink.cancel(16, replacement));
         assertFalse(sink.isRegistered(16));
         assertEquals(1, replacement.dones);
+    }
+
+    @Test void duplicateRegisterFailsClosedWithoutDisplacingAcceptedRegistration() {
+        EntityInstallSink sink = new EntityInstallSink();
+        FakeNav accepted = new FakeNav();
+        FakeNav duplicate = new FakeNav();
+        RequestKey acceptedKey = key(1L, 10L, 20);
+        sink.register(acceptedKey, accepted);
+
+        assertThrows(IllegalStateException.class,
+            () -> sink.register(key(1L, 11L, 20), duplicate));
+
+        assertTrue(sink.isRegistered(20));
+        sink.discard(acceptedKey);
+        assertEquals(1, accepted.dones);
+        assertEquals(0, duplicate.dones);
     }
 
     @Test void acceptedSameTargetIsPreservedAcrossBothMidFlightConfigToggles() {
@@ -258,7 +321,11 @@ class EntityInstallSinkTest {
         sink.register(key(1L, 5L, 18), throwing);
         assertDoesNotThrow(() -> sink.supersede(18));
         assertFalse(sink.isRegistered(18));
-        assertEquals(2, throwing.dones);
+
+        sink.register(key(1L, 6L, 18), throwing);
+        assertDoesNotThrow(() -> sink.install(key(1L, 6L, 18), dummyPath()));
+        assertFalse(sink.isRegistered(18));
+        assertEquals(3, throwing.dones);
     }
 
     private static RequestKey key(long epoch, long token, int entityId) {

@@ -20,11 +20,16 @@
   ordinary no-path completion and does not trigger the exception cooldown. Actual search exceptions retain
   their cause and take the failure path. Completion-consumer exceptions are counted and logged instead of
   being silently swallowed.
+- Exact Walk searches replay one main-thread start/done callback pair; exact Swim searches replay none.
+  The Walk redirects lock `require=1` and `expect=1`. Success, no-path, failure, stale discard,
+  supersession, stop, install exception, clear, and server shutdown all terminally balance accepted
+  registrations; duplicate registration fails closed without displacing the accepted owner, and callback
+  or logging exceptions cannot strand the remaining registrations.
 
 ### Still pending
 
-Evaluator-specific callback accounting remains a separate reviewed slice. The worker inputs are still
-live-backed until the approved immutable snapshot/private A* replaces the current evaluator reuse.
+The worker inputs are still live-backed until the approved immutable snapshot/private A* replaces the
+current evaluator reuse.
 
 ## 0.1.2 — Default-on routing and fail-closed compatibility (2026-07-15)
 

@@ -14,8 +14,8 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  * {@code done()} calls {@code mob.onPathfindingDone()}. Both are no-ops in vanilla {@code Mob}, but a
  * mod may override them to mutate live entity state — which must never run on a worker thread. When a
  * PathWeaver worker is executing the search we skip these calls here; {@code PathNavigationMixin}
- * replays callbacks on the MAIN thread for accepted requests. Full balancing across clear/shutdown
- * and every terminal race remains v0.2 work.</p>
+ * replays callbacks on the MAIN thread for accepted requests. The request registration owns exact-once
+ * completion across success, discard, clear, shutdown, and exception paths.</p>
  *
  * <p>On the main thread {@code isWorker()} is false, so these redirects call the original callback.
  * Both redirects are required: allowing Walk async without them could run a modded callback's entity
@@ -27,7 +27,8 @@ public class WalkNodeEvaluatorMixin {
     @Redirect(
         method = "prepare(Lnet/minecraft/world/level/PathNavigationRegion;Lnet/minecraft/world/entity/Mob;)V",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Mob;onPathfindingStart()V"),
-        require = 1
+        require = 1,
+        expect = 1
     )
     private void pathweaver$skipStartOffThread(Mob mob) {
         if (!PathWeaverThread.isWorker()) mob.onPathfindingStart();
@@ -36,7 +37,8 @@ public class WalkNodeEvaluatorMixin {
     @Redirect(
         method = "done()V",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Mob;onPathfindingDone()V"),
-        require = 1
+        require = 1,
+        expect = 1
     )
     private void pathweaver$skipDoneOffThread(Mob mob) {
         if (!PathWeaverThread.isWorker()) mob.onPathfindingDone();
