@@ -4,6 +4,19 @@
 
 PathWeaver can move the A* search used by eligible land and aquatic mobs off the server thread. It does not run entity ticks or collision off-thread. Version 0.1.1 defaults asynchronous search **off** while the v0.2 input/lifecycle rework is developed.
 
+### Unreleased v0.2 development status
+
+- Async interception is now armed only by genuine navigation operations; direct/query-only
+  `createPath` calls remain synchronous.
+- Compatibility discovery now reads Fabric-declared configs across Loader-resolved JiJ containers,
+  inspects Mixin's prepared config targets (including plugin contributions), covers evaluator/base/
+  context/navigation/finder targets, removes broad owner trust, and fails closed on incomplete evidence.
+- The standard Fabric content-registry module hooks `PathfindingContext` and `WalkNodeEvaluator` to
+  expose dynamic path-type providers. Those callbacks are not proven worker-safe, so the current
+  fail-closed scanner forces Walk and Swim synchronous when that module is installed.
+- Truly immutable inputs require a private snapshot evaluator and A* port. That work is held pending
+  a scope/equivalence decision; no immutable or vanilla-identical claim is made.
+
 ## Status and safety
 
 PathWeaver 0.1.1 is an alpha honesty release, not a claim of proven thread safety or vanilla-equivalent behavior.
@@ -14,9 +27,9 @@ When explicitly enabled, the worker receives:
 - a per-thread `PathTypeCache`, avoiding writes to the level's shared cache;
 - a `PathNavigationRegion`, which is a read-only **view** of live chunks, not an immutable copy.
 
-The eligible worker path avoids known shared-state writes, but it still reads live chunk and mob state. Those inputs can change during a search. The current general `createPath` interception can also change query-only call semantics, and lifecycle/staleness/foreign-mixin detection are not yet complete safety boundaries. Dispatch-time guards and pool rejection leave that invocation synchronous. A worker exception does not recompute the failed request; it forces later requests for that mob synchronous during a cooldown.
+The eligible worker path avoids known shared-state writes, but it still reads live chunk and mob state. Those inputs can change during a search. Lifecycle/staleness handling is not yet a complete safety boundary. Dispatch-time guards and pool rejection leave that invocation synchronous. A worker exception does not recompute the failed request; it forces later requests for that mob synchronous during a cooldown.
 
-**Back up worlds and opt in only if you accept those limitations.** The v0.2 plan is to replace live inputs with immutable copies, preserve query-only `createPath` behavior, add complete request epochs/staleness checks, balance every callback path, and make compatibility discovery fail closed.
+**Back up worlds and opt in only if you accept those limitations.** Navigation-only routing and fail-closed compatibility discovery have landed on the development branch. Request epochs/staleness, balanced callbacks and tagged outcomes remain; immutable-input work is held as described above.
 
 ## Defaults in 0.1.1
 
@@ -51,7 +64,7 @@ Only exact vanilla evaluator classes are eligible—never subclasses:
   - custom evaluator subclasses
   - evaluator families denied by the startup foreign-mixin scan
 
-The current scanner reduces coverage when it recognizes a foreign evaluator mixin, but it is not yet fail closed: nonstandard/plugin-provided configs, scan failures, navigation/base/context targets, and broad trust rules remain v0.2 work. A clean scan is not proof that an arbitrary pack is safe.
+The development scanner is fail closed over Fabric metadata ownership and Mixin's prepared target sets, including plugin-expanded configs. It emits scanned/failed/denied diagnostics and has no prefix or whole-mod exemptions. A clean scan still proves only that this compatibility gate found no known sensitive mixin target; it does not make the live worker inputs immutable or prove an arbitrary pack safe.
 
 ## What the benchmark proved
 
@@ -72,7 +85,7 @@ Raw profile URLs are listed in [`MODRINTH-COPY-v0.1.1.md`](MODRINTH-COPY-v0.1.1.
 - Fabric API and Cloth Config are required.
 - Lithium is supported in the audited isolated stack, but no blanket compatibility guarantee is made for all versions/configurations.
 - Exact-class gating keeps custom navigators/evaluators synchronous.
-- Unknown or missed mixins can still evade the 0.1.1 scanner; use async only in a pack you have tested.
+- Released 0.1.1 still has the older scanner. Development master fails closed as described above.
 
 ## Building and testing
 

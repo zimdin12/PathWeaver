@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased — v0.2 correctness slices
+
+### Changed
+
+- Async routing is armed only by genuine navigation/recompute operations; direct and query-only
+  `createPath` calls remain synchronous and do not dispatch or mutate navigation path/speed state.
+- Foreign-mixin discovery now fails closed, reads Fabric-declared configs for every Loader-resolved
+  container (including JiJ mods), inspects Mixin's prepared target sets including plugin contributions,
+  and covers `NodeEvaluator`, concrete evaluators, `PathfindingContext`, `PathNavigation`,
+  `GroundPathNavigation`, and `PathFinder`.
+- Prefix and whole-mod trust rules were removed. Exemptions are exact mod-version/config/mixin-class/
+  target audit tuples; none are currently granted.
+- Scanner diagnostics report scanned, failed, and denied counts. The standard Fabric API stack is
+  intentionally forced synchronous because its content-registry module exposes dynamic path-type
+  providers through sensitive pathfinding mixins that are not proven worker-safe.
+
+### Still unresolved
+
+The worker still reads live chunk and mob state. True immutability requires a held private snapshot
+evaluator/A* port. Epoch/token/staleness, callback accounting, tagged outcomes, and positive-tolerance
+repath validity remain separate slices.
+
 ## 0.1.1 — Honesty and default-off patch (2026-07-15)
 
 ### Changed

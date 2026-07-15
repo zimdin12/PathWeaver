@@ -6,7 +6,16 @@
 
 **Default:** asynchronous search off; repath tolerance zero
 
-This document describes what 0.1.1 actually does and the boundaries that remain. It supersedes the original design claims that `PathNavigationRegion` was an immutable snapshot or that async paths were proven identical/safe by construction.
+This document keeps the released 0.1.1 baseline explicit. Development master has since landed two v0.2 slices:
+
+- genuine-navigation-only routing; direct/query-only `createPath` calls remain synchronous;
+- fail-closed compatibility discovery over Loader-resolved Fabric/JiJ metadata and Mixin's prepared
+  target sets, including plugin-expanded configs and shared evaluator/context/navigation/finder targets.
+
+The development scanner has no broad owner exemptions. In the standard Fabric API test stack it detects
+`fabric-content-registries-v0` hooks into `PathfindingContext`/`WalkNodeEvaluator` and denies Walk and
+Swim async eligibility because dynamic path-type providers are not proven worker-safe. Immutable inputs
+remain unresolved and require the held private snapshot-evaluator/A* design.
 
 ## 1. Current mechanism
 
@@ -28,7 +37,7 @@ Forced synchronous:
 - every subclass/custom evaluator
 - evaluator classes denied by the startup foreign-mixin scan
 
-The scanner is defense in depth, not a complete safety boundary. It can miss metadata-declared nonstandard configs, plugin/dynamic mixins, and navigation/base/context targets; scan failures currently do not deny globally. The v0.2 rework must make incomplete evidence fail closed.
+The released 0.1.1 scanner is defense in depth, not a complete safety boundary. It can miss metadata-declared nonstandard configs, plugin/dynamic mixins, and navigation/base/context targets; scan failures do not deny globally. Development master replaces it with the fail-closed scanner summarized above.
 
 ## 3. Current safeguards
 
@@ -53,7 +62,7 @@ These safeguards reduce risk; they do not repair the unresolved contract/input/l
 4. **Lifecycle generations:** shutdown does not await/epoch-isolate every interrupt-ignoring A* completion.
 5. **Callbacks:** every rejection/clear/shutdown/exception path is not yet proven balanced; evaluator-specific multiplicity is not modeled.
 6. **Result typing:** ordinary vanilla `null`/no-path is conflated with worker failure.
-7. **Foreign-mixin discovery:** not fail closed and not complete over Fabric metadata/JiJ/plugins/expanded target classes/exact versioned trust.
+7. **Foreign-mixin discovery in released 0.1.1:** not fail closed and not complete over Fabric metadata/JiJ/plugins/expanded target classes/exact versioned trust. Development master resolves this item.
 8. **Repath elision:** no changed-block guard; therefore the default tolerance is zero.
 
 ## 5. Performance evidence
@@ -71,7 +80,7 @@ Only restore safety/equivalence language after tests and runtime evidence prove:
 - request/server epochs and complete install identity/staleness checks;
 - balanced callback accounting on every terminal path;
 - tagged `SUCCESS` / `NO_PATH` / `FAILED` outcomes;
-- fail-closed mixin discovery with exact versioned trust;
+- fail-closed mixin discovery with exact versioned trust (landed on development master);
 - sync/async node-sequence equivalence across the required Walk/Swim matrix;
 - mutation/lifecycle/restart stress coverage;
 - proof-based near-budget Spark benchmark.

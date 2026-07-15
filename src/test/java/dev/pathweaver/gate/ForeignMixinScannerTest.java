@@ -1,5 +1,7 @@
 package dev.pathweaver.gate;
 
+import com.google.gson.JsonParser;
+import net.minecraft.world.level.pathfinder.SwimNodeEvaluator;
 import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.AnnotationVisitor;
@@ -25,6 +27,69 @@ class ForeignMixinScannerTest {
         Set<Class<?>> hit = ForeignMixinScanner.targetsTouchingAllowlist(
             List.of("net.minecraft.world.entity.Mob"));
         assertTrue(hit.isEmpty());
+    }
+
+    @Test void sharedPathfindingTargetsDenyEveryEligibleEvaluator() {
+        for (String target : List.of(
+            "net.minecraft.world.level.pathfinder.NodeEvaluator",
+            "net.minecraft.world.level.pathfinder.PathfindingContext",
+            "net.minecraft.world.entity.ai.navigation.PathNavigation",
+            "net.minecraft.world.entity.ai.navigation.GroundPathNavigation",
+            "net.minecraft.world.level.pathfinder.PathFinder"
+        )) {
+            assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+                ForeignMixinScanner.denialsForTargets(List.of(target)), target);
+        }
+    }
+
+    @Test void anyDiscoveryFailureFailsClosedForEveryEligibleEvaluator() {
+        ForeignMixinScanner.ScanDecision decision = ForeignMixinScanner.decide(
+            List.of(), List.of("broken nested jar: unreadable"));
+        assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class), decision.denied());
+        assertEquals(0, decision.scanned());
+        assertEquals(1, decision.failed());
+    }
+
+    @Test void activePluginTargetsAreEvaluatedLikeStaticMixins() {
+        ForeignMixinScanner.ActiveConfig pluginConfig = new ForeignMixinScanner.ActiveConfig(
+            "foreign", "1.0", "foreign.mixins.json",
+            Set.of(new ForeignMixinScanner.TargetClaim("foreign.PluginMixin",
+                "net.minecraft.world.level.pathfinder.PathFinder")), true);
+        ForeignMixinScanner.ScanDecision decision = ForeignMixinScanner.decide(
+            List.of(pluginConfig), List.of());
+        assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class), decision.denied());
+        assertEquals(1, decision.scanned());
+        assertEquals(0, decision.failed());
+    }
+
+    @Test void fabricMetadataDiscoveryHonorsServerEnvironmentAndObjectForm() {
+        var metadata = JsonParser.parseString("""
+            {"mixins":[
+              "common.mixins.json",
+              {"config":"server.mixins.json","environment":"server"},
+              {"config":"client.mixins.json","environment":"client"}
+            ]}
+            """).getAsJsonObject();
+        assertEquals(List.of("common.mixins.json", "server.mixins.json"),
+            ForeignMixinScanner.readServerMixinConfigNames(metadata));
+    }
+
+    @Test void malformedFabricMixinMetadataFailsInsteadOfDisappearing() {
+        var metadata = JsonParser.parseString("{\"mixins\":[42]}").getAsJsonObject();
+        assertThrows(IllegalArgumentException.class,
+            () -> ForeignMixinScanner.readServerMixinConfigNames(metadata));
+    }
+
+    @Test void oldBroadTrustRulesAreGone() {
+        assertFalse(ForeignMixinScanner.isAuditedExemption(
+            "fabric-anything", "1", "x.mixins.json", "x.Mixin",
+            "net.minecraft.world.level.pathfinder.PathFinder"));
+        assertFalse(ForeignMixinScanner.isAuditedExemption(
+            "diagonal-anything", "1", "x.mixins.json", "x.Mixin",
+            "net.minecraft.world.level.pathfinder.PathFinder"));
+        assertFalse(ForeignMixinScanner.isAuditedExemption(
+            "lithium", "unknown", "x.mixins.json", "x.Mixin",
+            "net.minecraft.world.level.pathfinder.PathFinder"));
     }
 
     // ---- ASM annotation reader (synthesize a @Mixin-annotated class, read it back) ----

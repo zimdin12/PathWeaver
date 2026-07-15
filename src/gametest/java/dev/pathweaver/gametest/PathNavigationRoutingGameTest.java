@@ -2,6 +2,8 @@ package dev.pathweaver.gametest;
 
 import dev.pathweaver.PathWeaverRuntime;
 import dev.pathweaver.config.PathWeaverConfig;
+import dev.pathweaver.gate.ForeignMixinScanner;
+import dev.pathweaver.gate.SafetyGate;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -10,8 +12,11 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.level.pathfinder.SwimNodeEvaluator;
+import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
 
 import java.lang.reflect.Field;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 
@@ -25,9 +30,41 @@ public final class PathNavigationRoutingGameTest {
         boolean oldAsync = cfg.asyncEnabled;
         boolean oldFallback = cfg.syncFallbackOnly;
         int oldTolerance = cfg.repathToleranceBlocks;
-        Runnable teardown = () -> restore(cfg, oldAsync, oldFallback, oldTolerance);
+        Set<Class<?>> oldDenials;
+        synchronized (SafetyGate.deniedBySafety) {
+            oldDenials = Set.copyOf(SafetyGate.deniedBySafety);
+        }
+        Runnable teardown = () -> {
+            restore(cfg, oldAsync, oldFallback, oldTolerance);
+            synchronized (SafetyGate.deniedBySafety) {
+                SafetyGate.deniedBySafety.clear();
+                SafetyGate.deniedBySafety.addAll(oldDenials);
+            }
+        };
 
         try {
+            ForeignMixinScanner.ScanReport scan = ForeignMixinScanner.lastScanReport();
+            check(helper, scan.decision().failed() == 0,
+                "live scanner discovery must complete without fallback denial");
+            check(helper, scan.decision().scanned() > 0,
+                "live scanner must inspect prepared foreign configs");
+            ForeignMixinScanner.ActiveConfig fabricPathHooks = scan.configs().stream()
+                .filter(c -> c.modId().equals("fabric-content-registries-v0")
+                    && c.configName().equals("fabric-content-registries-v0.mixins.json"))
+                .findFirst().orElse(null);
+            check(helper, fabricPathHooks != null,
+                "scanner must attribute Fabric content-registry pathfinding hooks exactly");
+            check(helper, fabricPathHooks.claims().containsAll(Set.of(
+                new ForeignMixinScanner.TargetClaim(
+                    "net.fabricmc.fabric.mixin.content.registry.PathfindingContextMixin",
+                    "net.minecraft.world.level.pathfinder.PathfindingContext"),
+                new ForeignMixinScanner.TargetClaim(
+                    "net.fabricmc.fabric.mixin.content.registry.WalkNodeEvaluatorMixin",
+                    "net.minecraft.world.level.pathfinder.WalkNodeEvaluator"))),
+                "scanner must retain concrete mixin identities and sensitive targets");
+            check(helper, oldDenials.containsAll(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class)),
+                "live scanner must fail closed on Fabric's pathfinding registry hooks");
+            SafetyGate.deniedBySafety.clear();
             cfg.asyncEnabled = true;
             cfg.syncFallbackOnly = false;
             cfg.repathToleranceBlocks = 0;
