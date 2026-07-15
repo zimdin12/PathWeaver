@@ -10,7 +10,7 @@ import net.minecraft.server.MinecraftServer;
  * Holds PathWeaver's live services and drives their per-server / per-tick lifecycle. The interceptor
  * (Feature A) dispatches into {@link #pool()} and {@link #installer()}; the installer is drained once
  * per tick on the main thread. Start/stop clear the currently tracked queues/maps/counter. Version
- * 0.1.1 does not yet epoch or await interrupt-ignoring workers, so complete cross-session isolation
+ * 0.1.2 does not yet epoch or await interrupt-ignoring workers, so complete cross-session isolation
  * remains v0.2 work.
  */
 public final class PathWeaverRuntime {

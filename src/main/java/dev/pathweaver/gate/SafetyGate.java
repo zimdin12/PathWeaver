@@ -10,8 +10,8 @@ import java.util.Set;
 /**
  * Decides whether a mob's A* search may run off-thread. The rule: the mob's NodeEvaluator must be
  * EXACTLY one of the temporarily eligible vanilla evaluator classes. The worker still consumes a
- * read-only region view backed by live chunks and live mob inputs, so async remains experimental and
- * opt-in while v0.2 replaces those inputs with immutable copies.
+ * read-only region view backed by live chunks and live mob inputs, so async remains experimental even
+ * though v0.1.2 enables it by default. The fail-closed scanner may force eligible families sync.
  *
  * Exact-class ({@code getClass() ==}), never {@code instanceof}: a mod evaluator that
  * {@code extends WalkNodeEvaluator} (e.g. stormiespiders' AdvancedWalkNodeProcessor) reads live

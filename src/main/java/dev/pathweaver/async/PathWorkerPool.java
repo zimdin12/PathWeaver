@@ -28,7 +28,7 @@ public class PathWorkerPool {
 
     /**
      * Start/restart the executor and reset the shared counter. This prevents dropped queued tasks from
-     * permanently consuming capacity, but 0.1.1 has no epoch: an interrupt-ignoring old task may still
+     * permanently consuming capacity, but 0.1.2 has no epoch: an interrupt-ignoring old task may still
      * decrement this counter after restart. The v0.2 lifecycle protocol must isolate generations.
      */
     public synchronized void start(int threads, int maxInFlight) {

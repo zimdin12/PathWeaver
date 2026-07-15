@@ -1,88 +1,93 @@
 # PathWeaver design status
 
-**Release line:** 0.1.1 alpha honesty patch
+**Release line:** 0.1.2 default-on alpha
 
-**Target:** Minecraft 26.1.2, Fabric Loader, Java 25
+**Target:** Minecraft 26.1.2, Fabric Loader 0.19.3, Java 25
 
-**Default:** asynchronous search off; repath tolerance zero
+**Defaults:** asynchronous search on; repath tolerance zero
 
-This document keeps the released 0.1.1 baseline explicit. Development master has since landed two v0.2 slices:
-
-- genuine-navigation-only routing; direct/query-only `createPath` calls remain synchronous;
-- fail-closed compatibility discovery over Loader-resolved Fabric/JiJ metadata and Mixin's prepared
-  target sets, including plugin-expanded configs and shared evaluator/context/navigation/finder targets.
-
-The development scanner has no broad owner exemptions. In the standard Fabric API test stack it detects
-`fabric-content-registries-v0` hooks into `PathfindingContext`/`WalkNodeEvaluator` and denies Walk and
-Swim async eligibility because dynamic path-type providers are not proven worker-safe. Immutable inputs
-remain unresolved and require the held private snapshot-evaluator/A* design.
+This document describes v0.1.2. It does not restore the original unsupported claims that `PathNavigationRegion` was an immutable snapshot or that async paths were safe by construction, vanilla-identical, or universally faster.
 
 ## 1. Current mechanism
 
-PathWeaver intercepts `PathNavigation.createPath`. For an eligible exact vanilla evaluator and an enabled config, it builds a `PathNavigationRegion` and submits A* to a bounded executor. Each request uses a fresh evaluator/finder. A worker-local `PathTypeCache` prevents the search from writing the level's shared path-type cache. Completion is returned to the main thread and installed through navigation state.
+PathWeaver arms async interception only around four proven genuine-navigation `createPath` invocations in `PathNavigation`: coordinate movement, coordinate movement with explicit reach, entity movement, and recomputation. Direct/external/query-only `createPath` calls remain vanilla synchronous.
 
-`PathNavigationRegion` is a read-only API view backed by live `LevelChunk` objects. It is **not a block/fluid copy**. The worker also receives the live `Mob`; vanilla evaluator code reads its position, bounding box, attributes, malus values and level. Consequently 0.1.1 is experimental opt-in behavior, not a thread-safety proof.
+For an enabled, permitted navigation request, PathWeaver builds a `PathNavigationRegion` and submits A* to a bounded executor. Each request uses a fresh evaluator/finder. A worker-local `PathTypeCache` avoids writes to the level's shared path-type cache. Completion is returned to the main thread and installed through navigation state.
 
-## 2. Eligibility in 0.1.1
+`PathNavigationRegion` is a read-only API view backed by live `LevelChunk` objects. It is **not a block/fluid copy**. The worker also receives the live `Mob`; vanilla evaluator code reads its position, bounding box, attributes, malus values, and level. Default-on v0.1.2 is therefore an experimental opt-out alpha, not a thread-safety proof.
 
-Exact-class allowlist:
+## 2. Default and fallback behavior
+
+New v0.1.2 configurations use `asyncEnabled=true`. Existing files are not migrated and retain their explicit value.
+
+Users can prevent async dispatch with either:
+
+- `asyncEnabled=false`; or
+- `syncFallbackOnly=true`.
+
+Dispatch saturation/rejection leaves that same invocation synchronous. A worker exception is different: the failed request is discarded and only later requests for that mob are forced synchronous during a cooldown.
+
+Repath tolerance remains `0`, so the experimental widened Feature B short-circuit is inactive by default.
+
+## 3. Eligibility
+
+Exact-class candidates:
 
 - `WalkNodeEvaluator`
 - `SwimNodeEvaluator`
 
 Forced synchronous:
 
-- `FlyNodeEvaluator`: flying start-node selection advances the live mob RNG
-- `AmphibiousNodeEvaluator`: `prepare`/`done` write live mob water malus
-- every subclass/custom evaluator
-- evaluator classes denied by the startup foreign-mixin scan
+- `FlyNodeEvaluator`: start-node selection advances the live mob RNG;
+- `AmphibiousNodeEvaluator`: `prepare`/`done` write live mob water malus;
+- every subclass/custom evaluator;
+- any family denied by compatibility discovery.
 
-The released 0.1.1 scanner is defense in depth, not a complete safety boundary. It can miss metadata-declared nonstandard configs, plugin/dynamic mixins, and navigation/base/context targets; scan failures do not deny globally. Development master replaces it with the fail-closed scanner summarized above.
+## 4. Fail-closed compatibility discovery
 
-## 3. Current safeguards
+At initialization, PathWeaver:
 
-- New configs default `asyncEnabled=false`.
+- reads Fabric-declared server mixin configs for every Loader-resolved container, including JiJ mods;
+- reconciles every declaration with Mixin's prepared active configs;
+- retains exact mod ID, version, config, concrete mixin class, and target identity;
+- includes plugin-expanded prepared targets;
+- covers concrete evaluators, `NodeEvaluator`, `PathfindingContext`, `PathNavigation`, `GroundPathNavigation`, and `PathFinder`;
+- denies Walk and Swim on metadata, ownership, reconciliation, reflection, or parsing failure;
+- grants no prefix, whole-mod, or exact exemptions in v0.1.2.
+
+The standard Fabric content-registry module mixes into `PathfindingContext` and `WalkNodeEvaluator` to expose dynamic path-type providers. Those callbacks are not proven worker-safe, so the scanner forces Walk and Swim synchronous in that stack. This is an intentional safety reduction, not an error.
+
+## 5. Current safeguards
+
+- Async is on by default but remains behind exact evaluator and fail-closed compatibility gates.
+- Direct/query-only `createPath` stays synchronous.
 - Repath tolerance defaults to zero.
-- `poolThreads`, `maxInFlight`, repath tolerance and staleness distance are clamped after load.
+- Thread, in-flight, tolerance, and staleness values are bounded after load.
 - Fresh finder/evaluator per request.
 - Per-thread path-type cache.
 - Main-thread completion/install path.
-- Exact evaluator class gate.
-- Dispatch-time saturation/rejection leaves that invocation synchronous.
-- Worker exceptions mark the result failed and force later requests synchronous during a cooldown;
-  the failed request itself is not recomputed synchronously.
+- Dispatch rejection keeps the same invocation synchronous.
+- Users have both normal and panic-switch opt-outs.
 
-These safeguards reduce risk; they do not repair the unresolved contract/input/lifecycle defects below.
+These measures reduce known risk; they do not repair the unresolved live-input and lifecycle defects below.
 
-## 4. Known 0.1.1 defects
+## 6. Remaining defects
 
-1. **General `createPath` contract:** callers may use `createPath` only to query reachability. Returning old/null immediately and later installing the completed path can give a wrong answer and force movement that was never requested.
-2. **Live inputs:** region reads reach live chunks; evaluators read a live mob. A staleness distance check cannot make those inputs immutable.
-3. **Incomplete staleness identity:** target generation, maximum age, dimension/world identity, server epoch, entity UUID and exact navigation/request identity are not all bound and checked.
-4. **Lifecycle generations:** shutdown does not await/epoch-isolate every interrupt-ignoring A* completion.
-5. **Callbacks:** every rejection/clear/shutdown/exception path is not yet proven balanced; evaluator-specific multiplicity is not modeled.
-6. **Result typing:** ordinary vanilla `null`/no-path is conflated with worker failure.
-7. **Foreign-mixin discovery in released 0.1.1:** not fail closed and not complete over Fabric metadata/JiJ/plugins/expanded target classes/exact versioned trust. Development master resolves this item.
-8. **Repath elision:** no changed-block guard; therefore the default tolerance is zero.
+1. **Live inputs:** region reads reach live chunks and evaluators read a live mob.
+2. **Incomplete staleness identity:** target generation, maximum age, dimension/world identity, server epoch, entity UUID, navigation identity, and request identity are not all bound and checked.
+3. **Lifecycle generations:** shutdown does not epoch-isolate every interrupt-ignoring worker completion.
+4. **Callbacks:** rejection, clear, shutdown, and exception paths are not yet proven evaluator-specifically balanced.
+5. **Result typing:** ordinary vanilla `null`/no-path is conflated with worker failure.
+6. **Repath elision:** positive tolerance has no complete endpoint/navigation/changed-block validity proof.
 
-## 5. Performance evidence
+## 7. Performance evidence
 
 Four real paired Spark runs in an isolated 160-zombie Walk workload measured a 90.97% reduction in Server-thread `WalkNodeEvaluator` inclusive samples and a 76.60% reduction in self samples. `PathFinder` samples moved fully off the Server thread in those captures.
 
-Net MSPT did not improve reliably: average mean MSPT was 2.927 ms OFF versus 3.012 ms ON, with paired deltas ranging from -12.70% to +19.89%. The evidence supports an **offload** claim only. A v0.2 benchmark must also use a pathfinding load near the tick budget before any TPS/MSPT improvement claim is considered.
+Net MSPT did not improve reliably: average mean MSPT was 2.927 ms OFF versus 3.012 ms ON. This supports an offload claim only. A near-tick-budget Walk/Swim benchmark is required before deciding whether to begin the large snapshot evaluator/A* port.
 
-## 6. v0.2 acceptance boundary
+## 8. Snapshot-engine acceptance boundary
 
-Only restore safety/equivalence language after tests and runtime evidence prove:
+The approved future architecture is an in-mod immutable snapshot evaluator plus private A* loop as PathWeaver's sole async engine behind `asyncEnabled`. It begins only after the remaining tractable correctness slices and a meaningful near-budget load result.
 
-- real-navigation-only async dispatch while query-only `createPath` remains synchronous;
-- immutable block/fluid and mob-derived worker inputs, including captured RNG/world identity;
-- request/server epochs and complete install identity/staleness checks;
-- balanced callback accounting on every terminal path;
-- tagged `SUCCESS` / `NO_PATH` / `FAILED` outcomes;
-- fail-closed mixin discovery with exact versioned trust (landed on development master);
-- sync/async node-sequence equivalence across the required Walk/Swim matrix;
-- mutation/lifecycle/restart stress coverage;
-- proof-based near-budget Spark benchmark.
-
-Until those gates pass, 0.1.1 remains default-off and experimental.
+No safety or path-equivalence language is earned until exhaustive sync-versus-snapshot tests prove Walk/Swim path equivalence across offset-upward behavior, multi-target selection, doors, fences, water, height/fall constraints, malus values, and step-height variation.

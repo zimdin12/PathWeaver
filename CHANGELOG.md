@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased — v0.2 correctness slices
+## 0.1.2 — Default-on routing and fail-closed compatibility (2026-07-15)
 
 ### Changed
 
+- Async search defaults **on** for newly generated configs. Existing files retain their explicit value;
+  set `asyncEnabled=false` or `syncFallbackOnly=true` to opt out.
 - Async routing is armed only by genuine navigation/recompute operations; direct and query-only
   `createPath` calls remain synchronous and do not dispatch or mutate navigation path/speed state.
 - Foreign-mixin discovery now fails closed, reads Fabric-declared configs for every Loader-resolved
@@ -18,9 +20,10 @@
 
 ### Still unresolved
 
-The worker still reads live chunk and mob state. True immutability requires a held private snapshot
-evaluator/A* port. Epoch/token/staleness, callback accounting, tagged outcomes, and positive-tolerance
-repath validity remain separate slices.
+The worker still reads live chunk and mob state. True immutability requires the approved but benchmark-
+gated private snapshot evaluator/A* port. Epoch/token/staleness, callback accounting, tagged outcomes,
+and positive-tolerance repath validity remain separate slices. Default-on does not imply proven safety,
+vanilla equivalence, or a net MSPT improvement.
 
 ## 0.1.1 — Honesty and default-off patch (2026-07-15)
 

@@ -17,7 +17,7 @@ public class PathWeaverConfig implements ConfigData {
     public static final double MAX_STALENESS_MOVE_THRESHOLD = 1024.0;
 
     @ConfigEntry.Gui.Tooltip
-    public boolean asyncEnabled = false;
+    public boolean asyncEnabled = true;
 
     @ConfigEntry.Gui.Tooltip
     public boolean repathElisionEnabled = true;

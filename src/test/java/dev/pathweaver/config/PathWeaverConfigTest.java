@@ -1,5 +1,6 @@
 package dev.pathweaver.config;
 
+import com.google.gson.Gson;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -18,13 +19,22 @@ class PathWeaverConfigTest {
         c.poolThreads = 3;
         assertEquals(3, c.resolvedPoolThreads());
     }
-    @Test void defaultsAreConservative() {
+    @Test void defaultsEnableAsyncWithConservativeFallbacks() {
         PathWeaverConfig c = new PathWeaverConfig();
-        assertFalse(c.asyncEnabled);
+        assertTrue(c.asyncEnabled);
         assertTrue(c.repathElisionEnabled);
         assertFalse(c.distanceThrottleEnabled);
         assertFalse(c.syncFallbackOnly);
         assertEquals(0, c.repathToleranceBlocks);
+    }
+    @Test void persistedFalseOverridesDefaultOnInitializer() {
+        PathWeaverConfig c = new Gson().fromJson(
+            "{\"asyncEnabled\":false,\"syncFallbackOnly\":false}", PathWeaverConfig.class);
+
+        c.validatePostLoad();
+
+        assertFalse(c.asyncEnabled);
+        assertFalse(c.syncFallbackOnly);
     }
     @Test void invalidLowAndNonFiniteValuesAreClampedPostLoad() {
         PathWeaverConfig c = new PathWeaverConfig();

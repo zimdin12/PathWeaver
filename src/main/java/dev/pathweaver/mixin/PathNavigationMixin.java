@@ -277,8 +277,8 @@ public abstract class PathNavigationMixin implements PWNavigation {
         double speed = pathweaver$lastRequestedSpeed > 0.0 ? pathweaver$lastRequestedSpeed : this.speedModifier;
         moveTo(path, speed);
 
-        // Replay selected createPath bookkeeping needed by recompute/stuck handling. This does not
-        // repair the general query-only createPath contract; that remains v0.2 work.
+        // Replay selected createPath bookkeeping needed by genuine navigation/recompute requests.
+        // Query-only createPath calls cannot reach this async install path because routing depth stays zero.
         BlockPos target = path.getTarget();
         if (target != null) {
             this.targetPos = target;
