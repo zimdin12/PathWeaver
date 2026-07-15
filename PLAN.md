@@ -119,4 +119,11 @@ Each item requires a failing regression first, a focused green result, the full 
   fix and coordinate an immediate Modrinth patch after in-game no-crash verification; do not wait for the
   v0.2 review. Inert fail-closed behavior alone is not classified as that emergency.
 
+### Deferred v0.3 research candidate — sensor/target-scan offload
+
+Do not start before v0.2 ships. Research only if an exact sensor purity audit proves candidate discovery is
+read-only and a benchmark shows material payoff beyond Lithium/current optimizations. Any future design
+may offload only snapshot-backed spatial reads; validation plus Brain/memory mutation remains on the main
+thread, and uncertainty degrades to synchronous behavior.
+
 No claim of safe, equivalent or faster behavior is restored unless the corresponding test/runtime gate proves it. Multi-version work remains out of scope until explicitly approved.
