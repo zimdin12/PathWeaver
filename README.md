@@ -49,7 +49,10 @@ A private snapshot evaluator and A* port is approved as the eventual single asyn
 ```
 
 - `asyncEnabled=true`: async is attempted by default only after every runtime gate passes.
-- `repathToleranceBlocks=0`: Feature B does not widen vanilla's short-circuit by default.
+- `repathToleranceBlocks=0`: Feature B does not widen vanilla's short-circuit by default. Positive values
+  require a reached active path, exact reach agreement, valid endpoint and navigation state, and are always
+  bypassed by normal recompute/block-change invalidation. Recompute also supersedes same-target pending work
+  so the replacement request observes fresh world facts.
 - Invalid numeric values are clamped before executor startup.
 - `syncFallbackOnly=true` prevents all async dispatch.
 

@@ -292,6 +292,9 @@ class EntityInstallSinkTest {
             dev.pathweaver.config.PathWeaverConfig.set(toggled);
             assertEquals(EntityInstallSink.PendingDecision.PRESERVE,
                 sink.pendingDecision(17, nav, target));
+            assertEquals(EntityInstallSink.PendingDecision.SUPERSEDE,
+                sink.pendingDecision(17, nav, target, true),
+                "recompute/block-change invalidation must replace even same-target pending work");
 
             toggled.asyncEnabled = true;
             toggled.syncFallbackOnly = true;

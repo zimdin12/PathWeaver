@@ -25,6 +25,14 @@
   supersession, stop, install exception, clear, and server shutdown all terminally balance accepted
   registrations; duplicate registration fails closed without displacing the accepted owner, and callback
   or logging exceptions cannot strand the remaining registrations.
+- Positive Feature B reuse now requires a reached, active path, exact reach-range agreement, a navigation
+  that can update, and one requested target satisfying both path-target tolerance and endpoint reach. A valid
+  reuse advances navigation target intent so later recomputation follows the new target.
+  `recomputePath()` is scoped by exact `HEAD`/`RETURN` injections so block-change recomputation cannot reuse
+  the invalidated path or preserve same-target pending work; it supersedes that registration and dispatches
+  from fresh world facts. Live GameTest proof covers pending replacement, valid one-block drift, and forced
+  recompute replacement.
+  The shipped/default tolerance remains `0` as the conservative product setting.
 
 ### Still pending
 

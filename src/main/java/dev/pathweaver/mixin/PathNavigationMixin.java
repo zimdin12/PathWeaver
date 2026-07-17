@@ -71,6 +71,19 @@ public abstract class PathNavigationMixin implements PWNavigation {
      */
     @Unique private int pathweaver$navigationRequestDepth;
     @Unique private long pathweaver$targetRevision;
+    @Unique private boolean pathweaver$recomputeInvalidated;
+
+    @Inject(method = "recomputePath()V", at = @At("HEAD"), require = 1, expect = 1)
+    private void pathweaver$beginRecomputeInvalidation(
+            org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+        this.pathweaver$recomputeInvalidated = true;
+    }
+
+    @Inject(method = "recomputePath()V", at = @At("RETURN"), require = 1, expect = 1)
+    private void pathweaver$endRecomputeInvalidation(
+            org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+        this.pathweaver$recomputeInvalidated = false;
+    }
 
     @WrapOperation(
         method = "recomputePath()V",
@@ -169,7 +182,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // A repeated request for the same semantic target shares the accepted pending operation. A
         // materially different request cancels the old registration before sync/async routing continues.
         EntityInstallSink.PendingDecision pendingDecision = this.level instanceof ServerLevel
-            ? sink.pendingDecision(entityId, this, requestTarget)
+            ? sink.pendingDecision(entityId, this, requestTarget, this.pathweaver$recomputeInvalidated)
             : EntityInstallSink.PendingDecision.NONE;
         if (pendingDecision == EntityInstallSink.PendingDecision.PRESERVE) {
             cir.setReturnValue(this.path);
@@ -179,14 +192,26 @@ public abstract class PathNavigationMixin implements PWNavigation {
             if (intentAdvanced) pathweaver$targetRevision++;
         }
 
-        // Feature B: opt-in repath elision. A zero tolerance disables this injection entirely; the
-        // v0.2 changed-block/endpoint validity work is required before it can become a default.
-        if (cfg.repathElisionEnabled && cfg.repathToleranceBlocks > 0
-                && this.path != null && !this.path.isDone()
-                && dev.pathweaver.elision.RepathTolerance.anyWithinTolerance(
-                        targets, this.targetPos, cfg.repathToleranceBlocks)) {
-            cir.setReturnValue(this.path);
-            return;
+        // Feature B remains opt-in. Recompute (including changed-block invalidation) always bypasses
+        // tolerance reuse; ordinary target drift must satisfy endpoint, reach and navigation validity.
+        if (cfg.repathElisionEnabled && cfg.repathToleranceBlocks > 0 && this.path != null) {
+            Path currentPath = this.path;
+            net.minecraft.world.level.pathfinder.Node endpoint = currentPath.getEndNode();
+            var current = new dev.pathweaver.elision.RepathTolerance.CurrentPath(
+                currentPath.getTarget(),
+                endpoint == null ? null : new BlockPos(endpoint.x, endpoint.y, endpoint.z),
+                currentPath.canReach(), currentPath.isDone(), canUpdatePath(),
+                this.pathweaver$recomputeInvalidated, this.reachRange);
+            BlockPos reusableTarget = dev.pathweaver.elision.RepathTolerance.reusableTarget(
+                targets, current, reachRange, cfg.repathToleranceBlocks);
+            if (reusableTarget != null) {
+                if (!reusableTarget.equals(this.targetPos)) {
+                    this.targetPos = reusableTarget;
+                    this.pathweaver$targetRevision++;
+                }
+                cir.setReturnValue(currentPath);
+                return;
+            }
         }
 
         // Feature A: async dispatch.

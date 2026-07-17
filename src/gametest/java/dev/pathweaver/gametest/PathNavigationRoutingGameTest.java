@@ -29,13 +29,14 @@ public final class PathNavigationRoutingGameTest {
         PathWeaverConfig cfg = PathWeaverConfig.get();
         boolean oldAsync = cfg.asyncEnabled;
         boolean oldFallback = cfg.syncFallbackOnly;
+        boolean oldElision = cfg.repathElisionEnabled;
         int oldTolerance = cfg.repathToleranceBlocks;
         Set<Class<?>> oldDenials;
         synchronized (SafetyGate.deniedBySafety) {
             oldDenials = Set.copyOf(SafetyGate.deniedBySafety);
         }
         Runnable teardown = () -> {
-            restore(cfg, oldAsync, oldFallback, oldTolerance);
+            restore(cfg, oldAsync, oldFallback, oldElision, oldTolerance);
             synchronized (SafetyGate.deniedBySafety) {
                 SafetyGate.deniedBySafety.clear();
                 SafetyGate.deniedBySafety.addAll(oldDenials);
@@ -84,6 +85,7 @@ public final class PathNavigationRoutingGameTest {
         BlockPos target = helper.absolutePos(new BlockPos(6, 2, 1));
         long baseDispatched = runtimeCounter("dispatched");
         long baseInstalled = runtimeCounter("installed");
+        long baseDiscarded = runtimeCounter("discarded");
 
         // Belt-and-suspenders teardown for a framework-level timeout that bypasses a scheduled poll.
         helper.onEachTick(() -> {
@@ -124,6 +126,15 @@ public final class PathNavigationRoutingGameTest {
             check(helper, runtimeCounter("dispatched") == baseDispatched + 2,
                 "exactly the coordinate + entity movement requests must dispatch");
 
+            setTimeLastRecompute(queryNav, -100L);
+            queryNav.recomputePath();
+            check(helper, PathWeaverRuntime.get().entitySink().isRegistered(coordinateMob.getId()),
+                "recompute must replace same-target accepted pending work");
+            check(helper, runtimeCounter("dispatched") == baseDispatched + 3,
+                "pending recompute must dispatch one fresh request from current world facts");
+            check(helper, runtimeCounter("discarded") == baseDiscarded + 1,
+                "pending recompute must account exactly one superseded request");
+
             pollUntil(helper, 80, () -> helper.getTick() >= 25
                     && !PathWeaverRuntime.get().entitySink().isRegistered(coordinateMob.getId())
                     && !PathWeaverRuntime.get().entitySink().isRegistered(entityMob.getId())
@@ -134,13 +145,34 @@ public final class PathNavigationRoutingGameTest {
                 queryNav.recomputePath();
                 check(helper, PathWeaverRuntime.get().entitySink().isRegistered(coordinateMob.getId()),
                     "recomputePath must arm and dispatch async path creation");
-                check(helper, runtimeCounter("dispatched") == baseDispatched + 3,
+                check(helper, runtimeCounter("dispatched") == baseDispatched + 4,
                     "recompute must contribute exactly one additional dispatch");
                 pollUntil(helper, 150, () ->
                         !PathWeaverRuntime.get().entitySink().isRegistered(coordinateMob.getId())
                         && queryNav.getPath() != null
                         && runtimeCounter("installed") == baseInstalled + 3,
                     "recompute request did not install before the deadline", teardown, () -> {
+                        cfg.asyncEnabled = false;
+                        cfg.repathElisionEnabled = true;
+                        cfg.repathToleranceBlocks = 1;
+                        Path reusable = queryNav.getPath();
+                        BlockPos drifted = target.offset(1, 0, 0);
+                        check(helper, reusable != null && reusable.canReach(),
+                            "Feature B baseline must be a reached live path");
+                        check(helper, queryNav.moveTo(drifted.getX() + 0.5, drifted.getY(),
+                            drifted.getZ() + 0.5, 1.0),
+                            "valid one-block target drift must reuse the live path");
+                        check(helper, queryNav.getPath() == reusable,
+                            "valid drift must preserve exact live path identity");
+                        check(helper, drifted.equals(targetPos(queryNav)),
+                            "valid drift must advance navigation target intent for later recompute");
+
+                        setTimeLastRecompute(queryNav, -100L);
+                        queryNav.recomputePath();
+                        check(helper, queryNav.getPath() != null,
+                            "recompute must produce a replacement path");
+                        check(helper, queryNav.getPath() != reusable,
+                            "recompute/changed-block invalidation must bypass tolerance reuse");
                         teardown.run();
                         helper.succeed();
                     });
@@ -169,6 +201,26 @@ public final class PathNavigationRoutingGameTest {
         });
     }
 
+    private static void setTimeLastRecompute(PathNavigation navigation, long tick) {
+        try {
+            Field field = PathNavigation.class.getDeclaredField("timeLastRecompute");
+            field.setAccessible(true);
+            field.setLong(navigation, tick);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("could not set PathNavigation.timeLastRecompute", e);
+        }
+    }
+
+    private static BlockPos targetPos(PathNavigation navigation) {
+        try {
+            Field field = PathNavigation.class.getDeclaredField("targetPos");
+            field.setAccessible(true);
+            return (BlockPos) field.get(navigation);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("could not inspect PathNavigation.targetPos", e);
+        }
+    }
+
     private static double speedModifier(PathNavigation navigation) {
         try {
             Field field = PathNavigation.class.getDeclaredField("speedModifier");
@@ -189,9 +241,11 @@ public final class PathNavigationRoutingGameTest {
         }
     }
 
-    private static void restore(PathWeaverConfig cfg, boolean async, boolean fallback, int tolerance) {
+    private static void restore(PathWeaverConfig cfg, boolean async, boolean fallback,
+                                boolean elision, int tolerance) {
         cfg.asyncEnabled = async;
         cfg.syncFallbackOnly = fallback;
+        cfg.repathElisionEnabled = elision;
         cfg.repathToleranceBlocks = tolerance;
     }
 

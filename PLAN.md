@@ -88,7 +88,8 @@ Each item requires a failing regression first, a focused green result, the full 
 
 ### Repath elision
 
-- Keep tolerance zero until endpoint/reach/navigation validity and changed-block invalidation are implemented and tested.
+- [x] Implement and test endpoint/reach/navigation validity plus changed-block recompute invalidation.
+- [x] Retain tolerance zero as the conservative default after the positive-tolerance proof.
 
 ### Required test/evidence matrix
 

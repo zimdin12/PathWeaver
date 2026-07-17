@@ -75,14 +75,13 @@ The standard Fabric content-registry module mixes into `PathfindingContext` and 
 - Dispatch rejection keeps the same invocation synchronous.
 - Users have both normal and panic-switch opt-outs.
 
-These measures reduce known risk; they do not repair the unresolved live-input and lifecycle defects below.
+These measures reduce known risk; they do not repair the unresolved live-input defect below.
 
 ## 6. Remaining defects
 
 1. **Live inputs:** region reads reach live chunks and evaluators read a live mob.
 2. **Live-input immutability:** completed install staleness can reject an obsolete result but cannot undo
    worker reads that raced live chunk/mob state; the private snapshot engine remains required.
-3. **Repath elision:** positive tolerance has no complete endpoint/navigation/changed-block validity proof.
 
 Worker results are now explicitly tagged `SUCCESS`, `NO_PATH`, or `FAILED`; ordinary vanilla `null` is
 `NO_PATH` and only actual exceptions enter failure cooldown/logging.
@@ -90,6 +89,13 @@ Worker results are now explicitly tagged `SUCCESS`, `NO_PATH`, or `FAILED`; ordi
 Callback replay is evaluator-specific and exact: Walk owns one main-thread start/done pair and Swim owns
 none. Every accepted-registration terminal path, including clear/shutdown and install exceptions, removes
 first and balances completion behind a contained callback boundary.
+
+Positive repath tolerance now requires an active reached path, exact reach-range agreement, current
+navigation update eligibility, and one target that satisfies both path-target tolerance and endpoint
+reach. Successful reuse advances navigation target intent. Recompute is explicitly invalidated from `HEAD`
+through `RETURN`, so normal block-change recompute cannot take the widened reuse path or preserve same-target
+pending work; the old registration is terminally superseded and a fresh request uses current world facts.
+Tolerance remains `0` by default despite this proof.
 
 ## 7. Performance evidence
 

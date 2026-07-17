@@ -52,8 +52,14 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     }
 
     public PendingDecision pendingDecision(int entityId, PWNavigation navigation, RequestTarget target) {
+        return pendingDecision(entityId, navigation, target, false);
+    }
+
+    public PendingDecision pendingDecision(int entityId, PWNavigation navigation, RequestTarget target,
+                                           boolean recomputeInvalidated) {
         Registration registration = inFlight.get(entityId);
         if (registration == null) return PendingDecision.NONE;
+        if (recomputeInvalidated) return PendingDecision.SUPERSEDE;
         if (registration.navigation() != navigation) return PendingDecision.SUPERSEDE;
         try {
             if (!registration.identity().sameLiveIdentity(navigation.pathweaver$identity())) {
