@@ -9,9 +9,11 @@ import dev.pathweaver.async.NavigationIdentity;
 import dev.pathweaver.async.PathRequest;
 import dev.pathweaver.async.RequestKey;
 import dev.pathweaver.async.RequestTarget;
+import dev.pathweaver.async.SearchStartGate;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.duck.PWNavigation;
 import dev.pathweaver.gate.SafetyGate;
+import dev.pathweaver.gate.MobOriginGate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
@@ -37,7 +39,7 @@ import java.util.concurrent.Callable;
  * Feature A: dispatch the innermost {@code createPath} A* search to the worker pool when the mob's
  * evaluator is allowlisted. The region uses vanilla's radius formula but is a live-backed view, not
  * an immutable copy, and the live mob remains an input. Completion is installed later through
- * {@code moveTo(path, speedModifier)} plus selected {@code createPath} bookkeeping. Dispatch-time
+ * {@code moveTo(path, capturedSpeed)} plus selected {@code createPath} bookkeeping. Dispatch-time
  * guard hits and pool rejection do not cancel, so that invocation continues synchronously.
  */
 @Mixin(net.minecraft.world.entity.ai.navigation.PathNavigation.class)
@@ -61,10 +63,12 @@ public abstract class PathNavigationMixin implements PWNavigation {
     // ---- per-in-flight capture (main thread only; the isRegistered guard ensures one search at a time) ----
     @Unique private int pathweaver$pendingReachRange;
     @Unique private int pathweaver$pendingDoneCallbacks;
-    // FIX 3a: the goal sets the intended speed by calling moveTo(path, speed) right AFTER createPath
-    // returns, so this.speedModifier is stale (or 0) at dispatch. Remember the last requested speed via
-    // moveTo so the installed path never moves at speed 0.
-    @Unique private double pathweaver$lastRequestedSpeed = 1.0;
+    // Movement callers supply speed outside createPath. Capture it at those approved callers and
+    // bind the exact double (including 0, negative values, and NaN) to the accepted registration.
+    @Unique private double pathweaver$requestSpeed = 1.0;
+    @Unique private double pathweaver$pendingInstallSpeed = 1.0;
+    @Unique private double pathweaver$recomputeRequestSpeed = 1.0;
+    @Unique private boolean pathweaver$acceptedDeferred;
     /**
      * Non-zero only while one of PathNavigation's genuine movement/recompute entry points is making
      * its virtual createPath call. Direct/query-only createPath calls remain synchronous by construction.
@@ -73,16 +77,58 @@ public abstract class PathNavigationMixin implements PWNavigation {
     @Unique private long pathweaver$targetRevision;
     @Unique private boolean pathweaver$recomputeInvalidated;
 
-    @Inject(method = "recomputePath()V", at = @At("HEAD"), require = 1, expect = 1)
-    private void pathweaver$beginRecomputeInvalidation(
-            org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
-        this.pathweaver$recomputeInvalidated = true;
+    @Inject(method = "moveTo(DDDD)Z", at = @At("HEAD"), require = 1, expect = 1)
+    private void pathweaver$captureCoordinateSpeed(double x, double y, double z, double speed,
+                                                    CallbackInfoReturnable<Boolean> cir) {
+        pathweaver$beginMovement(speed);
     }
 
-    @Inject(method = "recomputePath()V", at = @At("RETURN"), require = 1, expect = 1)
-    private void pathweaver$endRecomputeInvalidation(
+    @Inject(method = "moveTo(DDDID)Z", at = @At("HEAD"), require = 1, expect = 1)
+    private void pathweaver$captureCoordinateReachSpeed(double x, double y, double z, int reach,
+                                                         double speed,
+                                                         CallbackInfoReturnable<Boolean> cir) {
+        pathweaver$beginMovement(speed);
+    }
+
+    @Inject(method = "moveTo(Lnet/minecraft/world/entity/Entity;D)Z", at = @At("HEAD"),
+            require = 1, expect = 1)
+    private void pathweaver$captureEntitySpeed(Entity entity, double speed,
+                                                CallbackInfoReturnable<Boolean> cir) {
+        pathweaver$beginMovement(speed);
+    }
+
+    @Inject(method = {
+            "moveTo(DDDD)Z",
+            "moveTo(DDDID)Z",
+            "moveTo(Lnet/minecraft/world/entity/Entity;D)Z"
+        }, at = @At("RETURN"), cancellable = true, require = 3, expect = 3)
+    private void pathweaver$deferredMovementResult(CallbackInfoReturnable<Boolean> cir) {
+        if (pathweaver$acceptedDeferred) cir.setReturnValue(true);
+        pathweaver$acceptedDeferred = false;
+    }
+
+    @Unique
+    private void pathweaver$beginMovement(double speed) {
+        pathweaver$requestSpeed = speed;
+        pathweaver$acceptedDeferred = false;
+    }
+
+    @Inject(
+        method = "recomputePath()V",
+        at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/world/entity/ai/navigation/PathNavigation;canUpdatePath()Z"),
+        require = 1,
+        expect = 1
+    )
+    private void pathweaver$supersedeBeforeRecomputeGuard(
             org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
-        this.pathweaver$recomputeInvalidated = false;
+        if (this.level instanceof ServerLevel) {
+            EntityInstallSink sink = PathWeaverRuntime.get().entitySink();
+            int entityId = this.mob.getId();
+            this.pathweaver$recomputeRequestSpeed = sink.isRegistered(entityId, this)
+                ? this.pathweaver$pendingInstallSpeed : this.speedModifier;
+            if (sink.supersede(entityId)) this.pathweaver$targetRevision++;
+        }
     }
 
     @WrapOperation(
@@ -92,12 +138,15 @@ public abstract class PathNavigationMixin implements PWNavigation {
         expect = 1
     )
     private Path pathweaver$armRecomputePath(PathNavigation instance, BlockPos target, int reachRange,
-                                             Operation<Path> original) {
-        pathweaver$navigationRequestDepth++;
+                                              Operation<Path> original) {
+        this.pathweaver$navigationRequestDepth++;
+        this.pathweaver$recomputeInvalidated = true;
+        this.pathweaver$requestSpeed = this.pathweaver$recomputeRequestSpeed;
         try {
             return original.call(instance, target, reachRange);
         } finally {
-            pathweaver$navigationRequestDepth--;
+            this.pathweaver$recomputeInvalidated = false;
+            this.pathweaver$navigationRequestDepth--;
         }
     }
 
@@ -150,19 +199,13 @@ public abstract class PathNavigationMixin implements PWNavigation {
         }
     }
 
-    /** FIX 3a: capture the caller's intended speed on every moveTo(path, speed), before its null-check. */
-    @Inject(
-        method = "moveTo(Lnet/minecraft/world/level/pathfinder/Path;D)Z",
-        at = @At("HEAD")
-    )
-    private void pathweaver$captureSpeed(Path path, double speed, CallbackInfoReturnable<Boolean> cir) {
-        if (speed > 0.0) pathweaver$lastRequestedSpeed = speed;
-    }
 
     @Inject(
         method = "createPath(Ljava/util/Set;IZIF)Lnet/minecraft/world/level/pathfinder/Path;",
         at = @At("HEAD"),
-        cancellable = true
+        cancellable = true,
+        require = 1,
+        expect = 1
     )
     private void pathweaver$asyncCreatePath(Set<BlockPos> targets, int regionOffset, boolean offsetUpward,
                                             int reachRange, float followRange,
@@ -170,6 +213,11 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // Only the four wrapped genuine-navigation call sites may opt into elision or async dispatch.
         // All direct/external createPath calls — including unknown mod queries — stay vanilla sync.
         if (pathweaver$navigationRequestDepth == 0) return;
+
+        // Preserve vanilla's cheap preconditions before either tolerance elision or async routing.
+        if (targets.isEmpty()) return;
+        if (this.mob.getY() < this.level.getMinY()) return;
+        if (!canUpdatePath()) return;
 
         PathWeaverConfig cfg = PathWeaverConfig.get();
         PathWeaverRuntime rt = PathWeaverRuntime.get();
@@ -185,12 +233,18 @@ public abstract class PathNavigationMixin implements PWNavigation {
             ? sink.pendingDecision(entityId, this, requestTarget, this.pathweaver$recomputeInvalidated)
             : EntityInstallSink.PendingDecision.NONE;
         if (pendingDecision == EntityInstallSink.PendingDecision.PRESERVE) {
+            this.pathweaver$pendingInstallSpeed = this.pathweaver$requestSpeed;
+            this.pathweaver$acceptedDeferred = true;
             cir.setReturnValue(this.path);
             return;
         } else if (pendingDecision == EntityInstallSink.PendingDecision.SUPERSEDE) {
             intentAdvanced = sink.supersede(entityId);
             if (intentAdvanced) pathweaver$targetRevision++;
         }
+
+        // This vanilla fast-path must precede tolerance reuse. Pending supersession remains above it
+        // so a different accepted intent cannot later overwrite the path returned here.
+        if (this.path != null && !this.path.isDone() && targets.contains(this.targetPos)) return;
 
         // Feature B remains opt-in. Recompute (including changed-block invalidation) always bypasses
         // tolerance reuse; ordinary target drift must satisfy endpoint, reach and navigation validity.
@@ -200,7 +254,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
             var current = new dev.pathweaver.elision.RepathTolerance.CurrentPath(
                 currentPath.getTarget(),
                 endpoint == null ? null : new BlockPos(endpoint.x, endpoint.y, endpoint.z),
-                currentPath.canReach(), currentPath.isDone(), canUpdatePath(),
+                currentPath.canReach(), currentPath.isDone(), true,
                 this.pathweaver$recomputeInvalidated, this.reachRange);
             BlockPos reusableTarget = dev.pathweaver.elision.RepathTolerance.reusableTarget(
                 targets, current, reachRange, cfg.repathToleranceBlocks);
@@ -220,16 +274,11 @@ public abstract class PathNavigationMixin implements PWNavigation {
         if (!(this.level instanceof ServerLevel)) return;                       // server-side only
         if (this.nodeEvaluator == null || !SafetyGate.isAllowed(this.nodeEvaluator.getClass())) return;
 
-        // Replicate vanilla's cheap guards; on any of these, let vanilla run synchronously (no cancel).
-        if (targets.isEmpty()) return;
-        if (this.mob.getY() < this.level.getMinY()) return;
-        if (!canUpdatePath()) return;
-        if (this.path != null && !this.path.isDone() && targets.contains(this.targetPos)) return;
-
         final Mob theMob = this.mob;
+        if (!MobOriginGate.isAllowed(theMob.getClass(), cfg.allowModdedMobAsync)) return;
         final long tick = ((ServerLevel) this.level).getServer().getTickCount();
 
-        // FIX 4: this entity's last async search failed and it's in cooldown -> run vanilla sync this tick.
+        // This entity's last async search failed and it's in cooldown -> run vanilla sync this tick.
         if (sink.shouldForceSync(entityId, tick)) return;
 
         // A same-target pending operation returned above; anything still registered is conservatively sync.
@@ -238,11 +287,13 @@ public abstract class PathNavigationMixin implements PWNavigation {
         }
 
         // Everything below can fail on unusual mods/data; degrade to sync rather than escape into the
-        // entity tick (FIX 6a). If we've already registered in the sink, unwind that registration.
+        // entity tick. If we've already registered in the sink, unwind that registration.
         boolean registered = false;
         RequestKey requestKey = null;
+        SearchStartGate startGate = null;
+        boolean authorizeSearch = false;
         try {
-            // FIX 2c: force-resolve the mob's step-height attribute on the MAIN thread so the worker's
+            // Force-resolve the mob's step-height attribute on the MAIN thread so the worker's
             // read of maxUpStep() hits a clean cached value instead of lazily writing it off-thread.
             theMob.maxUpStep();
 
@@ -270,7 +321,11 @@ public abstract class PathNavigationMixin implements PWNavigation {
             final int rRange = reachRange;
             final double dx = theMob.getX(), dy = theMob.getY(), dz = theMob.getZ();
 
-            Callable<Path> search = () -> finder.findPath(region, theMob, targetsCopy, fRange, rRange, mult);
+            final SearchStartGate requestStartGate = new SearchStartGate();
+            startGate = requestStartGate;
+            Callable<Path> search = () -> requestStartGate.awaitStart()
+                ? finder.findPath(region, theMob, targetsCopy, fRange, rRange, mult)
+                : null;
 
             requestKey = rt.nextRequestKey(entityId);
             final RequestKey submittedKey = requestKey;
@@ -284,11 +339,13 @@ public abstract class PathNavigationMixin implements PWNavigation {
                 sink.discard(requestKey); // pool saturated -> let vanilla run synchronously
                 return;
             }
+            rt.markDispatched();
 
-            // FIX 3b/3c: capture the intended reachRange for install, and set targetPos optimistically to
+            // Capture the intended reachRange for install, and set targetPos optimistically to
             // the dispatched target so recomputePath() and Feature B work during the 1-tick in-flight
             // window (vanilla would have null targetPos until install, killing both).
             this.pathweaver$pendingReachRange = reachRange;
+            this.pathweaver$pendingInstallSpeed = this.pathweaver$requestSpeed;
             this.targetPos = targetsCopy.iterator().next();
 
             // Replay the exact vanilla per-evaluator callback contract on the MAIN thread. Walk has one
@@ -301,12 +358,20 @@ public abstract class PathNavigationMixin implements PWNavigation {
                 theMob.onPathfindingStart();
             }
 
-            rt.markDispatched();
             // Keep moving on the current path this tick; the async result installs next tick.
+            this.pathweaver$acceptedDeferred = true;
             cir.setReturnValue(this.path);
+            authorizeSearch = true;
         } catch (Throwable t) {
             if (registered) sink.discard(requestKey);
             // No cir.cancel(): fall through so vanilla computes the path synchronously this tick.
+        } finally {
+            // Every main-thread exit releases an accepted worker. Only a fully completed setup opens
+            // the search; rejection or any setup/start-callback failure releases it as cancelled.
+            if (startGate != null) {
+                if (authorizeSearch) startGate.open();
+                else startGate.cancel();
+            }
         }
     }
 
@@ -316,9 +381,8 @@ public abstract class PathNavigationMixin implements PWNavigation {
     @Override
     public void pathweaver$install(Path path) {
         // Vanilla's own install path: handles sameAs/trim/stuck bookkeeping. Use the caller's real
-        // intended speed (captured via moveTo), never a stale 0.
-        double speed = pathweaver$lastRequestedSpeed > 0.0 ? pathweaver$lastRequestedSpeed : this.speedModifier;
-        moveTo(path, speed);
+        // intended speed bound to this registration, including vanilla-valid non-positive/NaN values.
+        moveTo(path, this.pathweaver$pendingInstallSpeed);
 
         // Replay selected createPath bookkeeping needed by genuine navigation/recompute requests.
         // Query-only createPath calls cannot reach this async install path because routing depth stays zero.

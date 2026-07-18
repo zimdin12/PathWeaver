@@ -5,6 +5,8 @@
   "text.autoconfig.pathweaver.category.repath": "Repath and result validity",
   "text.autoconfig.pathweaver.option.asyncEnabled": "Enable experimental off-thread pathfinding",
   "text.autoconfig.pathweaver.option.asyncEnabled.@Tooltip": "Experimental off-thread pathfinding; disable if you see issues",
+  "text.autoconfig.pathweaver.option.allowModdedMobAsync": "Force async for modded mobs (advanced, unsafe)",
+  "text.autoconfig.pathweaver.option.allowModdedMobAsync.@Tooltip": "Allow mod-defined mob classes to run unverified virtual behavior on pathfinding workers",
   "text.autoconfig.pathweaver.option.repathElisionEnabled": "Enable conservative repath reuse",
   "text.autoconfig.pathweaver.option.repathElisionEnabled.@Tooltip": "Reuse a valid existing path when the requested target has not meaningfully changed",
   "text.autoconfig.pathweaver.option.poolThreads": "Worker threads (0 = automatic)",

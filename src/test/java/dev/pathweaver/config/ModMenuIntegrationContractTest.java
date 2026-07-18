@@ -92,6 +92,7 @@ class ModMenuIntegrationContractTest {
             .getAsJsonObject();
         Map<String, String> expectedCategories = new LinkedHashMap<>();
         expectedCategories.put("asyncEnabled", "general");
+        expectedCategories.put("allowModdedMobAsync", "general");
         expectedCategories.put("repathElisionEnabled", "general");
         expectedCategories.put("poolThreads", "performance");
         expectedCategories.put("maxInFlight", "performance");

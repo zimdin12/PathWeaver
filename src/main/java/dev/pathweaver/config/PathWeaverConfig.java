@@ -30,6 +30,10 @@ public class PathWeaverConfig implements ConfigData {
 
     @ConfigEntry.Gui.Tooltip
     @ConfigEntry.Category("general")
+    public boolean allowModdedMobAsync = false;
+
+    @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Category("general")
     public boolean repathElisionEnabled = true;
 
     @ConfigEntry.Gui.Tooltip

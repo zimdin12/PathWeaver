@@ -51,6 +51,11 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         return inFlight.containsKey(entityId);
     }
 
+    public boolean isRegistered(int entityId, PWNavigation navigation) {
+        Registration registration = inFlight.get(entityId);
+        return registration != null && registration.navigation() == navigation;
+    }
+
     public PendingDecision pendingDecision(int entityId, PWNavigation navigation, RequestTarget target) {
         return pendingDecision(entityId, navigation, target, false);
     }

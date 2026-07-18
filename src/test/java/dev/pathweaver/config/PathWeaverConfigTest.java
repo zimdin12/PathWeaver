@@ -34,6 +34,7 @@ class PathWeaverConfigTest {
         assertTrue(c.asyncEnabled);
         assertTrue(c.repathElisionEnabled);
         assertFalse(c.syncFallbackOnly);
+        assertFalse(c.allowModdedMobAsync);
         assertEquals(0, c.repathToleranceBlocks);
         assertEquals(40, c.maxResultAgeTicks);
     }

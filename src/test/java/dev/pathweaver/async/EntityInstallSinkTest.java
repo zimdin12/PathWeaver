@@ -25,6 +25,16 @@ class EntityInstallSinkTest {
         public void pathweaver$onPathfindingDone() { dones++; }
     }
 
+    @Test void registeredNavigationMatchesByExactIdentity() {
+        EntityInstallSink sink = new EntityInstallSink();
+        FakeNav registered = new FakeNav();
+        sink.register(key(1L, 1L, 2), registered);
+
+        assertTrue(sink.isRegistered(2, registered));
+        assertFalse(sink.isRegistered(2, new FakeNav()));
+        assertFalse(sink.isRegistered(3, registered));
+    }
+
     @Test void failedMarksEntityForSyncThenCooldownExpires() {
         EntityInstallSink sink = new EntityInstallSink();
         FakeNav nav = new FakeNav();

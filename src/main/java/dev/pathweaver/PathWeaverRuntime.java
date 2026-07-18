@@ -5,7 +5,10 @@ import dev.pathweaver.async.PathWorkerPool;
 import dev.pathweaver.async.RequestKey;
 import dev.pathweaver.async.ResultInstaller;
 import dev.pathweaver.config.PathWeaverConfig;
+import dev.pathweaver.gate.MobOriginGate;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.monster.zombie.Zombie;
 
 /**
  * Holds PathWeaver's live services and drives their per-server / per-tick lifecycle. The interceptor
@@ -60,6 +63,14 @@ public final class PathWeaverRuntime {
         running = true;
         PathWeaver.LOG.info("PathWeaver runtime started: epoch={}, {} worker thread(s), maxInFlight={}.",
             epoch, c.resolvedPoolThreads(), c.maxInFlight);
+        PathWeaver.LOG.info("Mob-origin CodeSource probe: Mob={}, Zombie={}, moddedBypass={}.",
+            MobOriginGate.isAllowed(Mob.class, false), MobOriginGate.isAllowed(Zombie.class, false),
+            c.allowModdedMobAsync);
+        if (c.asyncEnabled && !c.syncFallbackOnly) {
+            PathWeaver.LOG.warn("Experimental async boundary: mod-defined mobs are {} by the origin gate; "
+                    + "vanilla-class Mixins and live mob/world/block reads remain unsnapshotted.",
+                c.allowModdedMobAsync ? "explicitly allowed (unsafe override)" : "synchronous");
+        }
     }
 
     public void onServerStopping(MinecraftServer server) {
