@@ -38,6 +38,16 @@ class PathWeaverConfigTest {
         assertEquals(0, c.repathToleranceBlocks);
         assertEquals(40, c.maxResultAgeTicks);
     }
+    @Test void failedLoadSignalOverridesClothDefaultWithSynchronousFailClosedRuntime() {
+        PathWeaverConfig clothDefault = new PathWeaverConfig();
+        assertTrue(clothDefault.asyncEnabled);
+
+        PathWeaverConfig.publishLoaded(clothDefault, true);
+
+        assertFalse(PathWeaverConfig.get().asyncEnabled);
+        assertTrue(PathWeaverConfig.get().syncFallbackOnly);
+    }
+
     @Test void configRegistrationFailureInstallsSynchronousFailClosedDefaults() {
         PathWeaverConfig previous = PathWeaverConfig.get();
         try {

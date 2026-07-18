@@ -13,8 +13,9 @@
 - [x] Remove dead/no-op Fly, distance-throttle, annotation-reader, and repath helper surfaces.
 - [x] Vanilla-origin mob eligibility gate and default-off advanced modded-mob override.
 - [x] Recompute pre-guard supersession and accepted-speed preservation.
-- [x] Cold JDK 25 build with 103/103 JUnit, 2/2 GameTests, artifact-only production-Knot
-  CodeSource probe (`Mob=true`, `Zombie=true`, bypass false), dedicated-server startup, and package gate.
+- [x] Cold JDK 25 build with 105/105 JUnit, 2/2 GameTests, artifact-only production-Knot
+  CodeSource probe (`Mob=true`, `Zombie=true`, bypass false), malformed-config fail-closed startup,
+  dedicated-server startup, and package gate.
 - [ ] Independent exact-tree review.
 
 ## v0.2.1 current release

@@ -21,6 +21,8 @@ You can also edit `config/pathweaver.json`:
 - `syncFallbackOnly=true` is the lower panic switch and prevents all async dispatch.
 - `allowModdedMobAsync=true` is an advanced unsafe override. It bypasses only the vanilla-origin mob gate; all evaluator, Mixin-scanner, lifecycle, and fallback gates still apply.
 - Existing explicit values are preserved during upgrades; a persisted `asyncEnabled=false` stays false.
+- Malformed or unreadable persisted config fails closed to synchronous runtime defaults until a valid
+  config is saved; Cloth's enabled in-memory defaults are not mistaken for a successful load.
 
 ## Honest compatibility status
 

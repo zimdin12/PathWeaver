@@ -16,12 +16,20 @@ public class PathWeaver implements ModInitializer {
         // Guarded so a config-API mismatch forces synchronous fail-closed defaults rather than
         // silently enabling async or breaking dedicated-server startup.
         try {
+            java.util.concurrent.atomic.AtomicBoolean loadFailed =
+                new java.util.concurrent.atomic.AtomicBoolean();
             me.shedaniel.autoconfig.ConfigHolder<dev.pathweaver.config.PathWeaverConfig> holder =
                 me.shedaniel.autoconfig.AutoConfig.register(
                 dev.pathweaver.config.PathWeaverConfig.class,
-                me.shedaniel.autoconfig.serializer.GsonConfigSerializer::new);
+                (definition, configClass) -> new dev.pathweaver.config.LoadFailureTrackingSerializer<>(
+                    new me.shedaniel.autoconfig.serializer.GsonConfigSerializer<>(
+                        definition, configClass), loadFailed));
             holder.registerSaveListener(dev.pathweaver.config.PathWeaverConfig::onSave);
-            dev.pathweaver.config.PathWeaverConfig.set(holder.getConfig());
+            dev.pathweaver.config.PathWeaverConfig.publishLoaded(
+                holder.getConfig(), loadFailed.get());
+            if (loadFailed.get()) {
+                LOG.warn("PathWeaver config load failed; forcing synchronous pathfinding until a valid config is saved.");
+            }
         } catch (Throwable t) {
             dev.pathweaver.config.PathWeaverConfig.installFailClosedDefaults();
             LOG.warn("PathWeaver config registration failed; forcing synchronous pathfinding.", t);

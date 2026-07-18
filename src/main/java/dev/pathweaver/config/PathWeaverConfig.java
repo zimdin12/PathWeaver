@@ -79,6 +79,12 @@ public class PathWeaverConfig implements ConfigData {
         set(fallback);
     }
 
+    /** Cloth substitutes enabled defaults after deserialize failure; do not publish those as success. */
+    public static void publishLoaded(PathWeaverConfig loaded, boolean loadFailed) {
+        if (loadFailed) installFailClosedDefaults();
+        else set(loaded);
+    }
+
     public static InteractionResult onSave(
             ConfigHolder<PathWeaverConfig> holder, PathWeaverConfig config) {
         set(config);

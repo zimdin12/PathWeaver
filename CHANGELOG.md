@@ -6,6 +6,8 @@
 
 - Safely publish live config saves across render/server threads, and force synchronous panic defaults
   when Cloth registration or loading fails instead of silently leaving async enabled.
+- Retain Cloth's swallowed JSON-deserialization failure signal so malformed or unreadable persisted
+  config also forces synchronous runtime defaults until a valid config is saved.
 - Reconcile active Mixin configs against metadata for the current client/server environment; integrated
   servers no longer fail closed merely because a client-only config has no recorded owner.
 - Normalize internal slash-form Mixin target names before every sensitive-target comparison, seed the
