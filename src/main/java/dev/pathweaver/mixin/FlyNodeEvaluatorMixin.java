@@ -8,10 +8,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
- * FIX 2a for flying mobs: same as {@link WalkNodeEvaluatorMixin}. Verified on 26.1.2:
- * {@code FlyNodeEvaluator.prepare} calls {@code mob.onPathfindingStart()} and {@code done()} calls
- * {@code mob.onPathfindingDone()}. Skipped on worker threads; replayed on the main thread by
- * {@code PathNavigationMixin}.
+ * Flying pathfinding remains synchronous in v0.2.0 because vanilla start-node selection consumes the
+ * live mob RNG. These redirects are defensive main-thread pass-through guards; Fly is not part of the
+ * supported worker callback-replay contract.
  */
 @Mixin(FlyNodeEvaluator.class)
 public class FlyNodeEvaluatorMixin {
