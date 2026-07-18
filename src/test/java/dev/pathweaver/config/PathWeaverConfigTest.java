@@ -3,9 +3,18 @@ package dev.pathweaver.config;
 import com.google.gson.Gson;
 import net.minecraft.world.InteractionResult;
 import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class PathWeaverConfigTest {
+    @Test void runtimeSingletonIsSafelyPublishedAcrossClientAndServerThreads() throws Exception {
+        Field instance = PathWeaverConfig.class.getDeclaredField("INSTANCE");
+        assertTrue(Modifier.isVolatile(instance.getModifiers()),
+            "GUI saves publish on the client thread while the integrated server reads this singleton");
+    }
     @Test void autoPoolThreadsClampsToAtLeastOne() {
         PathWeaverConfig c = new PathWeaverConfig();
         c.poolThreads = 0;
@@ -24,10 +33,19 @@ class PathWeaverConfigTest {
         PathWeaverConfig c = new PathWeaverConfig();
         assertTrue(c.asyncEnabled);
         assertTrue(c.repathElisionEnabled);
-        assertFalse(c.distanceThrottleEnabled);
         assertFalse(c.syncFallbackOnly);
         assertEquals(0, c.repathToleranceBlocks);
         assertEquals(40, c.maxResultAgeTicks);
+    }
+    @Test void configRegistrationFailureInstallsSynchronousFailClosedDefaults() {
+        PathWeaverConfig previous = PathWeaverConfig.get();
+        try {
+            PathWeaverConfig.installFailClosedDefaults();
+            assertFalse(PathWeaverConfig.get().asyncEnabled);
+            assertTrue(PathWeaverConfig.get().syncFallbackOnly);
+        } finally {
+            PathWeaverConfig.set(previous);
+        }
     }
     @Test void persistedFalseOverridesDefaultOnInitializer() {
         PathWeaverConfig c = new Gson().fromJson(

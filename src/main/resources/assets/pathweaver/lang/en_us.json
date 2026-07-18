@@ -11,8 +11,6 @@
   "text.autoconfig.pathweaver.option.poolThreads.@Tooltip": "Number of pathfinding worker threads; 0 chooses automatically and changes require a restart",
   "text.autoconfig.pathweaver.option.maxInFlight": "Maximum in-flight searches",
   "text.autoconfig.pathweaver.option.maxInFlight.@Tooltip": "Maximum queued and running off-thread searches; changes require a restart",
-  "text.autoconfig.pathweaver.option.distanceThrottleEnabled": "Distance throttling (currently unavailable)",
-  "text.autoconfig.pathweaver.option.distanceThrottleEnabled.@Tooltip": "Reserved for a future distance throttle; this setting currently has no effect",
   "text.autoconfig.pathweaver.option.syncFallbackOnly": "Synchronous fallback only (panic switch)",
   "text.autoconfig.pathweaver.option.syncFallbackOnly.@Tooltip": "Prevent all off-thread dispatch and use synchronous pathfinding",
   "text.autoconfig.pathweaver.option.repathToleranceBlocks": "Repath reuse tolerance (blocks)",

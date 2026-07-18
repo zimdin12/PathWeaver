@@ -48,6 +48,16 @@ class ModMenuIntegrationContractTest {
     }
 
     @Test
+    void missingAutoConfigRegistrationReturnsParentInsteadOfCrashingModMenu() throws Exception {
+        Class<?> entrypoint = Class.forName(ENTRYPOINT);
+        Object instance = entrypoint.getConstructor().newInstance();
+        Object factory = entrypoint.getMethod("getModConfigScreenFactory").invoke(instance);
+        var create = factory.getClass().getMethod("create", net.minecraft.client.gui.screens.Screen.class);
+        Object screen = assertDoesNotThrow(() -> create.invoke(factory, new Object[] {null}));
+        assertNull(screen, "missing registration must return the supplied parent screen");
+    }
+
+    @Test
     void asyncToggleIsFirstAndHasTheRequiredTooltip() throws Exception {
         List<String> configFields = Arrays.stream(PathWeaverConfig.class.getDeclaredFields())
             .filter(field -> !Modifier.isStatic(field.getModifiers()))
@@ -85,7 +95,6 @@ class ModMenuIntegrationContractTest {
         expectedCategories.put("repathElisionEnabled", "general");
         expectedCategories.put("poolThreads", "performance");
         expectedCategories.put("maxInFlight", "performance");
-        expectedCategories.put("distanceThrottleEnabled", "general");
         expectedCategories.put("syncFallbackOnly", "general");
         expectedCategories.put("repathToleranceBlocks", "repath");
         expectedCategories.put("stalenessMoveThreshold", "repath");
@@ -107,6 +116,21 @@ class ModMenuIntegrationContractTest {
         assertTrue(lang.has("text.autoconfig.pathweaver.category.general"));
         assertTrue(lang.has("text.autoconfig.pathweaver.category.performance"));
         assertTrue(lang.has("text.autoconfig.pathweaver.category.repath"));
+    }
+
+    @Test
+    void removedDistanceThrottleFieldIsIgnoredAndDroppedOnNextSave(@TempDir Path tempDir) throws Exception {
+        Path configPath = tempDir.resolve("config").resolve("pathweaver.json");
+        Files.createDirectories(configPath.getParent());
+        Files.writeString(configPath, """
+            {"asyncEnabled":false,"distanceThrottleEnabled":true}
+            """);
+        ConfigHolder<PathWeaverConfig> holder = new TestConfigHolder(new TestDiskSerializer(configPath));
+        assertTrue(holder.load());
+        assertFalse(holder.getConfig().asyncEnabled, "known explicit-off value survives upgrade");
+        holder.save();
+        JsonObject saved = JsonParser.parseString(Files.readString(configPath)).getAsJsonObject();
+        assertFalse(saved.has("distanceThrottleEnabled"), "retired unknown field is dropped on save");
     }
 
     @Test

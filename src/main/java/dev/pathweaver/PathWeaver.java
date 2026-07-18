@@ -13,7 +13,8 @@ public class PathWeaver implements ModInitializer {
         LOG.info("PathWeaver initializing");
 
         // Register Cloth AutoConfig (persists config/pathweaver.json; GUI via ModMenu when present).
-        // Guarded so a config-API mismatch degrades to built-in defaults rather than breaking the mod.
+        // Guarded so a config-API mismatch forces synchronous fail-closed defaults rather than
+        // silently enabling async or breaking dedicated-server startup.
         try {
             me.shedaniel.autoconfig.ConfigHolder<dev.pathweaver.config.PathWeaverConfig> holder =
                 me.shedaniel.autoconfig.AutoConfig.register(
@@ -22,7 +23,8 @@ public class PathWeaver implements ModInitializer {
             holder.registerSaveListener(dev.pathweaver.config.PathWeaverConfig::onSave);
             dev.pathweaver.config.PathWeaverConfig.set(holder.getConfig());
         } catch (Throwable t) {
-            LOG.warn("PathWeaver config registration failed; using defaults.", t);
+            dev.pathweaver.config.PathWeaverConfig.installFailClosedDefaults();
+            LOG.warn("PathWeaver config registration failed; forcing synchronous pathfinding.", t);
         }
 
         dev.pathweaver.gate.ForeignMixinScanner.scanAndPopulate();

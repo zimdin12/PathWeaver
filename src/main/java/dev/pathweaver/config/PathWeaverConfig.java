@@ -8,8 +8,8 @@ import net.minecraft.world.InteractionResult;
 
 /**
  * Runtime config the engine reads, and the Cloth AutoConfig model (persists to
- * {@code config/pathweaver.json}, GUI via ModMenu when present). Kept free of MC types so it stays
- * unit-testable; Cloth annotations + the marker {@link ConfigData} interface are inert at runtime.
+ * {@code config/pathweaver.json}, GUI via ModMenu when present). Kept free of gameplay/world types so
+ * it stays unit-testable; Cloth annotations + the marker {@link ConfigData} interface are inert at runtime.
  */
 @Config(name = "pathweaver")
 public class PathWeaverConfig implements ConfigData {
@@ -44,10 +44,6 @@ public class PathWeaverConfig implements ConfigData {
 
     @ConfigEntry.Gui.Tooltip
     @ConfigEntry.Category("general")
-    public boolean distanceThrottleEnabled = false;  // reserved config compatibility; no behavior yet
-
-    @ConfigEntry.Gui.Tooltip
-    @ConfigEntry.Category("general")
     public boolean syncFallbackOnly = false;         // panic switch: never dispatch async
 
     @ConfigEntry.Gui.Tooltip
@@ -63,12 +59,20 @@ public class PathWeaverConfig implements ConfigData {
     public int maxResultAgeTicks = 40;
 
     @ConfigEntry.Gui.Excluded
-    private static PathWeaverConfig INSTANCE = new PathWeaverConfig();
+    private static volatile PathWeaverConfig INSTANCE = new PathWeaverConfig();
     public static PathWeaverConfig get() { return INSTANCE; }
     public static void set(PathWeaverConfig c) {
         PathWeaverConfig normalized = c == null ? new PathWeaverConfig() : c;
         normalized.validatePostLoad();
         INSTANCE = normalized;
+    }
+
+    /** Keep pathfinding synchronous if persisted configuration cannot be registered or loaded. */
+    public static void installFailClosedDefaults() {
+        PathWeaverConfig fallback = new PathWeaverConfig();
+        fallback.asyncEnabled = false;
+        fallback.syncFallbackOnly = true;
+        set(fallback);
     }
 
     public static InteractionResult onSave(
