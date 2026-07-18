@@ -1,14 +1,24 @@
 {
   "text.autoconfig.pathweaver.title": "PathWeaver",
+  "text.autoconfig.pathweaver.category.general": "General",
+  "text.autoconfig.pathweaver.category.performance": "Worker capacity (restart required)",
+  "text.autoconfig.pathweaver.category.repath": "Repath and result validity",
   "text.autoconfig.pathweaver.option.asyncEnabled": "Enable experimental off-thread pathfinding",
   "text.autoconfig.pathweaver.option.asyncEnabled.@Tooltip": "Experimental off-thread pathfinding; disable if you see issues",
   "text.autoconfig.pathweaver.option.repathElisionEnabled": "Enable conservative repath reuse",
+  "text.autoconfig.pathweaver.option.repathElisionEnabled.@Tooltip": "Reuse a valid existing path when the requested target has not meaningfully changed",
   "text.autoconfig.pathweaver.option.poolThreads": "Worker threads (0 = automatic)",
+  "text.autoconfig.pathweaver.option.poolThreads.@Tooltip": "Number of pathfinding worker threads; 0 chooses automatically and changes require a restart",
   "text.autoconfig.pathweaver.option.maxInFlight": "Maximum in-flight searches",
-  "text.autoconfig.pathweaver.option.distanceThrottleEnabled": "Enable distance throttling",
+  "text.autoconfig.pathweaver.option.maxInFlight.@Tooltip": "Maximum queued and running off-thread searches; changes require a restart",
+  "text.autoconfig.pathweaver.option.distanceThrottleEnabled": "Distance throttling (currently unavailable)",
+  "text.autoconfig.pathweaver.option.distanceThrottleEnabled.@Tooltip": "Reserved for a future distance throttle; this setting currently has no effect",
   "text.autoconfig.pathweaver.option.syncFallbackOnly": "Synchronous fallback only (panic switch)",
   "text.autoconfig.pathweaver.option.syncFallbackOnly.@Tooltip": "Prevent all off-thread dispatch and use synchronous pathfinding",
   "text.autoconfig.pathweaver.option.repathToleranceBlocks": "Repath reuse tolerance (blocks)",
+  "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip": "Allow this many blocks of target movement before an existing path must be recomputed",
   "text.autoconfig.pathweaver.option.stalenessMoveThreshold": "Result movement-staleness threshold",
-  "text.autoconfig.pathweaver.option.maxResultAgeTicks": "Maximum result age (ticks)"
+  "text.autoconfig.pathweaver.option.stalenessMoveThreshold.@Tooltip": "Discard a completed result if its mob moved farther than this while the search ran",
+  "text.autoconfig.pathweaver.option.maxResultAgeTicks": "Maximum result age (ticks)",
+  "text.autoconfig.pathweaver.option.maxResultAgeTicks.@Tooltip": "Discard a completed result after this many server ticks"
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 — Working ModMenu persistence and complete option help (2026-07-18)
+
+### Fixed
+
+- Excluded PathWeaver's static constants and runtime singleton from Cloth AutoConfig's generated entries. Cloth previously tried to write the first static-final field during `saveAll`, threw before serialization, and left `config/pathweaver.json` unchanged.
+- Added short, honest tooltips for all nine persisted fields and grouped general, performance, and repath controls while keeping `asyncEnabled` first and the synchronous panic switch low in the general group. The unused `distanceThrottleEnabled` compatibility field is now explicitly labeled unavailable/no-op rather than implying behavior that does not exist.
+- Saved values are normalized and republished to the live runtime configuration; `poolThreads` and `maxInFlight` are marked as restart-required because the worker generation is created at server start.
+
 ## 0.2.0 — Correctness, lifecycle isolation, and honest fail-closed final form (2026-07-18)
 
 ### Changed

@@ -1,6 +1,7 @@
 package dev.pathweaver.config;
 
 import com.google.gson.Gson;
+import net.minecraft.world.InteractionResult;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -79,5 +80,19 @@ class PathWeaverConfigTest {
         assertSame(c, PathWeaverConfig.get());
         assertEquals(0, c.poolThreads);
         assertEquals(1, c.maxInFlight);
+    }
+    @Test void saveListenerNormalizesAndPublishesTheSavedObject() {
+        PathWeaverConfig previous = PathWeaverConfig.get();
+        PathWeaverConfig saved = new PathWeaverConfig();
+        saved.poolThreads = -3;
+        saved.maxInFlight = 0;
+        try {
+            assertEquals(InteractionResult.PASS, PathWeaverConfig.onSave(null, saved));
+            assertSame(saved, PathWeaverConfig.get());
+            assertEquals(0, saved.poolThreads);
+            assertEquals(1, saved.maxInFlight);
+        } finally {
+            PathWeaverConfig.set(previous);
+        }
     }
 }

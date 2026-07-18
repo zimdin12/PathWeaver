@@ -2,11 +2,11 @@
 
 **Experimental, fail-closed asynchronous mob pathfinding for Minecraft 26.1.2 (Fabric).**
 
-PathWeaver can move eligible Walk/Swim A* searches off the server thread. It does not move entity ticks or collision processing off-thread. Version 0.2.0 is the final correctness-and-safety rework of the experimental engine; it is not a universal-speed, vanilla-equivalence, or thread-safety claim.
+PathWeaver can move eligible Walk/Swim A* searches off the server thread. It does not move entity ticks or collision processing off-thread. Version 0.2.1 is the corrected release of the final correctness-and-safety rework of the experimental engine; it is not a universal-speed, vanilla-equivalence, or thread-safety claim.
 
 ## Toggle and disable instructions
 
-With ModMenu installed, open **Mods → PathWeaver → Config**. The first option is **Enable experimental off-thread pathfinding**. Its tooltip reads: “Experimental off-thread pathfinding; disable if you see issues.” Changes persist through Cloth Config.
+With ModMenu installed, open **Mods → PathWeaver → Config**. The first option is **Enable experimental off-thread pathfinding**. Its tooltip reads: “Experimental off-thread pathfinding; disable if you see issues.” All nine options have plain-language tooltips. Save writes `config/pathweaver.json` and updates the live config; worker-thread and in-flight limits apply after restart. `distanceThrottleEnabled` is retained for config compatibility but is explicitly marked unavailable and currently has no behavior.
 
 You can also edit `config/pathweaver.json`:
 
@@ -62,7 +62,7 @@ A private immutable snapshot evaluator/A* was designed and cost-measured. Even a
 }
 ```
 
-Invalid numeric values are clamped before runtime services consume them.
+Invalid numeric values are clamped before runtime services consume them. `distanceThrottleEnabled` is reserved and currently has no effect.
 
 ## What the benchmark proved
 

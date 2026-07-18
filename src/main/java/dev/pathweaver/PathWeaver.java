@@ -15,12 +15,12 @@ public class PathWeaver implements ModInitializer {
         // Register Cloth AutoConfig (persists config/pathweaver.json; GUI via ModMenu when present).
         // Guarded so a config-API mismatch degrades to built-in defaults rather than breaking the mod.
         try {
-            me.shedaniel.autoconfig.AutoConfig.register(
+            me.shedaniel.autoconfig.ConfigHolder<dev.pathweaver.config.PathWeaverConfig> holder =
+                me.shedaniel.autoconfig.AutoConfig.register(
                 dev.pathweaver.config.PathWeaverConfig.class,
                 me.shedaniel.autoconfig.serializer.GsonConfigSerializer::new);
-            dev.pathweaver.config.PathWeaverConfig.set(
-                me.shedaniel.autoconfig.AutoConfig
-                    .getConfigHolder(dev.pathweaver.config.PathWeaverConfig.class).getConfig());
+            holder.registerSaveListener(dev.pathweaver.config.PathWeaverConfig::onSave);
+            dev.pathweaver.config.PathWeaverConfig.set(holder.getConfig());
         } catch (Throwable t) {
             LOG.warn("PathWeaver config registration failed; using defaults.", t);
         }

@@ -1,4 +1,4 @@
-# Modrinth copy — PathWeaver v0.2.0
+# Modrinth copy — PathWeaver v0.2.1
 
 ## Summary (≤256 characters)
 
@@ -6,11 +6,11 @@ Experimental server-side Walk/Swim A* offload with lifecycle validation, fail-cl
 
 ## Release title
 
-PathWeaver 0.2.0 — correctness rework, fail-closed compatibility, and ModMenu toggle
+PathWeaver 0.2.1 — corrected ModMenu persistence, fail-closed compatibility, and lifecycle safety
 
 ## Version changelog
 
-PathWeaver 0.2.0 finishes the correctness and lifecycle rework of the experimental async engine. It deliberately remains synchronous when compatibility cannot prove a worker-safe path.
+PathWeaver 0.2.1 is the corrected release of the correctness and lifecycle rework of the experimental async engine. It deliberately remains synchronous when compatibility cannot prove a worker-safe path.
 
 ### Prominent on/off toggle
 
@@ -32,7 +32,7 @@ or:
 "syncFallbackOnly": true
 ```
 
-Existing explicit values are preserved during upgrades. A config already containing `asyncEnabled=false` stays off.
+Existing explicit values are preserved during upgrades. A config already containing `asyncEnabled=false` stays off. Version 0.2.1 fixes the generated 0.2.0 screen abort: every persisted field now has an honest tooltip, Save persists and updates the live config, and worker-pool limits are clearly marked restart-required. The reserved `distanceThrottleEnabled` field is labeled unavailable and currently has no effect.
 
 ### Correctness and lifecycle rework
 
@@ -57,7 +57,7 @@ The current eligible worker path still uses a read-only view backed by live chun
 
 A private immutable snapshot evaluator/A* was designed and cost-measured. A simplified lower-bound Walk surface capture already failed the agreed relative-cost gate; correct cave, detour, and provider coverage would add more capture and maintenance cost. The private engine and its scaling matrix were cancelled rather than forced through.
 
-The only identified future route is an upstream immutable-chunk/provider-purity API. PathWeaver 0.2.0 does not implement or pursue that API.
+The only identified future route is an upstream immutable-chunk/provider-purity API. PathWeaver 0.2.1 does not implement or pursue that API.
 
 ### What the benchmark actually proved
 

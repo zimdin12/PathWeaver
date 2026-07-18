@@ -1,8 +1,10 @@
 package dev.pathweaver.config;
 
 import me.shedaniel.autoconfig.ConfigData;
+import me.shedaniel.autoconfig.ConfigHolder;
 import me.shedaniel.autoconfig.annotation.Config;
 import me.shedaniel.autoconfig.annotation.ConfigEntry;
+import net.minecraft.world.InteractionResult;
 
 /**
  * Runtime config the engine reads, and the Cloth AutoConfig model (persists to
@@ -11,45 +13,68 @@ import me.shedaniel.autoconfig.annotation.ConfigEntry;
  */
 @Config(name = "pathweaver")
 public class PathWeaverConfig implements ConfigData {
+    @ConfigEntry.Gui.Excluded
     public static final int MAX_POOL_THREADS = 64;
+    @ConfigEntry.Gui.Excluded
     public static final int MAX_IN_FLIGHT = 4096;
+    @ConfigEntry.Gui.Excluded
     public static final int MAX_REPATH_TOLERANCE_BLOCKS = 64;
+    @ConfigEntry.Gui.Excluded
     public static final int MAX_RESULT_AGE_TICKS = 1200;
+    @ConfigEntry.Gui.Excluded
     public static final double MAX_STALENESS_MOVE_THRESHOLD = 1024.0;
 
     @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Category("general")
     public boolean asyncEnabled = true;
 
     @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Category("general")
     public boolean repathElisionEnabled = true;
 
     @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Gui.RequiresRestart
+    @ConfigEntry.Category("performance")
     public int poolThreads = 0;          // 0 = auto (cores/4)
 
     @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Gui.RequiresRestart
+    @ConfigEntry.Category("performance")
     public int maxInFlight = 256;
 
     @ConfigEntry.Gui.Tooltip
-    public boolean distanceThrottleEnabled = false;  // opt-in: makes far mobs dumber
+    @ConfigEntry.Category("general")
+    public boolean distanceThrottleEnabled = false;  // reserved config compatibility; no behavior yet
 
     @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Category("general")
     public boolean syncFallbackOnly = false;         // panic switch: never dispatch async
 
     @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Category("repath")
     public int repathToleranceBlocks = 0;
 
     @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Category("repath")
     public double stalenessMoveThreshold = 4.0;      // blocks moved since dispatch -> discard
 
     @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Category("repath")
     public int maxResultAgeTicks = 40;
 
+    @ConfigEntry.Gui.Excluded
     private static PathWeaverConfig INSTANCE = new PathWeaverConfig();
     public static PathWeaverConfig get() { return INSTANCE; }
     public static void set(PathWeaverConfig c) {
         PathWeaverConfig normalized = c == null ? new PathWeaverConfig() : c;
         normalized.validatePostLoad();
         INSTANCE = normalized;
+    }
+
+    public static InteractionResult onSave(
+            ConfigHolder<PathWeaverConfig> holder, PathWeaverConfig config) {
+        set(config);
+        return InteractionResult.PASS;
     }
 
     /**
