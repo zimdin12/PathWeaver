@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased 0.2.2 — Whole-mod quality pass
+
+### Fixed
+
+- Safely publish live config saves across render/server threads, and force synchronous panic defaults
+  when Cloth registration or loading fails instead of silently leaving async enabled.
+- Reconcile active Mixin configs against metadata for the current client/server environment; integrated
+  servers no longer fail closed merely because a client-only config has no recorded owner.
+- Normalize internal slash-form Mixin target names before every sensitive-target comparison, seed the
+  safety gate denied until discovery completes, and replace final denial state atomically.
+- Return safely to ModMenu when the generated config screen is unavailable.
+- Report accepted deferred movement as successful so goals do not abandon pending work, while direct
+  path queries remain synchronous and immediate.
+- Gate each accepted worker search until its main-thread `onPathfindingStart` callback completes; every
+  setup/rejection/exception path releases the gate, and callback effects happen-before worker reads.
+- Bind each accepted movement's exact speed value through installation, including `0`, negative, and
+  `NaN`, and refresh it when the same target is requested again while pending.
+- Apply vanilla's cheap path-creation preconditions before tolerance reuse and clear recompute
+  invalidation in a `finally` scope so exceptions cannot poison later navigation.
+- Supersede accepted pre-change work before recompute's vanilla `canUpdatePath` guard and preserve the
+  exact accepted movement speed across replacement dispatch.
+- Keep mod-defined mob subclasses synchronous by default through a cached, fail-closed vanilla-origin
+  gate; expose a clearly unsafe advanced override that bypasses only that gate.
+
+### Compatibility boundary
+
+- The origin gate closes direct and indirect mod-defined mob overrides. Remaining experimental surface:
+  Mixins into vanilla `Entity`/`LivingEntity`/`Mob`, plus live vanilla mob/world/block reads without an
+  immutable snapshot. Fabric content-registry hooks remain denied; no full-safety claim is made.
+
+### Simplified
+
+- Removed the permanently unused distance-throttle option, inert Fly evaluator mixin, production-dead
+  annotation reader, test-only repath wrappers, and stale worklog comment prefixes.
+- Restricted evaluator cloning to the only two async-eligible exact classes and changed routing-depth
+  tests from compiler-opcode snapshots to normal/exceptional behavioral checks.
+
 ## 0.2.1 — Working ModMenu persistence and complete option help (2026-07-18)
 
 ### Fixed
@@ -47,10 +84,10 @@
 
 ### Still unresolved
 
-The worker still reads live chunk and mob state. True immutability requires the approved but benchmark-
-gated private snapshot evaluator/A* port. Epoch/token/staleness, callback accounting, tagged outcomes,
-and positive-tolerance repath validity remain separate slices. Default-on does not imply proven safety,
-vanilla equivalence, or a net MSPT improvement.
+The worker still reads live chunk and mob state. True immutability required the then-approved but later
+cancelled benchmark-gated private snapshot evaluator/A* port. Epoch/token/staleness, callback
+accounting, tagged outcomes, and positive-tolerance repath validity remain separate slices. Default-on
+does not imply proven safety, vanilla equivalence, or a net MSPT improvement.
 
 ## 0.1.1 — Honesty and default-off patch (2026-07-15)
 

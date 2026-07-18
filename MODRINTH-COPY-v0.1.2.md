@@ -49,7 +49,7 @@ The worker still consumes a read-only **view backed by live chunks** and live mo
 
 Dispatch-time saturation or rejection leaves that same invocation synchronous. A worker exception does **not** recompute the failed request; it discards that result and forces later requests for the mob synchronous during a cooldown.
 
-A private in-mod snapshot evaluator/A* engine is approved in principle, but implementation is gated on the remaining correctness slices and a real near-tick-budget load benchmark. Until exhaustive Walk/Swim equivalence tests pass, paths may differ from vanilla.
+A private in-mod snapshot evaluator/A* engine was approved in principle at this stage, but was later cancelled after its capture-cost benchmark failed the agreed gate. Until exhaustive Walk/Swim equivalence tests pass, paths may differ from vanilla.
 
 **This is an alpha: expect bugs, keep backups, and disable async if you prefer vanilla behavior.**
 

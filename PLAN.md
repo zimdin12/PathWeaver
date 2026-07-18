@@ -6,7 +6,18 @@
 - [x] v0.1.2 navigation-only routing, default-on new configs, and fail-closed compatibility discovery.
 - [x] v0.2 correctness baseline: epoch/token lifecycle isolation, complete install staleness, tagged outcomes, evaluator-specific callback accounting, exact terminal balance, and valid repath reuse/recompute invalidation.
 
-## v0.2.0 final release
+## Unreleased whole-mod quality pass
+
+- [x] Config safe publication and synchronous fail-closed load fallback.
+- [x] Current-environment/slash-safe compatibility scanning and pre-scan deny-all state.
+- [x] Remove dead/no-op Fly, distance-throttle, annotation-reader, and repath helper surfaces.
+- [x] Vanilla-origin mob eligibility gate and default-off advanced modded-mob override.
+- [x] Recompute pre-guard supersession and accepted-speed preservation.
+- [x] Cold JDK 25 build with 103/103 JUnit, 2/2 GameTests, artifact-only production-Knot
+  CodeSource probe (`Mob=true`, `Zombie=true`, bypass false), dedicated-server startup, and package gate.
+- [ ] Independent exact-tree review.
+
+## v0.2.1 current release
 
 - [x] Steven chose SHIP as the honest fail-closed final form.
 - [x] Private snapshot/A* rejected after its lower-bound capture-cost spike failed the agreed relative-cost gate.
@@ -15,10 +26,10 @@
 - [x] Explicit ModMenu entrypoint, prominent persistent async toggle, and panic switch.
 - [x] Honest README/design/changelog/manifest and Modrinth copy.
 
-Release closure requires a cold JDK 25 unit/build/GameTest/runtime/package gate, an independent exact-final-tree PASS, a clean release commit pushed to `master`, and an annotated `v0.2.0` tag on that commit.
+Release closure used a cold JDK 25 unit/build/GameTest/runtime/package gate, an independent exact-final-tree PASS, a clean release commit pushed to `master`, and an annotated `v0.2.1` tag on that commit.
 
 ## Future boundary
 
-No active engine work remains after 0.2.0. The only viable future route is an upstream immutable-chunk/provider-purity API. Do not resume private snapshot/A* or scaling work without a new explicit product decision and that external seam.
+No active engine work remains after 0.2.1. The only viable future route is an upstream immutable-chunk/provider-purity API. Do not resume private snapshot/A* or scaling work without a new explicit product decision and that external seam.
 
 AI sensor/target-scan offload remains out of scope; any future proposal requires a separate purity audit and measured payoff.
