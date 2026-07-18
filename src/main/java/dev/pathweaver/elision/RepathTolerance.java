@@ -12,21 +12,11 @@ public final class RepathTolerance {
     public record CurrentPath(BlockPos target, BlockPos endpoint, boolean reached, boolean done,
                               boolean canUpdate, boolean recomputeInvalidated, int reachRange) { }
 
-    public static boolean canReuseExistingPath(BlockPos oldTarget, BlockPos newTarget, int toleranceBlocks) {
-        return oldTarget != null && newTarget != null && toleranceBlocks >= 0
-            && manhattan(oldTarget, newTarget) <= toleranceBlocks;
-    }
-
     /**
-     * Reuse requires one requested target to satisfy both semantic-target tolerance and endpoint reach.
-     * The endpoint bound widens only by the explicit tolerance; all other navigation facts stay exact.
+     * Returns the deterministic requested target that satisfies both semantic-target tolerance and
+     * endpoint reach, or null when reuse is unsafe. The endpoint bound widens only by the explicit
+     * tolerance; all other navigation facts stay exact.
      */
-    public static boolean canReuseExistingPath(Set<BlockPos> targets, CurrentPath current,
-                                               int requestedReachRange, int toleranceBlocks) {
-        return reusableTarget(targets, current, requestedReachRange, toleranceBlocks) != null;
-    }
-
-    /** Returns the deterministic target whose intent must replace PathNavigation.targetPos on reuse. */
     public static BlockPos reusableTarget(Set<BlockPos> targets, CurrentPath current,
                                           int requestedReachRange, int toleranceBlocks) {
         if (targets == null || targets.isEmpty() || current == null

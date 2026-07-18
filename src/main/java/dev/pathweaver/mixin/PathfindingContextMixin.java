@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
- * FIX 1 (critical safety linchpin): isolate the shared {@code PathTypeCache} from worker threads.
+ * Critical safety linchpin: isolate the shared {@code PathTypeCache} from worker threads.
  *
  * <p>Vanilla {@code PathfindingContext(CollisionGetter, Mob)} does, verified against 26.1.2 bytecode:
  * {@code if (mob.level() instanceof ServerLevel sl) this.cache = sl.getPathTypeCache();} — grabbing

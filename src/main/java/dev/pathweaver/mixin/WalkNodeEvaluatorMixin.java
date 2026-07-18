@@ -8,7 +8,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
- * FIX 2a: keep the live-mob entity callbacks off the worker thread.
+ * Keep the live-mob entity callbacks off the worker thread.
  *
  * <p>Verified on 26.1.2: {@code WalkNodeEvaluator.prepare} calls {@code mob.onPathfindingStart()} and
  * {@code done()} calls {@code mob.onPathfindingDone()}. Both are no-ops in vanilla {@code Mob}, but a
