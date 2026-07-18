@@ -3,7 +3,7 @@
   "id": "pathweaver",
   "version": "${version}",
   "name": "PathWeaver",
-  "description": "Experimental default-on A* offload for eligible Walk/Swim mobs. Disable with asyncEnabled=false; compatibility discovery fails closed and unresolved safety/equivalence limits remain documented.",
+  "description": "Experimental fail-closed Walk/Swim A* offload with a prominent ModMenu toggle. Standard Fabric content-registry packs remain synchronous; no universal-speed or vanilla-equivalence claim.",
   "authors": ["Zimdin"],
   "contact": {
     "homepage": "https://modrinth.com/mod/pathweaver",
@@ -14,7 +14,8 @@
   "icon": "assets/pathweaver/icon.png",
   "environment": "*",
   "entrypoints": {
-    "main": ["dev.pathweaver.PathWeaver"]
+    "main": ["dev.pathweaver.PathWeaver"],
+    "modmenu": ["dev.pathweaver.config.PathWeaverModMenu"]
   },
   "mixins": ["pathweaver.mixins.json"],
   "depends": {

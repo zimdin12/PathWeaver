@@ -1,0 +1,14 @@
+{
+  "text.autoconfig.pathweaver.title": "PathWeaver",
+  "text.autoconfig.pathweaver.option.asyncEnabled": "Enable experimental off-thread pathfinding",
+  "text.autoconfig.pathweaver.option.asyncEnabled.@Tooltip": "Experimental off-thread pathfinding; disable if you see issues",
+  "text.autoconfig.pathweaver.option.repathElisionEnabled": "Enable conservative repath reuse",
+  "text.autoconfig.pathweaver.option.poolThreads": "Worker threads (0 = automatic)",
+  "text.autoconfig.pathweaver.option.maxInFlight": "Maximum in-flight searches",
+  "text.autoconfig.pathweaver.option.distanceThrottleEnabled": "Enable distance throttling",
+  "text.autoconfig.pathweaver.option.syncFallbackOnly": "Synchronous fallback only (panic switch)",
+  "text.autoconfig.pathweaver.option.syncFallbackOnly.@Tooltip": "Prevent all off-thread dispatch and use synchronous pathfinding",
+  "text.autoconfig.pathweaver.option.repathToleranceBlocks": "Repath reuse tolerance (blocks)",
+  "text.autoconfig.pathweaver.option.stalenessMoveThreshold": "Result movement-staleness threshold",
+  "text.autoconfig.pathweaver.option.maxResultAgeTicks": "Maximum result age (ticks)"
+}

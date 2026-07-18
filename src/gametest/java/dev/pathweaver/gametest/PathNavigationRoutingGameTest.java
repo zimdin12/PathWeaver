@@ -115,8 +115,8 @@ public final class PathNavigationRoutingGameTest {
                 target.getX() + 0.5, target.getY(), target.getZ() + 0.5, 1.0);
             boolean entityAccepted = entityNav.moveTo(targetMob, 1.0);
 
-            // Current v0.1.x placeholder contract: with no old path, accepted async work still returns
-            // false from high-level moveTo. A later epoch/result slice will model accepted-pending.
+            // Current v0.2.0 contract: with no old path, accepted async work still returns false from
+            // high-level moveTo while the accepted request remains registered as pending.
             check(helper, !coordinateAccepted, "coordinate move currently exposes accepted-pending as false");
             check(helper, !entityAccepted, "entity move currently exposes accepted-pending as false");
             check(helper, PathWeaverRuntime.get().entitySink().isRegistered(coordinateMob.getId()),

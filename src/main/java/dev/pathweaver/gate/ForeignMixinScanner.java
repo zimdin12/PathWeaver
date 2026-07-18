@@ -37,7 +37,7 @@ import java.util.Set;
  * allowlist cannot see it. Recognized untrusted evaluator hits are added to
  * {@link SafetyGate#deniedBySafety}, forcing that evaluator family back to synchronous pathing.
  *
- * The v0.1.2 scanner is fail-closed: metadata, ownership, active-config, or plugin-discovery errors
+ * The v0.2.0 scanner is fail-closed: metadata, ownership, active-config, or plugin-discovery errors
  * deny every otherwise eligible evaluator family. Compatibility exemptions, if any are added, are
  * exact audited mod-version/config/mixin-class/target tuples rather than owner prefixes.
  */

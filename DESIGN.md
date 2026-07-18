@@ -1,115 +1,78 @@
-# PathWeaver design status
-
-**Release line:** 0.1.2 default-on alpha
+# PathWeaver 0.2.0 design status
 
 **Target:** Minecraft 26.1.2, Fabric Loader 0.19.3, Java 25
 
-**Defaults:** asynchronous search on; repath tolerance zero
+**Product decision:** ship the correctness baseline; fail closed; no private A* engine
 
-This document describes v0.1.2. It does not restore the original unsupported claims that `PathNavigationRegion` was an immutable snapshot or that async paths were safe by construction, vanilla-identical, or universally faster.
+**Defaults:** `asyncEnabled=true`, `repathToleranceBlocks=0`
 
-Development master additionally carries the completed v0.2 lifecycle/staleness slices: server epochs,
-process-unique request tokens, generation-owned counters, and install validation over UUID/removal,
-world/dimension, exact navigation/current-path identity, semantic target revision, movement, and maximum
-age. Changed targets and navigation stop cancel the prior registration. These checks prevent late-result
-mutation; they do not make the worker's captured search inputs immutable.
+## 1. Product boundary
 
-## 1. Current mechanism
+PathWeaver 0.2.0 is an experimental opt-out engine with conservative compatibility eligibility. It does not claim universal speed, vanilla-identical paths, immutable worker inputs, or blanket thread safety.
 
-PathWeaver arms async interception only around four proven genuine-navigation `createPath` invocations in `PathNavigation`: coordinate movement, coordinate movement with explicit reach, entity movement, and recomputation. Direct/external/query-only `createPath` calls remain vanilla synchronous.
+The standard Fabric content-registry module installs dynamic path-type provider hooks into `PathfindingContext` and `WalkNodeEvaluator`. Provider purity and worker safety are not declared. PathWeaver therefore denies Walk and Swim in standard content-registry packs and runs them synchronously. This inert fail-closed outcome is an intentional safety boundary.
 
-For an enabled, permitted navigation request, PathWeaver builds a `PathNavigationRegion` and submits A* to a bounded executor. Each request uses a fresh evaluator/finder. A worker-local `PathTypeCache` avoids writes to the level's shared path-type cache. Completion is returned to the main thread and installed through navigation state.
+## 2. Routing
 
-`PathNavigationRegion` is a read-only API view backed by live `LevelChunk` objects. It is **not a block/fluid copy**. The worker also receives the live `Mob`; vanilla evaluator code reads its position, bounding box, attributes, malus values, and level. Default-on v0.1.2 is therefore an experimental opt-out alpha, not a thread-safety proof.
+Async depth is armed only around four proven navigation operations in `PathNavigation`:
 
-## 2. Default and fallback behavior
+1. coordinate movement;
+2. coordinate movement with explicit reach;
+3. entity movement;
+4. recomputation.
 
-New v0.1.2 configurations use `asyncEnabled=true`. Existing files are not migrated and retain their explicit value.
+Direct, external, and query-only `createPath` calls remain synchronous and do not mutate navigation path/speed state through PathWeaver.
 
-Users can prevent async dispatch with either:
+When enabled and eligible, the engine submits a fresh exact vanilla Walk or Swim evaluator/finder to a bounded executor. Dispatch rejection leaves that same invocation synchronous. A worker exception discards that request and forces later requests for the mob synchronous during cooldown; it does not recompute the failed request.
 
-- `asyncEnabled=false`; or
-- `syncFallbackOnly=true`.
+## 3. Compatibility eligibility
 
-Dispatch saturation/rejection leaves that same invocation synchronous. A worker exception is different: the failed request is discarded and only later requests for that mob are forced synchronous during a cooldown.
+Only exact `WalkNodeEvaluator` and `SwimNodeEvaluator` classes are candidates. Fly consumes live mob RNG; Amphibious mutates live water malus; subclasses and custom evaluators remain synchronous.
 
-Repath tolerance remains `0`, so the experimental widened Feature B short-circuit is inactive by default.
+The scanner reconciles Loader-resolved Fabric/JiJ metadata with Mixin's prepared active targets, including plugin-expanded configs. It covers concrete evaluators, `NodeEvaluator`, `PathfindingContext`, `PathNavigation`, `GroundPathNavigation`, and `PathFinder`. Ownership, metadata, config, reflection, or discovery ambiguity denies Walk and Swim. There are no broad Fabric/Lithium/content-registry trust rules and no compatibility exemptions in 0.2.0.
 
-## 3. Eligibility
+## 4. Request lifecycle and installation
 
-Exact-class candidates:
+Every accepted request carries:
 
-- `WalkNodeEvaluator`
-- `SwimNodeEvaluator`
+- server epoch and process-unique request token;
+- numeric entity ID plus UUID/removal identity;
+- exact level, dimension, navigation object, and current-path identity;
+- semantic target revision;
+- dispatch position and maximum result age.
 
-Forced synchronous:
+Install requires the exact current registration and all identity/staleness checks. Changed targets supersede prior work. `stop()` invalidates pending work at an exact required injection. Block-change recomputation is invalid from `HEAD` through `RETURN`, supersedes same-target pending work, and dispatches from fresh world facts. An already accepted same-target request remains authoritative across ordinary mid-flight toggle changes.
 
-- `FlyNodeEvaluator`: start-node selection advances the live mob RNG;
-- `AmphibiousNodeEvaluator`: `prepare`/`done` write live mob water malus;
-- every subclass/custom evaluator;
-- any family denied by compatibility discovery.
+Worker outcomes are closed and tagged:
 
-## 4. Fail-closed compatibility discovery
+- `SUCCESS` carries a path;
+- `NO_PATH` carries neither path nor failure;
+- `FAILED` carries the real throwable.
 
-At initialization, PathWeaver:
+Only `FAILED` enters failure cooldown. Walk owns exactly one main-thread start/done callback pair; Swim owns none. Every terminal route balances accepted registration even if callbacks or diagnostics throw.
 
-- reads Fabric-declared server mixin configs for every Loader-resolved container, including JiJ mods;
-- reconciles every declaration with Mixin's prepared active configs;
-- retains exact mod ID, version, config, concrete mixin class, and target identity;
-- includes plugin-expanded prepared targets;
-- covers concrete evaluators, `NodeEvaluator`, `PathfindingContext`, `PathNavigation`, `GroundPathNavigation`, and `PathFinder`;
-- denies Walk and Swim on metadata, ownership, reconciliation, reflection, or parsing failure;
-- grants no prefix, whole-mod, or exact exemptions in v0.1.2.
+## 5. Repath reuse
 
-The standard Fabric content-registry module mixes into `PathfindingContext` and `WalkNodeEvaluator` to expose dynamic path-type providers. Those callbacks are not proven worker-safe, so the scanner forces Walk and Swim synchronous in that stack. This is an intentional safety reduction, not an error.
+Positive tolerance requires a reached active path, exact reach-range agreement, update-eligible navigation, no recompute invalidation, and one requested target satisfying both target tolerance and endpoint reach. Valid reuse preserves path identity and advances target intent. Overflow-safe Manhattan calculations use widened per-axis differences.
 
-## 5. Current safeguards
+The shipped tolerance is `0`; Feature B's wider reuse is available but inactive by default.
 
-- Async is on by default but remains behind exact evaluator and fail-closed compatibility gates.
-- Direct/query-only `createPath` stays synchronous.
-- Repath tolerance defaults to zero.
-- Thread, in-flight, tolerance, and staleness values are bounded after load.
-- Fresh finder/evaluator per request.
-- Per-thread path-type cache.
-- Main-thread completion/install path.
-- Dispatch rejection keeps the same invocation synchronous.
-- Users have both normal and panic-switch opt-outs.
+## 6. Configuration UI
 
-These measures reduce known risk; they do not repair the unresolved live-input defect below.
+`fabric.mod.json` declares an explicit ModMenu entrypoint implementing `ModMenuApi#getModConfigScreenFactory`. Cloth AutoConfig supplies the persistent screen. `asyncEnabled` is the first option with the short experimental warning; `syncFallbackOnly` remains a lower panic switch. Direct JSON edits and previously persisted false values remain supported.
 
-## 6. Remaining defects
+## 7. Unresolved live-input boundary
 
-1. **Live inputs:** region reads reach live chunks and evaluators read a live mob.
-2. **Live-input immutability:** completed install staleness can reject an obsolete result but cannot undo
-   worker reads that raced live chunk/mob state; the private snapshot engine remains required.
+`PathNavigationRegion` is a read-only API view backed by live chunks, not a block/fluid snapshot. Vanilla evaluators also read live mob state. Completion validation prevents stale installation but cannot retroactively make worker reads immutable. Compatibility denial, not unsupported trust, is the 0.2.0 answer for standard packs.
 
-Worker results are now explicitly tagged `SUCCESS`, `NO_PATH`, or `FAILED`; ordinary vanilla `null` is
-`NO_PATH` and only actual exceptions enter failure cooldown/logging.
+## 8. Rejected private snapshot engine
 
-Callback replay is evaluator-specific and exact: Walk owns one main-thread start/done pair and Swim owns
-none. Every accepted-registration terminal path, including clear/shutdown and install exceptions, removes
-first and balances completion behind a contained callback boundary.
+A private immutable snapshot evaluator/A* was designed to avoid worker access to live providers and world state. Eager full-cube capture was clearly too large. A later sparse Walk surface-capture spike measured a simplified lower bound against paired vanilla searches and failed the agreed relative-cost gate. Correct cave/detour coverage and provider semantics would only increase capture work, allocation, and maintenance.
 
-Positive repath tolerance now requires an active reached path, exact reach-range agreement, current
-navigation update eligibility, and one target that satisfies both path-target tolerance and endpoint
-reach. Successful reuse advances navigation target intent. Recompute is explicitly invalidated from `HEAD`
-through `RETURN`, so normal block-change recompute cannot take the widened reuse path or preserve same-target
-pending work; the old registration is terminally superseded and a fresh request uses current world facts.
-Tolerance remains `0` by default despite this proof.
+The engine is cancelled, not pending implementation. The only plausible future architecture is an upstream immutable-chunk/provider-purity API that makes safe immutable inputs available without reconstructing them per request. That API does not exist here and is not pursued by 0.2.0.
 
-## 7. Performance evidence
+## 9. Performance evidence
 
-Four real paired Spark runs in an isolated 160-zombie Walk workload measured a 90.97% reduction in Server-thread `WalkNodeEvaluator` inclusive samples and a 76.60% reduction in self samples. `PathFinder` samples moved fully off the Server thread in those captures.
+The retained four-pair Spark benchmark proves isolated server-thread A* offload: Walk evaluator inclusive samples fell 90.97% and `PathFinder` samples moved off the server thread. It does not prove net MSPT improvement: mean MSPT averaged 2.927 ms OFF and 3.012 ms ON with noisy pairs.
 
-Net MSPT did not improve reliably: average mean MSPT was 2.927 ms OFF versus 3.012 ms ON. This supports
-an offload claim only in that unsaturated workload. A near-tick-budget Walk/Swim benchmark is required to
-validate and tune the snapshot evaluator/A* port; it does not decide whether the approved port may begin.
-
-## 8. Snapshot-engine acceptance boundary
-
-The approved future architecture is an in-mod immutable snapshot evaluator plus private A* loop as
-PathWeaver's sole async engine behind `asyncEnabled`. It begins after the remaining tractable correctness
-slices. Saturated near-budget benchmarks validate and tune the implementation and its server-thread relief;
-they are not a pre-port permission gate.
-
-No safety or path-equivalence language is earned until exhaustive sync-versus-snapshot tests prove Walk/Swim path equivalence across offset-upward behavior, multi-target selection, doors, fences, water, height/fall constraints, malus values, and step-height variation.
+No load/scaling matrix is claimed for an engine that will not be built.

@@ -1,43 +1,23 @@
 # Changelog
 
-## Unreleased — v0.2 correctness rework
+## 0.2.0 — Correctness, lifecycle isolation, and honest fail-closed final form (2026-07-18)
 
 ### Changed
 
-- Server start/stop advances an epoch; every async dispatch carries that epoch plus a process-unique
-  request token and entity ID through worker completion and main-thread install.
-- Late results, failures, and cooldown updates require an exact request-key match and cannot consume a
-  replacement registration that happens to reuse the same numeric entity ID.
-- Every worker-pool generation owns its executor, in-flight capacity, and failure counters. An
-  interrupt-ignoring old worker can finish after restart without decrementing or incrementing the new
-  generation's counters.
-- Install validation now binds entity UUID/removal state, exact world and navigation object, dimension,
-  current path identity, semantic target revision, movement threshold, and a bounded result age. A changed
-  target supersedes and balances the prior registration; an accepted same-target pending request remains
-  authoritative across mid-flight config toggles. `stop()` invalidates pending work at an exact, required
-  injection, and a throwing mod callback is contained/logged once so cancellation remains terminal.
-- Worker completion is now explicitly tagged `SUCCESS`, `NO_PATH`, or `FAILED`. Vanilla `null` is an
-  ordinary no-path completion and does not trigger the exception cooldown. Actual search exceptions retain
-  their cause and take the failure path. Completion-consumer exceptions are counted and logged instead of
-  being silently swallowed.
-- Exact Walk searches replay one main-thread start/done callback pair; exact Swim searches replay none.
-  The Walk redirects lock `require=1` and `expect=1`. Success, no-path, failure, stale discard,
-  supersession, stop, install exception, clear, and server shutdown all terminally balance accepted
-  registrations; duplicate registration fails closed without displacing the accepted owner, and callback
-  or logging exceptions cannot strand the remaining registrations.
-- Positive Feature B reuse now requires a reached, active path, exact reach-range agreement, a navigation
-  that can update, and one requested target satisfying both path-target tolerance and endpoint reach. A valid
-  reuse advances navigation target intent so later recomputation follows the new target.
-  `recomputePath()` is scoped by exact `HEAD`/`RETURN` injections so block-change recomputation cannot reuse
-  the invalidated path or preserve same-target pending work; it supersedes that registration and dispatches
-  from fresh world facts. Live GameTest proof covers pending replacement, valid one-block drift, and forced
-  recompute replacement.
-  The shipped/default tolerance remains `0` as the conservative product setting.
+- Added an explicit ModMenu entrypoint. `asyncEnabled` is the first persistent Cloth Config option with a short experimental warning; `syncFallbackOnly` remains the lower panic switch.
+- Server start/stop advances an epoch; every async dispatch carries that epoch plus a process-unique request token and entity identity through worker completion and main-thread install.
+- Every worker-pool generation owns its executor, in-flight capacity, and failure counters. Late interrupt-ignoring workers cannot mutate replacement-generation accounting.
+- Install validation binds UUID/removal state, world/dimension, exact navigation/current-path identity, semantic target revision, movement, and bounded result age. Changed targets, recompute, stop, shutdown, and stale results terminally supersede or discard exact registrations.
+- Worker completion is explicitly tagged `SUCCESS`, `NO_PATH`, or `FAILED`; ordinary vanilla no-path results do not trigger exception cooldown.
+- Exact Walk searches replay one main-thread start/done callback pair; exact Swim searches replay none. All accepted terminal paths balance registration, including exceptional callbacks and diagnostics.
+- Positive repath reuse requires a reached active path, exact reach agreement, valid endpoint, update-eligible navigation, and no recompute invalidation. Valid reuse advances target intent; block-change recomputation supersedes same-target pending work and uses fresh world facts. Default tolerance remains `0`.
 
-### Still pending
+### Honest compatibility and performance status
 
-The worker inputs are still live-backed until the approved immutable snapshot/private A* replaces the
-current evaluator reuse.
+- PathWeaver remains fail-closed and synchronous in standard Fabric content-registry packs because dynamic path-type providers do not declare worker purity/safety.
+- No universal-speed, vanilla-equivalence, or blanket thread-safety claim is made. Retained Spark profiles prove isolated server-thread A* offload but no reliable net MSPT improvement.
+- A private immutable snapshot evaluator/A* was designed and cost-measured. Its simplified lower-bound capture failed the agreed relative-cost gate; correct cave/detour/provider coverage would cost more. The private engine and its load/scaling matrix were cancelled rather than forced through.
+- An upstream immutable-chunk/provider-purity API is the only identified future path and is not part of 0.2.0.
 
 ## 0.1.2 — Default-on routing and fail-closed compatibility (2026-07-15)
 

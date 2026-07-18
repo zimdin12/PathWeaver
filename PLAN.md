@@ -1,131 +1,24 @@
-# PathWeaver release plan
+# PathWeaver release plan/status
 
-This plan tracks approved current work and marks already-landed milestones explicitly. Historical proposals for shared immutable `PathNavigationRegion` caches or unbuilt features are not described as implemented.
+## Shipped history
 
-## Phase 1 — v0.1.1 honesty patch
+- [x] v0.1.1 honesty/default-off correction.
+- [x] v0.1.2 navigation-only routing, default-on new configs, and fail-closed compatibility discovery.
+- [x] v0.2 correctness baseline: epoch/token lifecycle isolation, complete install staleness, tagged outcomes, evaluator-specific callback accounting, exact terminal balance, and valid repath reuse/recompute invalidation.
 
-- [x] Replace immutable-snapshot / safe-by-construction / identical-behavior claims with the actual 0.1.1 boundaries.
-- [x] Default new configs to `asyncEnabled=false`.
-- [x] Default `repathToleranceBlocks=0`.
-- [x] Clamp invalid pool-thread, in-flight, tolerance and staleness values before startup.
-- [x] Restrict the exact evaluator allowlist to Walk + Swim; keep Fly and Amphibious synchronous.
-- [x] Record proof-based benchmark framing: offload measured, net MSPT speedup not proven.
-- [x] Build and run the complete JDK 25 test suite.
-- [x] Independently review the exact diff.
-- [x] Build the release JAR and verify its expanded metadata/default config behavior.
-- [x] Commit, push and tag `v0.1.1`.
-- [x] Prepare `MODRINTH-COPY-v0.1.1.md` for release handoff.
+## v0.2.0 final release
 
-## Interim release — v0.1.2
+- [x] Steven chose SHIP as the honest fail-closed final form.
+- [x] Private snapshot/A* rejected after its lower-bound capture-cost spike failed the agreed relative-cost gate.
+- [x] No load/scaling matrix for the cancelled engine.
+- [x] Standard Fabric content-registry packs remain synchronous; no broad provider trust.
+- [x] Explicit ModMenu entrypoint, prominent persistent async toggle, and panic switch.
+- [x] Honest README/design/changelog/manifest and Modrinth copy.
 
-- [x] Land navigation-only routing (`37ffaa6`) and fail-closed compatibility discovery (`b77bac6`).
-- [x] Default newly generated configs to `asyncEnabled=true`; preserve explicit persisted values.
-- [x] Keep exact Walk + Swim eligibility, Fly/Amphibious exclusion and repath tolerance zero.
-- [x] Retain experimental alpha, live-input and no-net-speedup disclosures.
-- [x] Complete the final JDK 25 cold build and independent exact-diff PASS.
+Release closure requires a cold JDK 25 unit/build/GameTest/runtime/package gate, an independent exact-final-tree PASS, a clean release commit pushed to `master`, and an annotated `v0.2.0` tag on that commit.
 
-## Phase 2 — v0.2 rework
+## Future boundary
 
-Each item requires a failing regression first, a focused green result, the full suite, and runtime evidence where applicable.
+No active engine work remains after 0.2.0. The only viable future route is an upstream immutable-chunk/provider-purity API. Do not resume private snapshot/A* or scaling work without a new explicit product decision and that external seam.
 
-### Dispatch contract
-
-- [x] Move async dispatch to a seam representing an actual navigation command.
-- [x] Keep reachability/query-only `createPath` callers synchronous.
-- [x] Prove query callers receive the real synchronous result and never trigger deferred `moveTo`.
-
-### Immutable worker inputs
-
-- [x] Prove vanilla evaluator reuse cannot provide strict immutable worker inputs.
-- [x] Record the field constraint that standard Fabric content registries currently deny Walk + Swim,
-  making v0.1.2's async engine effectively inert in a typical pack even though bare-stack offload works.
-- [x] Approve the lightweight in-mod immutable snapshot evaluator + private A* as the sole future async
-  engine: the value case is server-thread bottleneck relief onto otherwise-idle worker cores, supported by
-  prior dense-village server-thread Walk offload evidence. This is not a total-work-reduction claim.
-- [ ] After remaining correctness slices, implement the private engine with bounded/lightweight capture,
-  including a proven replacement for sensitive content-registry path-type provider semantics rather than
-  merely removing the denial.
-- [ ] Use the saturated 160/320/640 mixed-mob benchmark to validate and tune the port, not as permission to
-  start it. If main-thread relief does not translate to MSPT/TPS under saturation, report that honestly.
-- [ ] Audit Fabric API `0.153.0` content-registry bytecode and enumerate the actually registered provider
-  set. Permit only exact version/provider combinations proven worker-safe; unknown/dynamic providers deny.
-- [ ] Prefer server-thread capture of provider-influenced path-type facts into the immutable snapshot so
-  worker threads execute no third-party provider callbacks.
-- [ ] Prove exhaustive Walk/Swim path equivalence before restoring any safety/equivalence claim.
-
-### Request and lifecycle identity
-
-- [x] Carry server epoch and process-unique request token through dispatch, completion, and install.
-- [x] Require exact epoch/token/entity-ID registration matching before install, discard, failure cooldown,
-  or callback mutation.
-- [x] Isolate executor capacity and failure counters per generation so interrupt-ignoring old workers
-  cannot mutate restart state.
-- [x] Check world/dimension, entity UUID/removal state, exact navigation/path identity, semantic target
-  revision, movement threshold, and maximum age.
-- [x] Supersede materially changed targets and invalidate pending work on navigation stop.
-
-### Completion semantics
-
-- [x] Introduce tagged `SUCCESS`, `NO_PATH`, and `FAILED` outcomes.
-- [x] Reserve failure cooldown/logging for actual exceptions.
-- [x] Balance callbacks for submit rejection, exception, no-path, stale discard, clear and shutdown.
-- [x] Model evaluator-specific callback multiplicity; keep unsupported evaluators synchronous.
-- [x] Do not silently swallow completion callback failures; count and report delivery exceptions.
-- Record dispatch-to-install latency distribution/counters before broader async eligibility.
-- Deterministically prove accepted-pending movement behavior for no current path, a live current path,
-  and a superseded target under controlled worker delay; visible stalls are release blockers.
-
-### Compatibility gate
-
-- [x] Fail closed on unreadable/unparseable/unverifiable scan input.
-- [x] Cover `NodeEvaluator`, concrete evaluators, `PathfindingContext`, `PathNavigation`,
-  `GroundPathNavigation`, and `PathFinder` with correct global/per-family denial.
-- [x] Read Fabric-declared mixin configs from Loader-resolved containers/JiJ mods and account for
-  plugin-expanded prepared mixins.
-- [x] Replace prefix trust with exact mod ID + version + config + mixin class + target audit entries.
-- [x] Emit scanned/failed/denied diagnostics.
-- [ ] Extend retained compatibility evidence when additional concrete pack combinations are tested.
-
-### Repath elision
-
-- [x] Implement and test endpoint/reach/navigation validity plus changed-block recompute invalidation.
-- [x] Retain tolerance zero as the conservative default after the positive-tolerance proof.
-
-### Required test/evidence matrix
-
-- Walk/Swim sync-vs-async node sequences: offset-upward, multi-target, doors, fences, water and height transitions.
-- Concurrent block/mob mutation stress.
-- Removal, unload, dimension change, shutdown and restart.
-- Superseded targets and maximum-age rejection.
-- Callback ordering/count on every terminal path.
-- Scanner integration: JiJ, nonstandard metadata, plugin/unverifiable, failure, exact trust.
-- Mixin-application assertions.
-- Real Spark profiles under both the isolated workload and a repeatable near-tick-budget pathfinding load.
-- Normal-pack scanner decision plus dispatch/install/discard counters, so an inert fail-closed run is not
-  misreported as async performance or behavioral evidence.
-- 160, 320, and 640 nearby mixed mob types in the realistic Fabric stack, with paired/reversed async
-  OFF/ON legs. Drive continuous Walk/Swim work and tune scene load so OFF approaches or exceeds the
-  approximately 50 ms tick budget; mob count alone is not proof of saturation.
-- `dispatched > 0` for every claimed async leg; retain actual entity/request census, worker utilization,
-  dispatch/install/discard and latency accounting, Server-thread pathfinding inclusive/self samples,
-  mean/median/p95/max MSPT, TPS, trajectory/movement continuity, path validity, crashes/errors, and clean
-  shutdown. Report honestly if main-thread offload does not improve end-to-end MSPT/TPS.
-
-### v0.2 acceptance and release
-
-- [ ] Land all correctness slices, prominent in-game toggle, latency telemetry, and accepted-pending tests.
-- [ ] Resolve normal-pack inertness without broad trust or arbitrary live provider execution.
-- [ ] Pass the full mixed-mob scaling matrix and final near-budget ON/OFF benchmark with retained evidence.
-- [ ] Obtain Steven's review before publishing v0.2 and then update Modrinth.
-- [ ] If v0.1.2 is instead proven to cause a crash or serious regression, prioritize a minimal confirmed
-  fix and coordinate an immediate Modrinth patch after in-game no-crash verification; do not wait for the
-  v0.2 review. Inert fail-closed behavior alone is not classified as that emergency.
-
-### Deferred v0.3 research candidate — sensor/target-scan offload
-
-Do not start before v0.2 ships. Research only if an exact sensor purity audit proves candidate discovery is
-read-only and a benchmark shows material payoff beyond Lithium/current optimizations. Any future design
-may offload only snapshot-backed spatial reads; validation plus Brain/memory mutation remains on the main
-thread, and uncertainty degrades to synchronous behavior.
-
-No claim of safe, equivalent or faster behavior is restored unless the corresponding test/runtime gate proves it. Multi-version work remains out of scope until explicitly approved.
+AI sensor/target-scan offload remains out of scope; any future proposal requires a separate purity audit and measured payoff.

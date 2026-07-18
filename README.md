@@ -1,39 +1,52 @@
 # PathWeaver
 
-**Experimental, default-on asynchronous mob pathfinding for Minecraft 26.1.2 (Fabric).**
+**Experimental, fail-closed asynchronous mob pathfinding for Minecraft 26.1.2 (Fabric).**
 
-PathWeaver can move the A* search used by eligible land and aquatic mobs off the server thread. It does not run entity ticks or collision off-thread. Version 0.1.2 enables asynchronous search by default for newly generated configurations, while retaining strict gates and synchronous fallbacks.
+PathWeaver can move eligible Walk/Swim A* searches off the server thread. It does not move entity ticks or collision processing off-thread. Version 0.2.0 is the final correctness-and-safety rework of the experimental engine; it is not a universal-speed, vanilla-equivalence, or thread-safety claim.
 
-This is an alpha. **Expect bugs, keep backups, and disable async if you do not accept the current limitations.** Default-on is an opt-out choice, not a claim of proven thread safety, vanilla-equivalent paths, or faster MSPT.
+## Toggle and disable instructions
 
-## Disable or limit async
+With ModMenu installed, open **Mods → PathWeaver → Config**. The first option is **Enable experimental off-thread pathfinding**. Its tooltip reads: “Experimental off-thread pathfinding; disable if you see issues.” Changes persist through Cloth Config.
 
-Set either option in `config/pathweaver.json`:
+You can also edit `config/pathweaver.json`:
 
-- `"asyncEnabled": false` — disables async dispatch and uses vanilla pathfinding.
-- `"syncFallbackOnly": true` — panic switch that prevents async dispatch.
+```json
+{
+  "asyncEnabled": false,
+  "syncFallbackOnly": true
+}
+```
 
-Existing configuration files are preserved during upgrades. A v0.1.1 file with `asyncEnabled=false` remains off; delete/regenerate it or set the field explicitly to adopt the new default.
+- `asyncEnabled=false` is the normal off switch.
+- `syncFallbackOnly=true` is the lower panic switch and prevents all async dispatch.
+- Existing explicit values are preserved during upgrades; a persisted `asyncEnabled=false` stays false.
 
-## Current implementation
+## Honest compatibility status
 
-For a permitted navigation request, the worker receives:
+PathWeaver fails closed. Only exact vanilla `WalkNodeEvaluator` and `SwimNodeEvaluator` searches are candidates. Fly, Amphibious, subclasses, unknown ownership, scanner failures, and sensitive foreign mixins stay synchronous.
 
-- a fresh `PathFinder` and exact vanilla `WalkNodeEvaluator` or `SwimNodeEvaluator`;
-- a per-thread `PathTypeCache`, avoiding writes to the level's shared cache;
-- a `PathNavigationRegion`, which is a read-only **view** of live chunks, not an immutable copy;
-- the live mob inputs used by vanilla evaluator code.
+The standard Fabric content-registry module installs dynamic path-type provider hooks into sensitive pathfinding classes. Those providers have no worker-safety contract, so **PathWeaver remains synchronous in standard Fabric content-registry packs**, even when `asyncEnabled=true`. This is intentional: the toggle permits an attempt, but compatibility eligibility has final authority.
 
-Version 0.1.2 includes two correctness improvements over v0.1.1:
+A clean compatibility scan only means no known sensitive target was discovered. It does not prove arbitrary live world or mod code safe for workers.
 
-- async interception is armed only by genuine navigation/recompute operations; direct and query-only `createPath` calls remain synchronous and do not dispatch or mutate navigation path/speed state;
-- compatibility discovery fails closed over Loader-resolved Fabric/JiJ metadata and Mixin's prepared targets, including plugin-expanded configs and shared evaluator/context/navigation/finder targets.
+## What 0.2.0 changed
 
-The worker still reads live chunk and mob state. Those inputs can change during a search. Development master now binds every completion to server epoch/token, UUID/removal state, world/dimension, exact navigation/current-path identity, semantic target revision, movement, and maximum age, with target supersession and stop invalidation. These checks reject obsolete installs; they do not make worker inputs immutable. Worker completion is explicitly tagged `SUCCESS`, `NO_PATH`, or `FAILED`, so an ordinary vanilla null/no-path does not trigger exception cooldown. Callback replay is exact per evaluator—one Walk start/done pair, none for Swim—and every accepted terminal path, clear, and shutdown balances it. Dispatch rejection leaves that invocation synchronous. A worker exception does not recompute the failed request; it discards that result and forces later requests for the mob synchronous during a cooldown.
+- Async interception is limited to four genuine navigation/recompute operations; direct and query-only `createPath` calls stay synchronous and immediate.
+- Every request is bound to a server epoch, process-unique request token, entity UUID/removal state, world/dimension, exact navigation/current-path identity, semantic target revision, movement, and maximum result age.
+- Supersession, navigation stop, recompute invalidation, shutdown, stale results, and exceptions terminally balance accepted registrations.
+- Worker outcomes are tagged `SUCCESS`, `NO_PATH`, or `FAILED`; an ordinary no-path does not enter exception cooldown.
+- Walk callback replay is exactly one start/done pair; Swim replays none.
+- Positive repath reuse requires a reached active path, exact reach agreement, a valid endpoint, and update-eligible navigation. Block-change recomputation always bypasses reuse and supersedes pending same-target work.
+- Repath tolerance remains `0` by default.
+- ModMenu now has an explicit entrypoint and persistent configuration screen.
 
-A private snapshot evaluator and A* port is approved as the eventual single async engine after the remaining correctness slices. Saturated normal-pack benchmarks validate and tune server-thread relief; they no longer gate permission to build the port. No immutable-input or path-equivalence claim is made today.
+## Remaining experimental boundary
 
-## Defaults in 0.1.2
+Where compatibility permits dispatch, the current worker still receives a read-only view backed by live chunks plus live mob inputs. Install-time validation can reject obsolete results, but it cannot make those reads immutable. Therefore PathWeaver makes no vanilla-equivalence or general thread-safety guarantee.
+
+A private immutable snapshot evaluator/A* was designed and cost-measured. Even a simplified lower-bound surface capture consumed too much of the paired vanilla search budget; correct cave, detour, and provider coverage would add work. The private engine was rejected rather than forced through. The only credible future route is an upstream immutable-chunk snapshot and provider-purity API; PathWeaver does not implement or pursue that API in 0.2.0.
+
+## Defaults
 
 ```json
 {
@@ -44,47 +57,23 @@ A private snapshot evaluator and A* port is approved as the eventual single asyn
   "distanceThrottleEnabled": false,
   "syncFallbackOnly": false,
   "repathToleranceBlocks": 0,
-  "stalenessMoveThreshold": 4.0
+  "stalenessMoveThreshold": 4.0,
+  "maxResultAgeTicks": 40
 }
 ```
 
-- `asyncEnabled=true`: async is attempted by default only after every runtime gate passes.
-- `repathToleranceBlocks=0`: Feature B does not widen vanilla's short-circuit by default. Positive values
-  require a reached active path, exact reach agreement, valid endpoint and navigation state, and are always
-  bypassed by normal recompute/block-change invalidation. Recompute also supersedes same-target pending work
-  so the replacement request observes fresh world facts.
-- Invalid numeric values are clamped before executor startup.
-- `syncFallbackOnly=true` prevents all async dispatch.
-
-## Eligibility and compatibility gate
-
-Only exact vanilla evaluator classes are candidates—never subclasses:
-
-- Async candidates: `WalkNodeEvaluator`, `SwimNodeEvaluator`
-- Always synchronous:
-  - `FlyNodeEvaluator` because its start-node search consumes the live mob RNG;
-  - `AmphibiousNodeEvaluator` because its `prepare`/`done` mutate live mob water malus;
-  - custom evaluator subclasses;
-  - evaluator families denied by compatibility discovery.
-
-The scanner covers concrete evaluators plus `NodeEvaluator`, `PathfindingContext`, `PathNavigation`, `GroundPathNavigation`, and `PathFinder`. Metadata, ownership, active-config, plugin, or reflection uncertainty denies Walk and Swim rather than guessing. There are no broad Fabric, Diagonal, or Lithium trust rules and no compatibility exemptions in v0.1.2.
-
-The standard Fabric content-registry module hooks `PathfindingContext` and `WalkNodeEvaluator` to expose dynamic path-type providers. Those callbacks are not proven worker-safe, so v0.1.2 forces Walk and Swim synchronous when that module is installed. This is the intended fail-closed outcome: enabling async by default does not override compatibility denials.
-
-A clean scan proves only that this gate found no known sensitive mixin target. It does not make live worker inputs immutable or prove an arbitrary pack safe.
+Invalid numeric values are clamped before runtime services consume them.
 
 ## What the benchmark proved
 
-Four paired, real Spark profiles in an isolated Fabric server with 160 pathfinding zombies showed that async ON moved measured A* work off the **Server thread**:
+Four paired real Spark profiles in an isolated server with 160 pathfinding zombies showed measured server-thread A* offload:
 
 - `WalkNodeEvaluator` inclusive samples: 2613 → 236 ms per run on average (-90.97%)
 - `WalkNodeEvaluator` self samples: 94 → 22 ms (-76.60%)
 - `PathfindingContext` inclusive samples: 499 → 76 ms (-84.77%)
 - `PathFinder` inclusive samples: 787 → 0 ms
 
-It did **not** prove an overall MSPT speedup. Average mean MSPT was 2.927 ms OFF and 3.012 ms ON; paired results were noisy. The supported claim is measured server-thread pathfinding offload under that isolated Walk workload—not a universal TPS/MSPT improvement.
-
-Raw profile URLs are retained in [`MODRINTH-COPY-v0.1.2.md`](MODRINTH-COPY-v0.1.2.md#what-the-benchmark-actually-proved). Later near-budget load benchmarks validate and tune the approved snapshot/A* port and its server-thread relief; they do not gate permission to implement it.
+It did **not** prove a net MSPT win. Average mean MSPT was 2.927 ms OFF and 3.012 ms ON, with noisy paired results. The supported claim is isolated server-thread pathfinding offload—not universal TPS/MSPT improvement. See [`MODRINTH-COPY-v0.2.md`](MODRINTH-COPY-v0.2.md) for profile links and release wording.
 
 ## Requirements
 
@@ -93,8 +82,9 @@ Raw profile URLs are retained in [`MODRINTH-COPY-v0.1.2.md`](MODRINTH-COPY-v0.1.
 - Fabric API
 - Cloth Config
 - Java 25
+- ModMenu is optional but recommended for the in-game toggle
 
-Server-side; vanilla clients can connect. No blanket compatibility guarantee is made for every modpack, version, or configuration.
+Server-side; vanilla clients can connect. Keep backups and disable async if you do not accept the experimental boundary.
 
 ## Building and testing
 
@@ -102,8 +92,6 @@ Server-side; vanilla clients can connect. No blanket compatibility guarantee is 
 ./gradlew clean test build
 ```
 
-## Reporting issues
-
-Include Minecraft/Fabric/PathWeaver versions, `config/pathweaver.json`, the complete mod list and `latest.log`, whether async was enabled, reproduction steps, and a real Spark profile for performance claims.
+When reporting issues, include Minecraft/Fabric/PathWeaver versions, the config, complete mod list and log, async state, reproduction steps, and a real Spark profile for performance claims.
 
 Source and issues: <https://github.com/Zimdin12/PathWeaver>
