@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased 0.2.2 — Whole-mod quality pass
+## 0.2.2 — Whole-mod quality pass (2026-07-18)
 
 ### Fixed
 
