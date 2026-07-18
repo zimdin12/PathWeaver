@@ -4,17 +4,11 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.pathweaver.PathWeaver;
+import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
-import net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator;
-import net.minecraft.world.level.pathfinder.FlyNodeEvaluator;
 import net.minecraft.world.level.pathfinder.SwimNodeEvaluator;
 import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
-import org.objectweb.asm.AnnotationVisitor;
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.ClassVisitor;
-import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.Type;
 import org.spongepowered.asm.mixin.MixinEnvironment;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfig;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
@@ -30,14 +24,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-
 /**
  * At startup, detects whether any OTHER mod mixes into one of our allowlisted vanilla evaluator
  * classes (or {@code PathFinder}). Such a mixin keeps the class identity intact, so the exact-class
  * allowlist cannot see it. Recognized untrusted evaluator hits are added to
  * {@link SafetyGate#deniedBySafety}, forcing that evaluator family back to synchronous pathing.
  *
- * The v0.2.0 scanner is fail-closed: metadata, ownership, active-config, or plugin-discovery errors
+ * The v0.2.1 scanner is fail-closed: metadata, ownership, active-config, or plugin-discovery errors
  * deny every otherwise eligible evaluator family. Compatibility exemptions, if any are added, are
  * exact audited mod-version/config/mixin-class/target tuples rather than owner prefixes.
  */
@@ -45,9 +38,7 @@ public final class ForeignMixinScanner {
 
     private static final Map<String, Class<?>> ALLOWLISTED_BY_NAME = Map.of(
         WalkNodeEvaluator.class.getName(), WalkNodeEvaluator.class,
-        SwimNodeEvaluator.class.getName(), SwimNodeEvaluator.class,
-        AmphibiousNodeEvaluator.class.getName(), AmphibiousNodeEvaluator.class,
-        FlyNodeEvaluator.class.getName(), FlyNodeEvaluator.class
+        SwimNodeEvaluator.class.getName(), SwimNodeEvaluator.class
     );
     private static final String PATHFINDER = "net.minecraft.world.level.pathfinder.PathFinder";
     private static final Set<String> SHARED_PATHFINDING_TARGETS = Set.of(
@@ -79,7 +70,7 @@ public final class ForeignMixinScanner {
     public static Set<Class<?>> targetsTouchingAllowlist(Collection<String> targetClassNames) {
         Set<Class<?>> hits = new HashSet<>();
         for (String t : targetClassNames) {
-            Class<?> c = ALLOWLISTED_BY_NAME.get(t);
+            Class<?> c = ALLOWLISTED_BY_NAME.get(normalizeTargetName(t));
             if (c != null) hits.add(c);
         }
         return hits;
@@ -88,10 +79,15 @@ public final class ForeignMixinScanner {
     /** Map sensitive mixin targets to the evaluator families whose async eligibility they invalidate. */
     public static Set<Class<?>> denialsForTargets(Collection<String> targetClassNames) {
         Set<Class<?>> denied = targetsTouchingAllowlist(targetClassNames);
-        if (targetClassNames.stream().anyMatch(SHARED_PATHFINDING_TARGETS::contains)) {
+        if (targetClassNames.stream().map(ForeignMixinScanner::normalizeTargetName)
+                .anyMatch(SHARED_PATHFINDING_TARGETS::contains)) {
             denied.addAll(ELIGIBLE_EVALUATORS);
         }
         return denied;
+    }
+
+    private static String normalizeTargetName(String target) {
+        return target.replace('/', '.');
     }
 
     /** Pure fail-closed decision layer used by startup scanning and unit tests. */
@@ -113,6 +109,16 @@ public final class ForeignMixinScanner {
 
     /** Read server-applicable mixin config names from Fabric metadata's string or object forms. */
     public static List<String> readServerMixinConfigNames(JsonObject metadata) {
+        return readEnvironmentMixinConfigNames(metadata, "server");
+    }
+
+    /** Read client-applicable names; integrated servers share these transformed classes. */
+    public static List<String> readClientMixinConfigNames(JsonObject metadata) {
+        return readEnvironmentMixinConfigNames(metadata, "client");
+    }
+
+    private static List<String> readEnvironmentMixinConfigNames(
+            JsonObject metadata, String runtimeEnvironment) {
         if (!metadata.has("mixins")) return List.of();
         if (!metadata.get("mixins").isJsonArray()) {
             throw new IllegalArgumentException("fabric.mod.json mixins must be an array");
@@ -133,9 +139,9 @@ public final class ForeignMixinScanner {
                 }
                 String environment = entry.has("environment")
                     ? entry.get("environment").getAsString() : "*";
-                if (environment.equals("*") || environment.equals("server")) {
+                if (environment.equals("*") || environment.equals(runtimeEnvironment)) {
                     configs.add(entry.get("config").getAsString());
-                } else if (!environment.equals("client")) {
+                } else if (!environment.equals("client") && !environment.equals("server")) {
                     throw new IllegalArgumentException("Unknown Fabric mixin environment: " + environment);
                 }
             } else {
@@ -210,16 +216,22 @@ public final class ForeignMixinScanner {
         return List.copyOf(result);
     }
 
-    private static Set<TargetClaim> preparedClaims(IMixinConfig config)
+    static Set<TargetClaim> preparedClaims(IMixinConfig config)
             throws ReflectiveOperationException {
         var getMixinsFor = config.getClass().getDeclaredMethod("getMixinsFor", String.class);
         getMixinsFor.setAccessible(true);
         Set<TargetClaim> claims = new HashSet<>();
-        for (String target : config.getTargets()) {
-            Object raw = getMixinsFor.invoke(config, target);
+        for (String rawTarget : config.getTargets()) {
+            Object raw = getMixinsFor.invoke(config, rawTarget);
             if (!(raw instanceof Collection<?> mixins) || mixins.isEmpty()) {
                 throw new IllegalStateException("prepared target has no concrete mixin identity: "
-                    + config.getName() + " -> " + target);
+                    + config.getName() + " -> " + rawTarget);
+            }
+            String target = normalizeTargetName(rawTarget);
+            if (!target.equals(rawTarget)) {
+                PathWeaver.LOG.warn("Mixin config '{}' supplied internal target name '{}'; "
+                    + "normalizing to '{}' for fail-closed compatibility checks.",
+                    config.getName(), rawTarget, target);
             }
             for (Object mixin : mixins) {
                 if (!(mixin instanceof IMixinInfo info)) {
@@ -232,42 +244,18 @@ public final class ForeignMixinScanner {
     }
 
     /**
-     * Read the target class names declared by {@code @Mixin} on a mixin class, from its bytecode.
-     * Handles both {@code @Mixin(SomeClass.class)} (value = Type[]) and
-     * {@code @Mixin(targets = "a.b.C")} (targets = String[]). No class loading/initialization.
-     */
-    public static List<String> readMixinAnnotationTargets(byte[] classBytes) {
-        List<String> out = new ArrayList<>();
-        ClassReader cr = new ClassReader(classBytes);
-        cr.accept(new ClassVisitor(Opcodes.ASM9) {
-            @Override public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
-                if (!"Lorg/spongepowered/asm/mixin/Mixin;".equals(desc)) return null;
-                return new AnnotationVisitor(Opcodes.ASM9) {
-                    @Override public AnnotationVisitor visitArray(String name) {
-                        // name is "value" (Type[]) or "targets" (String[])
-                        return new AnnotationVisitor(Opcodes.ASM9) {
-                            @Override public void visit(String n, Object value) {
-                                if (value instanceof Type t) out.add(t.getClassName());
-                                else if (value instanceof String s) out.add(s);
-                            }
-                        };
-                    }
-                };
-            }
-        }, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-        return out;
-    }
-
-    /**
      * Scan every resolved Fabric mod container and every active Mixin configuration. Fabric Loader
      * expands jar-in-jar candidates into their own containers; active config targets include plugin
      * contributions returned by IMixinConfigPlugin.getMixins(). Any discovery ambiguity fails closed.
      */
     public static void scanAndPopulate() {
+        SafetyGate.denyAllEligible();
         Map<String, DeclaredConfig> owners = new HashMap<>();
         List<String> failures = new ArrayList<>();
         try {
-            for (ModContainer mod : FabricLoader.getInstance().getAllMods()) {
+            FabricLoader loader = FabricLoader.getInstance();
+            boolean clientEnvironment = loader.getEnvironmentType() == EnvType.CLIENT;
+            for (ModContainer mod : loader.getAllMods()) {
                 var metadata = mod.getMetadata();
                 String id = metadata.getId();
                 if (!"fabric".equals(metadata.getType())) continue;
@@ -279,7 +267,10 @@ public final class ForeignMixinScanner {
                     foundMetadata = true;
                     try (var in = Files.newInputStream(metadataPath)) {
                         JsonObject json = JsonParser.parseReader(new InputStreamReader(in)).getAsJsonObject();
-                        for (String configName : readServerMixinConfigNames(json)) {
+                        List<String> configNames = clientEnvironment
+                            ? readClientMixinConfigNames(json)
+                            : readServerMixinConfigNames(json);
+                        for (String configName : configNames) {
                             DeclaredConfig owner = new DeclaredConfig(id, version, configName);
                             DeclaredConfig prior = owners.putIfAbsent(configName, owner);
                             if (prior != null && !prior.equals(owner)) {
@@ -321,15 +312,14 @@ public final class ForeignMixinScanner {
 
         for (DeclaredConfig declared : owners.values()) {
             if (!preparedNames.contains(declared.configName())) {
-                failures.add("declared server mixin config not prepared: " + declared.modId()
+                failures.add("declared current-environment mixin config not prepared: " + declared.modId()
                     + ":" + declared.configName());
             }
         }
 
         ScanDecision decision = decide(active, failures);
         lastScanReport = new ScanReport(decision, active);
-        SafetyGate.deniedBySafety.clear();
-        SafetyGate.deniedBySafety.addAll(decision.denied());
+        SafetyGate.replaceDenials(decision.denied());
         for (ActiveConfig config : active) {
             Set<Class<?>> denied = denialsForTargets(config.targets());
             if (!denied.isEmpty()) {

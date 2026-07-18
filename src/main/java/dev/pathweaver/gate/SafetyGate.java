@@ -11,7 +11,7 @@ import java.util.Set;
  * Decides whether a mob's A* search may run off-thread. The rule: the mob's NodeEvaluator must be
  * EXACTLY one of the temporarily eligible vanilla evaluator classes. The worker still consumes a
  * read-only region view backed by live chunks and live mob inputs, so async remains experimental even
- * though v0.2.0 enables it by default. The fail-closed scanner may force eligible families sync.
+ * though v0.2.1 enables it by default. The fail-closed scanner may force eligible families sync.
  *
  * Exact-class ({@code getClass() ==}), never {@code instanceof}: a mod evaluator that
  * {@code extends WalkNodeEvaluator} (e.g. stormiespiders' AdvancedWalkNodeProcessor) reads live
@@ -37,9 +37,21 @@ public final class SafetyGate {
      * so the allowlist alone cannot see it — this set is the second line of defence.
      */
     public static final Set<Class<?>> deniedBySafety =
-        Collections.synchronizedSet(new HashSet<>());
+        Collections.synchronizedSet(new HashSet<>(ALLOWED));
 
     private SafetyGate() {}
+
+    /** Fail closed before and during compatibility discovery. */
+    static void denyAllEligible() {
+        replaceDenials(ALLOWED);
+    }
+
+    static void replaceDenials(Set<Class<?>> denied) {
+        synchronized (deniedBySafety) {
+            deniedBySafety.clear();
+            deniedBySafety.addAll(denied);
+        }
+    }
 
     /** Exact-class allowlist membership only. */
     public static boolean isEvaluatorAllowed(Class<?> evaluatorClass) {

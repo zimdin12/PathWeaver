@@ -5,6 +5,7 @@ import net.minecraft.world.level.pathfinder.SwimNodeEvaluator;
 import net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator;
 import net.minecraft.world.level.pathfinder.FlyNodeEvaluator;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -12,7 +13,14 @@ class SafetyGateTest {
     /** Stand-in for a mod evaluator (like stormiespiders' AdvancedWalkNodeProcessor). */
     static class FakeSpiderEvaluator extends WalkNodeEvaluator {}
 
-    @AfterEach void clearDenials() { SafetyGate.deniedBySafety.clear(); }
+    @BeforeEach void clearDenialsBeforeTest() { SafetyGate.deniedBySafety.clear(); }
+    @AfterEach void restoreFailClosedDefault() { SafetyGate.denyAllEligible(); }
+
+    @Test void scanStartsWithEveryEligibleFamilyDenied() {
+        SafetyGate.denyAllEligible();
+        assertFalse(SafetyGate.isAllowed(WalkNodeEvaluator.class));
+        assertFalse(SafetyGate.isAllowed(SwimNodeEvaluator.class));
+    }
 
     @Test void vanillaWalkAllowed() {
         assertTrue(SafetyGate.isEvaluatorAllowed(WalkNodeEvaluator.class));

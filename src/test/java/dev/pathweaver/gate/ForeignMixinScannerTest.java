@@ -4,11 +4,14 @@ import com.google.gson.JsonParser;
 import net.minecraft.world.level.pathfinder.SwimNodeEvaluator;
 import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
 import org.junit.jupiter.api.Test;
-import org.objectweb.asm.AnnotationVisitor;
-import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.Type;
+import org.spongepowered.asm.mixin.MixinEnvironment;
+import org.spongepowered.asm.mixin.extensibility.IMixinConfig;
+import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
+import org.spongepowered.asm.mixin.extensibility.IMixinConfigSource;
+import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 
+import java.lang.reflect.Proxy;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
@@ -40,6 +43,21 @@ class ForeignMixinScannerTest {
             assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
                 ForeignMixinScanner.denialsForTargets(List.of(target)), target);
         }
+    }
+
+    @Test void internalSlashTargetNamesCannotBypassSensitiveTargetDenials() {
+        assertEquals(Set.of(WalkNodeEvaluator.class),
+            ForeignMixinScanner.denialsForTargets(List.of(
+                "net/minecraft/world/level/pathfinder/WalkNodeEvaluator")));
+        assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+            ForeignMixinScanner.denialsForTargets(List.of(
+                "net/minecraft/world/level/pathfinder/PathFinder")));
+    }
+
+    @Test void preparedReflectionPathNormalizesInternalTargetNames() throws Exception {
+        assertEquals(Set.of(new ForeignMixinScanner.TargetClaim(
+                "foreign.SlashMixin", "net.minecraft.world.level.pathfinder.WalkNodeEvaluator")),
+            ForeignMixinScanner.preparedClaims(new SlashTargetConfig()));
     }
 
     @Test void anyDiscoveryFailureFailsClosedForEveryEligibleEvaluator() {
@@ -74,6 +92,18 @@ class ForeignMixinScannerTest {
             ForeignMixinScanner.readServerMixinConfigNames(metadata));
     }
 
+    @Test void fabricMetadataDiscoveryHonorsClientEnvironmentAndObjectForm() {
+        var metadata = JsonParser.parseString("""
+            {"mixins":[
+              "common.mixins.json",
+              {"config":"server.mixins.json","environment":"server"},
+              {"config":"client.mixins.json","environment":"client"}
+            ]}
+            """).getAsJsonObject();
+        assertEquals(List.of("common.mixins.json", "client.mixins.json"),
+            ForeignMixinScanner.readClientMixinConfigNames(metadata));
+    }
+
     @Test void malformedFabricMixinMetadataFailsInsteadOfDisappearing() {
         var metadata = JsonParser.parseString("{\"mixins\":[42]}").getAsJsonObject();
         assertThrows(IllegalArgumentException.class,
@@ -92,48 +122,43 @@ class ForeignMixinScannerTest {
             "net.minecraft.world.level.pathfinder.PathFinder"));
     }
 
-    // ---- ASM annotation reader (synthesize a @Mixin-annotated class, read it back) ----
-    @Test void readsStringTargetsForm() {
-        byte[] bytes = synthMixinClass("StringTargetMixin", false,
-            "net.minecraft.world.level.pathfinder.WalkNodeEvaluator");
-        List<String> t = ForeignMixinScanner.readMixinAnnotationTargets(bytes);
-        assertTrue(t.contains("net.minecraft.world.level.pathfinder.WalkNodeEvaluator"), t.toString());
-    }
+    private static final class SlashTargetConfig implements IMixinConfig {
+        private static final String RAW_TARGET =
+            "net/minecraft/world/level/pathfinder/WalkNodeEvaluator";
 
-    @Test void readsClassValueForm() {
-        byte[] bytes = synthMixinClass("ClassValueMixin", true,
-            "net.minecraft.world.level.pathfinder.FlyNodeEvaluator");
-        List<String> t = ForeignMixinScanner.readMixinAnnotationTargets(bytes);
-        assertTrue(t.contains("net.minecraft.world.level.pathfinder.FlyNodeEvaluator"), t.toString());
-    }
-
-    @Test void endToEndTargetsMapToAllowlist() {
-        byte[] bytes = synthMixinClass("E2EMixin", true,
-            "net.minecraft.world.level.pathfinder.WalkNodeEvaluator");
-        Set<Class<?>> hit = ForeignMixinScanner.targetsTouchingAllowlist(
-            ForeignMixinScanner.readMixinAnnotationTargets(bytes));
-        assertEquals(Set.of(WalkNodeEvaluator.class), hit);
-    }
-
-    /**
-     * Build a minimal class carrying an invisible @Mixin annotation.
-     * @param classValue true => @Mixin(value = {Target.class}); false => @Mixin(targets = {"a.b.C"})
-     */
-    private static byte[] synthMixinClass(String name, boolean classValue, String target) {
-        ClassWriter cw = new ClassWriter(0);
-        cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "dev/pathweaver/gen/" + name, null, "java/lang/Object", null);
-        AnnotationVisitor av = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
-        if (classValue) {
-            AnnotationVisitor arr = av.visitArray("value");
-            arr.visit(null, Type.getObjectType(target.replace('.', '/')));
-            arr.visitEnd();
-        } else {
-            AnnotationVisitor arr = av.visitArray("targets");
-            arr.visit(null, target);
-            arr.visitEnd();
+        public Collection<IMixinInfo> getMixinsFor(String target) {
+            assertEquals(RAW_TARGET, target, "reflection must query Mixin with its original target form");
+            IMixinInfo info = (IMixinInfo) Proxy.newProxyInstance(
+                IMixinInfo.class.getClassLoader(), new Class<?>[]{IMixinInfo.class},
+                (proxy, method, args) -> method.getName().equals("getClassName")
+                    ? "foreign.SlashMixin" : defaultValue(method.getReturnType()));
+            return List.of(info);
         }
-        av.visitEnd();
-        cw.visitEnd();
-        return cw.toByteArray();
+
+        @Override public MixinEnvironment getEnvironment() { return null; }
+        @Override public String getName() { return "slash.mixins.json"; }
+        @Override public IMixinConfigSource getSource() { return null; }
+        @Override public String getCleanSourceId() { return "slash"; }
+        @Override public String getMixinPackage() { return "foreign"; }
+        @Override public int getPriority() { return DEFAULT_PRIORITY; }
+        @Override public IMixinConfigPlugin getPlugin() { return null; }
+        @Override public boolean isRequired() { return true; }
+        @Override public Set<String> getTargets() { return Set.of(RAW_TARGET); }
+        @Override public <V> void decorate(String key, V value) { }
+        @Override public boolean hasDecoration(String key) { return false; }
+        @Override public <V> V getDecoration(String key) { return null; }
+    }
+
+    private static Object defaultValue(Class<?> type) {
+        if (!type.isPrimitive()) return null;
+        if (type == boolean.class) return false;
+        if (type == byte.class) return (byte) 0;
+        if (type == short.class) return (short) 0;
+        if (type == int.class) return 0;
+        if (type == long.class) return 0L;
+        if (type == float.class) return 0.0F;
+        if (type == double.class) return 0.0;
+        if (type == char.class) return '\0';
+        return null;
     }
 }
