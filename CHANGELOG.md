@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.3 — ModMenu category cleanup (2026-07-19)
+
+### Fixed
+
+- Prevent Cloth AutoConfig from materializing an empty raw `catalog.default` tab. AutoConfig groups
+  excluded static implementation fields before excluding their entries; those fields now share the
+  translated, populated General category instead of implicitly creating `default`.
+- Add a regression contract requiring every declared field to have a non-default category, every
+  generated category to be translated, and every generated category to contain a visible option.
+
 ## 0.2.2 — Whole-mod quality pass (2026-07-18)
 
 ### Fixed
