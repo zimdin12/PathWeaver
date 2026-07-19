@@ -12,7 +12,7 @@
 - [x] Contract-check all generated categories for translation and at least one visible option.
 - [x] Rendered client proof: three translated tabs, 9/9 options, tooltip rendered, clean client stop.
 - [x] Cold JDK 25 gate: 106/106 JUnit, 2/2 GameTests, clean v0.2.3 package.
-- [ ] Independent exact-tree review.
+- [x] Independent exact-tree review: APPROVE at `8d72141` with no blocking findings.
 
 ## v0.2.2 release closure
 
