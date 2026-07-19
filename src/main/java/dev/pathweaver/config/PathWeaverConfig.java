@@ -14,14 +14,19 @@ import net.minecraft.world.InteractionResult;
 @Config(name = "pathweaver")
 public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
     public static final int MAX_POOL_THREADS = 64;
     @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
     public static final int MAX_IN_FLIGHT = 4096;
     @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
     public static final int MAX_REPATH_TOLERANCE_BLOCKS = 64;
     @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
     public static final int MAX_RESULT_AGE_TICKS = 1200;
     @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
     public static final double MAX_STALENESS_MOVE_THRESHOLD = 1024.0;
 
     @ConfigEntry.Gui.Tooltip
@@ -63,6 +68,7 @@ public class PathWeaverConfig implements ConfigData {
     public int maxResultAgeTicks = 40;
 
     @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
     private static volatile PathWeaverConfig INSTANCE = new PathWeaverConfig();
     public static PathWeaverConfig get() { return INSTANCE; }
     public static void set(PathWeaverConfig c) {

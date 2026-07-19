@@ -86,6 +86,36 @@ class ModMenuIntegrationContractTest {
     }
 
     @Test
+    void everyGeneratedCategoryIsTranslatedAndContainsAtLeastOneVisibleOption() throws Exception {
+        JsonObject lang = JsonParser.parseString(Files.readString(
+            RESOURCES.resolve(Path.of("assets", "pathweaver", "lang", "en_us.json"))))
+            .getAsJsonObject();
+        Map<String, Integer> visibleOptionsByCategory = new LinkedHashMap<>();
+        java.util.Set<String> generatedCategories = new java.util.LinkedHashSet<>();
+
+        for (Field field : PathWeaverConfig.class.getDeclaredFields()) {
+            ConfigEntry.Category category = field.getAnnotation(ConfigEntry.Category.class);
+            assertNotNull(category, field.getName()
+                + " would make AutoConfig materialize its raw implicit default category before exclusion");
+            assertNotEquals("default", category.value(), field.getName());
+            generatedCategories.add(category.value());
+            if (!field.isAnnotationPresent(ConfigEntry.Gui.Excluded.class)) {
+                visibleOptionsByCategory.merge(category.value(), 1, Integer::sum);
+            }
+        }
+
+        for (String category : generatedCategories) {
+            String key = "text.autoconfig.pathweaver.category." + category;
+            assertTrue(lang.has(key), key);
+            assertFalse(lang.get(key).getAsString().isBlank(), key);
+            assertTrue(visibleOptionsByCategory.getOrDefault(category, 0) > 0,
+                category + " would render as an empty category");
+        }
+        assertEquals(java.util.Set.of("general", "performance", "repath"),
+            generatedCategories);
+    }
+
+    @Test
     void everyOptionHasAPlainLanguageTooltipAndIntentionalCategory() throws Exception {
         JsonObject lang = JsonParser.parseString(Files.readString(
             RESOURCES.resolve(Path.of("assets", "pathweaver", "lang", "en_us.json"))))
