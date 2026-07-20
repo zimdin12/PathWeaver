@@ -22,7 +22,7 @@ public class PathWeaver implements ModInitializer {
                 me.shedaniel.autoconfig.AutoConfig.register(
                 dev.pathweaver.config.PathWeaverConfig.class,
                 (definition, configClass) -> new dev.pathweaver.config.LoadFailureTrackingSerializer<>(
-                    new me.shedaniel.autoconfig.serializer.GsonConfigSerializer<>(
+                    new dev.pathweaver.config.PathWeaverConfigSerializer(
                         definition, configClass), loadFailed));
             holder.registerSaveListener(dev.pathweaver.config.PathWeaverConfig::onSave);
             dev.pathweaver.config.PathWeaverConfig.publishLoaded(

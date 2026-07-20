@@ -287,18 +287,25 @@ class EntityInstallSinkTest {
         assertEquals(0, duplicate.dones);
     }
 
-    @Test void acceptedSameTargetIsPreservedAcrossBothMidFlightConfigToggles() {
+    @Test void acceptedSameTargetDrainsAndBalancesAcrossMidFlightMasterOff() {
         dev.pathweaver.config.PathWeaverConfig previous =
             dev.pathweaver.config.PathWeaverConfig.get();
         dev.pathweaver.config.PathWeaverConfig toggled =
             new dev.pathweaver.config.PathWeaverConfig();
+        toggled.enabled = true;
+        dev.pathweaver.config.PathWeaverConfig.set(toggled);
+        assertTrue(dev.pathweaver.config.PathWeaverConfig.get().enabled,
+            "accept/register/enqueue phase must run with master eligibility ON");
         EntityInstallSink sink = new EntityInstallSink();
+        ResultInstaller installer = new ResultInstaller();
         FakeNav nav = new FakeNav();
+        RequestKey key = key(1L, 3L, 17);
         RequestTarget target = RequestTarget.of(java.util.Set.of("same"), 8, false, 1, 32.0F);
-        sink.register(key(1L, 3L, 17), nav, target);
+        sink.register(key, nav, target);
+        installer.enqueue(key, 0L, PathOutcome.success(dummyPath()), 0.0, 0.0, 0.0);
+        assertEquals(1, installer.pending(), "accepted worker result must be queued before OFF");
         try {
-            toggled.asyncEnabled = false;
-            toggled.syncFallbackOnly = false;
+            toggled.enabled = false;
             dev.pathweaver.config.PathWeaverConfig.set(toggled);
             assertEquals(EntityInstallSink.PendingDecision.PRESERVE,
                 sink.pendingDecision(17, nav, target));
@@ -306,16 +313,20 @@ class EntityInstallSinkTest {
                 sink.pendingDecision(17, nav, target, true),
                 "recompute/block-change invalidation must replace even same-target pending work");
 
-            toggled.asyncEnabled = true;
-            toggled.syncFallbackOnly = true;
-            dev.pathweaver.config.PathWeaverConfig.set(toggled);
-            assertEquals(EntityInstallSink.PendingDecision.PRESERVE,
-                sink.pendingDecision(17, nav, target));
+            assertDoesNotThrow(() -> installer.drain(sink),
+                "master OFF must not strand accepted work in the real main-thread drain");
+            assertEquals(0, installer.pending());
+            assertFalse(sink.isRegistered(17));
+            assertEquals(0, sink.inFlightCount(), "terminal drain must remove the accepted registration");
+            assertEquals(1, nav.installs);
+            assertEquals(1, nav.dones);
+            assertDoesNotThrow(() -> installer.drain(sink));
+            assertEquals(0, installer.pending(), "a second drain must remain empty");
+            assertEquals(1, nav.installs, "a second drain must not reinstall the terminal result");
+            assertEquals(1, nav.dones, "a second drain must not duplicate the terminal callback");
         } finally {
             dev.pathweaver.config.PathWeaverConfig.set(previous);
         }
-        assertTrue(sink.isRegistered(17));
-        assertEquals(0, nav.dones);
     }
 
     @Test void throwingDoneCallbackCannotEscapeTerminalCancellation() {

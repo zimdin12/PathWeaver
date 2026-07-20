@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — master Enabled schema v2 (held; not approved for publication)
+
+### Changed
+
+- Replace `asyncEnabled` plus the lower `syncFallbackOnly` panic switch with one first-listed,
+  default-on `Enabled` master. OFF gates both new async dispatch and repath reuse while work accepted
+  before the save drains through its existing exact registration.
+- Add raw-JSON schema-v2 migration. Legacy state maps with
+  `enabled = asyncEnabled && !syncFallbackOnly`; explicit save removes both legacy keys while
+  preserving subordinate settings subject to existing clamps. Malformed or future schemas fail closed.
+
+### Publish blocker
+
+- The current artifact requires official aggregate Fabric API, whose normal load includes the
+  content-registry pathfinding Mixins that make the fail-closed scanner deny Walk and Swim. Loader's
+  debug-only nested-mod exclusion live-proves the engine can dispatch, but it is not a supported or
+  representative user configuration; publication remains held.
+
 ## 0.2.3 — ModMenu category cleanup (2026-07-19)
 
 ### Fixed

@@ -246,6 +246,10 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // so a different accepted intent cannot later overwrite the path returned here.
         if (this.path != null && !this.path.isDone() && targets.contains(this.targetPos)) return;
 
+        // Master OFF stops every new PathWeaver intervention. Same-target work accepted before OFF
+        // returned above and drains through its existing registration; changed intent was balanced above.
+        if (!cfg.enabled) return;
+
         // Feature B remains opt-in. Recompute (including changed-block invalidation) always bypasses
         // tolerance reuse; ordinary target drift must satisfy endpoint, reach and navigation validity.
         if (cfg.repathElisionEnabled && cfg.repathToleranceBlocks > 0 && this.path != null) {
@@ -269,7 +273,6 @@ public abstract class PathNavigationMixin implements PWNavigation {
         }
 
         // Feature A: async dispatch.
-        if (!cfg.asyncEnabled || cfg.syncFallbackOnly) return;
         if (!rt.isRunning()) return;
         if (!(this.level instanceof ServerLevel)) return;                       // server-side only
         if (this.nodeEvaluator == null || !SafetyGate.isAllowed(this.nodeEvaluator.getClass())) return;

@@ -2,25 +2,24 @@
 
 **Experimental, fail-closed asynchronous mob pathfinding for Minecraft 26.1.2 (Fabric).**
 
-PathWeaver can move eligible Walk/Swim A* searches off the server thread. It does not move entity ticks or collision processing off-thread. Version 0.2.2 is a conservative quality and compatibility pass over the experimental engine; it is not a universal-speed, vanilla-equivalence, or thread-safety claim.
+PathWeaver can move eligible Walk/Swim A* searches off the server thread. It does not move entity ticks or collision processing off-thread. Version 0.2.3 is a conservative quality and compatibility pass over the experimental engine; it is not a universal-speed, vanilla-equivalence, or thread-safety claim.
 
 ## Toggle and disable instructions
 
-With ModMenu installed, open **Mods → PathWeaver → Config**. The first option is **Enable experimental off-thread pathfinding**. Its tooltip reads: “Experimental off-thread pathfinding; disable if you see issues.” Every option has a plain-language tooltip. Save writes `config/pathweaver.json` and updates the live config; worker-thread and in-flight limits apply after restart.
+With ModMenu installed, open **Mods → PathWeaver → Config**. The first option is **Enabled**. Turning it off stops new off-thread searches and repath reuse. Work already accepted before the save drains safely; later routing is vanilla-synchronous. Save writes schema-v2 `config/pathweaver.json` and updates the live config; worker-thread and in-flight limits apply after restart.
 
 You can also edit `config/pathweaver.json`:
 
 ```json
 {
-  "asyncEnabled": false,
-  "syncFallbackOnly": true
+  "configVersion": 2,
+  "enabled": false
 }
 ```
 
-- `asyncEnabled=false` is the normal off switch.
-- `syncFallbackOnly=true` is the lower panic switch and prevents all async dispatch.
-- `allowModdedMobAsync=true` is an advanced unsafe override. It bypasses only the vanilla-origin mob gate; all evaluator, Mixin-scanner, lifecycle, and fallback gates still apply.
-- Existing explicit values are preserved during upgrades; a persisted `asyncEnabled=false` stays false.
+- `enabled=false` is the single normal and emergency off switch; it gates both async dispatch and repath reuse.
+- `allowModdedMobAsync=true` is an advanced unsafe override. It is ineffective while `enabled=false` and bypasses only the vanilla-origin mob gate; all evaluator, Mixin-scanner, lifecycle, and fallback gates still apply.
+- Legacy files migrate conservatively with `enabled = asyncEnabled && !syncFallbackOnly`; every old OFF combination remains OFF. Explicit save writes v2 and removes the legacy keys.
 - Malformed or unreadable persisted config fails closed to synchronous runtime defaults until a valid
   config is saved; Cloth's enabled in-memory defaults are not mistaken for a successful load.
 
@@ -28,7 +27,7 @@ You can also edit `config/pathweaver.json`:
 
 PathWeaver fails closed. Only exact vanilla `WalkNodeEvaluator` and `SwimNodeEvaluator` searches are candidates. By default, the concrete mob class must also come from the same runtime code source as vanilla `Mob`; mod-defined mob subclasses therefore stay synchronous even when they inherit Walk/Swim evaluators. Fly, Amphibious, evaluator subclasses, unknown ownership, scanner failures, and sensitive foreign mixins stay synchronous.
 
-The standard Fabric content-registry module installs dynamic path-type provider hooks into sensitive pathfinding classes. Those providers have no worker-safety contract, so **PathWeaver remains synchronous in standard Fabric content-registry packs**, even when `asyncEnabled=true`. This is intentional: the toggle permits an attempt, but compatibility eligibility has final authority.
+The current artifact requires the official aggregate `fabric-api`, which normally loads `fabric-content-registries-v0`. That module declares active pathfinding Mixins whose provider registry has no worker-safety contract. The fail-closed scanner therefore denies both eligible evaluator families. **The current supported dependency graph is synchronous even when `enabled=true`.** Fabric Loader's `-Dfabric.debug.disableModIds=fabric-content-registries-v0` debug facility can exclude that nested module and has live-proven dispatch, but Loader documents the facility as mostly for unit testing. It is not a supported or representative user configuration and cannot justify normal-release benchmarks.
 
 A clean compatibility scan only means no known sensitive Mixin target was discovered. The default origin gate closes the direct and indirect mod-defined mob-override gap, but it does not prove the remaining live-input boundary safe. Mods may still Mixin into vanilla `Entity`, `LivingEntity`, or `Mob` methods, and workers still read live vanilla mob/world/block state without an immutable snapshot. Fabric content-registry hooks are already denied. Do not enable the advanced modded-mob override unless you deliberately accept additional unverified virtual-method execution.
 
@@ -59,12 +58,12 @@ A private immutable snapshot evaluator/A* was designed and cost-measured. Even a
 
 ```json
 {
-  "asyncEnabled": true,
+  "enabled": true,
+  "configVersion": 2,
   "allowModdedMobAsync": false,
   "repathElisionEnabled": true,
   "poolThreads": 0,
   "maxInFlight": 256,
-  "syncFallbackOnly": false,
   "repathToleranceBlocks": 0,
   "stalenessMoveThreshold": 4.0,
   "maxResultAgeTicks": 40
@@ -75,14 +74,14 @@ Invalid numeric values are clamped before runtime services consume them.
 
 ## What the benchmark proved
 
-Four paired real Spark profiles in an isolated server with 160 pathfinding zombies showed measured server-thread A* offload:
+Four paired Spark profiles in a test-only denial-cleared isolated server with 160 pathfinding zombies showed measured server-thread A* offload:
 
 - `WalkNodeEvaluator` inclusive samples: 2613 → 236 ms per run on average (-90.97%)
 - `WalkNodeEvaluator` self samples: 94 → 22 ms (-76.60%)
 - `PathfindingContext` inclusive samples: 499 → 76 ms (-84.77%)
 - `PathFinder` inclusive samples: 787 → 0 ms
 
-It did **not** prove a net MSPT win. Average mean MSPT was 2.927 ms OFF and 3.012 ms ON, with noisy paired results. The supported claim is isolated server-thread pathfinding offload—not universal TPS/MSPT improvement. See [`MODRINTH-COPY-v0.2.md`](MODRINTH-COPY-v0.2.md) for profile links and release wording.
+It did **not** prove a net MSPT win and is not representative of the current required Fabric API install. Average mean MSPT was 2.927 ms OFF and 3.012 ms ON, with noisy paired results. The only supported claim is that the isolated engine path can offload server-thread A* when its production compatibility denial is removed test-only—not that current users receive it.
 
 ## Requirements
 

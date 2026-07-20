@@ -29,43 +29,40 @@ class PathWeaverConfigTest {
         c.poolThreads = 3;
         assertEquals(3, c.resolvedPoolThreads());
     }
-    @Test void defaultsEnableAsyncWithConservativeFallbacks() {
+    @Test void defaultsEnableMasterWithConservativeFallbacks() {
         PathWeaverConfig c = new PathWeaverConfig();
-        assertTrue(c.asyncEnabled);
+        assertEquals(2, c.configVersion);
+        assertTrue(c.enabled);
         assertTrue(c.repathElisionEnabled);
-        assertFalse(c.syncFallbackOnly);
         assertFalse(c.allowModdedMobAsync);
         assertEquals(0, c.repathToleranceBlocks);
         assertEquals(40, c.maxResultAgeTicks);
     }
     @Test void failedLoadSignalOverridesClothDefaultWithSynchronousFailClosedRuntime() {
         PathWeaverConfig clothDefault = new PathWeaverConfig();
-        assertTrue(clothDefault.asyncEnabled);
+        assertTrue(clothDefault.enabled);
 
         PathWeaverConfig.publishLoaded(clothDefault, true);
 
-        assertFalse(PathWeaverConfig.get().asyncEnabled);
-        assertTrue(PathWeaverConfig.get().syncFallbackOnly);
+        assertFalse(PathWeaverConfig.get().enabled);
     }
 
     @Test void configRegistrationFailureInstallsSynchronousFailClosedDefaults() {
         PathWeaverConfig previous = PathWeaverConfig.get();
         try {
             PathWeaverConfig.installFailClosedDefaults();
-            assertFalse(PathWeaverConfig.get().asyncEnabled);
-            assertTrue(PathWeaverConfig.get().syncFallbackOnly);
+            assertFalse(PathWeaverConfig.get().enabled);
         } finally {
             PathWeaverConfig.set(previous);
         }
     }
-    @Test void persistedFalseOverridesDefaultOnInitializer() {
+    @Test void persistedV2FalseOverridesDefaultOnInitializer() {
         PathWeaverConfig c = new Gson().fromJson(
-            "{\"asyncEnabled\":false,\"syncFallbackOnly\":false}", PathWeaverConfig.class);
+            "{\"configVersion\":2,\"enabled\":false}", PathWeaverConfig.class);
 
         c.validatePostLoad();
 
-        assertFalse(c.asyncEnabled);
-        assertFalse(c.syncFallbackOnly);
+        assertFalse(c.enabled);
     }
     @Test void invalidLowAndNonFiniteValuesAreClampedPostLoad() {
         PathWeaverConfig c = new PathWeaverConfig();

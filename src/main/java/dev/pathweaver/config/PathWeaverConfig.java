@@ -15,6 +15,9 @@ import net.minecraft.world.InteractionResult;
 public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Gui.Excluded
     @ConfigEntry.Category("general")
+    public static final int CURRENT_CONFIG_VERSION = 2;
+    @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
     public static final int MAX_POOL_THREADS = 64;
     @ConfigEntry.Gui.Excluded
     @ConfigEntry.Category("general")
@@ -31,7 +34,11 @@ public class PathWeaverConfig implements ConfigData {
 
     @ConfigEntry.Gui.Tooltip
     @ConfigEntry.Category("general")
-    public boolean asyncEnabled = true;
+    public boolean enabled = true;
+
+    @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
+    public int configVersion = CURRENT_CONFIG_VERSION;
 
     @ConfigEntry.Gui.Tooltip
     @ConfigEntry.Category("general")
@@ -51,9 +58,6 @@ public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Category("performance")
     public int maxInFlight = 256;
 
-    @ConfigEntry.Gui.Tooltip
-    @ConfigEntry.Category("general")
-    public boolean syncFallbackOnly = false;         // panic switch: never dispatch async
 
     @ConfigEntry.Gui.Tooltip
     @ConfigEntry.Category("repath")
@@ -80,8 +84,7 @@ public class PathWeaverConfig implements ConfigData {
     /** Keep pathfinding synchronous if persisted configuration cannot be registered or loaded. */
     public static void installFailClosedDefaults() {
         PathWeaverConfig fallback = new PathWeaverConfig();
-        fallback.asyncEnabled = false;
-        fallback.syncFallbackOnly = true;
+        fallback.enabled = false;
         set(fallback);
     }
 
@@ -103,6 +106,7 @@ public class PathWeaverConfig implements ConfigData {
      */
     @Override
     public void validatePostLoad() {
+        configVersion = CURRENT_CONFIG_VERSION;
         poolThreads = Math.clamp(poolThreads, 0, MAX_POOL_THREADS);
         maxInFlight = Math.clamp(maxInFlight, 1, MAX_IN_FLIGHT);
         repathToleranceBlocks = Math.clamp(

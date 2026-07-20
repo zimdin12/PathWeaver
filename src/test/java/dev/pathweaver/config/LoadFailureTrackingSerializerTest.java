@@ -27,6 +27,6 @@ final class LoadFailureTrackingSerializerTest {
     }
 
     static final class TestConfig implements ConfigData {
-        public boolean asyncEnabled = true;
+        public boolean enabled = true;
     }
 }

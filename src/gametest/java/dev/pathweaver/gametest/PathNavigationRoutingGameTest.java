@@ -27,8 +27,7 @@ public final class PathNavigationRoutingGameTest {
     @GameTest(maxTicks = 160)
     public void queryCallsStaySyncWhileMovementAndRecomputeDispatch(GameTestHelper helper) {
         PathWeaverConfig cfg = PathWeaverConfig.get();
-        boolean oldAsync = cfg.asyncEnabled;
-        boolean oldFallback = cfg.syncFallbackOnly;
+        boolean oldEnabled = cfg.enabled;
         boolean oldModdedMobOverride = cfg.allowModdedMobAsync;
         boolean oldElision = cfg.repathElisionEnabled;
         int oldTolerance = cfg.repathToleranceBlocks;
@@ -37,7 +36,7 @@ public final class PathNavigationRoutingGameTest {
             oldDenials = Set.copyOf(SafetyGate.deniedBySafety);
         }
         Runnable teardown = () -> {
-            restore(cfg, oldAsync, oldFallback, oldModdedMobOverride, oldElision, oldTolerance);
+            restore(cfg, oldEnabled, oldModdedMobOverride, oldElision, oldTolerance);
             synchronized (SafetyGate.deniedBySafety) {
                 SafetyGate.deniedBySafety.clear();
                 SafetyGate.deniedBySafety.addAll(oldDenials);
@@ -54,21 +53,32 @@ public final class PathNavigationRoutingGameTest {
                 .filter(c -> c.modId().equals("fabric-content-registries-v0")
                     && c.configName().equals("fabric-content-registries-v0.mixins.json"))
                 .findFirst().orElse(null);
-            check(helper, fabricPathHooks != null,
-                "scanner must attribute Fabric content-registry pathfinding hooks exactly");
-            check(helper, fabricPathHooks.claims().containsAll(Set.of(
-                new ForeignMixinScanner.TargetClaim(
-                    "net.fabricmc.fabric.mixin.content.registry.PathfindingContextMixin",
-                    "net.minecraft.world.level.pathfinder.PathfindingContext"),
-                new ForeignMixinScanner.TargetClaim(
-                    "net.fabricmc.fabric.mixin.content.registry.WalkNodeEvaluatorMixin",
-                    "net.minecraft.world.level.pathfinder.WalkNodeEvaluator"))),
-                "scanner must retain concrete mixin identities and sensitive targets");
-            check(helper, oldDenials.containsAll(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class)),
-                "live scanner must fail closed on Fabric's pathfinding registry hooks");
-            SafetyGate.deniedBySafety.clear();
-            cfg.asyncEnabled = true;
-            cfg.syncFallbackOnly = false;
+            boolean contentRegistriesDebugDisabled = java.util.Arrays.stream(
+                    System.getProperty("fabric.debug.disableModIds", "").split(","))
+                .map(String::trim)
+                .anyMatch("fabric-content-registries-v0"::equals);
+            if (contentRegistriesDebugDisabled) {
+                check(helper, fabricPathHooks == null,
+                    "Loader debug exclusion must remove the nested content-registry config");
+                check(helper, !oldDenials.contains(WalkNodeEvaluator.class)
+                        && !oldDenials.contains(SwimNodeEvaluator.class),
+                    "debug-excluded real configuration must leave Walk and Swim eligible");
+            } else {
+                check(helper, fabricPathHooks != null,
+                    "scanner must attribute Fabric content-registry pathfinding hooks exactly");
+                check(helper, fabricPathHooks.claims().containsAll(Set.of(
+                    new ForeignMixinScanner.TargetClaim(
+                        "net.fabricmc.fabric.mixin.content.registry.PathfindingContextMixin",
+                        "net.minecraft.world.level.pathfinder.PathfindingContext"),
+                    new ForeignMixinScanner.TargetClaim(
+                        "net.fabricmc.fabric.mixin.content.registry.WalkNodeEvaluatorMixin",
+                        "net.minecraft.world.level.pathfinder.WalkNodeEvaluator"))),
+                    "scanner must retain concrete mixin identities and sensitive targets");
+                check(helper, oldDenials.containsAll(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class)),
+                    "live scanner must fail closed on Fabric's pathfinding registry hooks");
+                SafetyGate.deniedBySafety.clear();
+            }
+            cfg.enabled = true;
             cfg.allowModdedMobAsync = false;
             cfg.repathToleranceBlocks = 0;
 
@@ -204,7 +214,7 @@ public final class PathNavigationRoutingGameTest {
                         && queryNav.getPath() != null
                         && runtimeCounter("installed") == baseInstalled + 5,
                     "recompute request did not install before the deadline", teardown, () -> {
-                        cfg.asyncEnabled = false;
+                        cfg.enabled = true;
                         cfg.repathElisionEnabled = true;
                         cfg.repathToleranceBlocks = 1;
                         Path reusable = queryNav.getPath();
@@ -219,26 +229,64 @@ public final class PathNavigationRoutingGameTest {
                         check(helper, drifted.equals(targetPos(queryNav)),
                             "valid drift must advance navigation target intent for later recompute");
 
+                        cfg.enabled = false;
+                        long beforeMasterOffDispatch = runtimeCounter("dispatched");
+                        BlockPos masterOffTarget = drifted.offset(1, 0, 0);
+                        check(helper, queryNav.moveTo(masterOffTarget.getX() + 0.5, masterOffTarget.getY(),
+                            masterOffTarget.getZ() + 0.5, 1.0),
+                            "master OFF must fall through to vanilla synchronous routing");
+                        check(helper, queryNav.getPath() != reusable,
+                            "master OFF must gate repath elision as well as async dispatch");
+                        check(helper, runtimeCounter("dispatched") == beforeMasterOffDispatch,
+                            "eligible master OFF must contribute zero new async dispatches");
+                        check(helper, !PathWeaverRuntime.get().entitySink()
+                                .isRegistered(coordinateMob.getId()),
+                            "eligible master OFF must not create a worker registration");
+                        cfg.enabled = true;
+                        synchronized (SafetyGate.deniedBySafety) {
+                            SafetyGate.deniedBySafety.clear();
+                            SafetyGate.deniedBySafety.addAll(oldDenials);
+                        }
+
                         double oldX = coordinateMob.getX();
                         double oldY = coordinateMob.getY();
                         double oldZ = coordinateMob.getZ();
+                        BlockPos beforeRejectedTarget = targetPos(queryNav);
                         coordinateMob.setPos(oldX, coordinateMob.level().getMinY() - 1.0, oldZ);
                         check(helper, !queryNav.moveTo(target.getX() + 0.5, target.getY(),
                             target.getZ() + 0.5, 1.0),
                             "below-minY vanilla precondition must win over tolerance reuse");
-                        check(helper, drifted.equals(targetPos(queryNav)),
+                        check(helper, java.util.Objects.equals(beforeRejectedTarget, targetPos(queryNav)),
                             "rejected below-minY request must not advance target intent");
                         coordinateMob.setPos(oldX, oldY, oldZ);
                         coordinateMob.setOnGround(true);
 
                         setTimeLastRecompute(queryNav, -100L);
+                        long beforeFinalDispatch = runtimeCounter("dispatched");
+                        long beforeFinalInstall = runtimeCounter("installed");
                         queryNav.recomputePath();
-                        check(helper, queryNav.getPath() != null,
-                            "recompute must produce a replacement path");
-                        check(helper, queryNav.getPath() != reusable,
-                            "recompute/changed-block invalidation must bypass tolerance reuse");
-                        teardown.run();
-                        helper.succeed();
+                        if (contentRegistriesDebugDisabled) {
+                            check(helper, PathWeaverRuntime.get().entitySink()
+                                    .isRegistered(coordinateMob.getId()),
+                                "debug-excluded real configuration must dispatch recompute asynchronously");
+                            check(helper, runtimeCounter("dispatched") == beforeFinalDispatch + 1,
+                                "debug-excluded recompute must contribute one real dispatch");
+                            pollUntil(helper, 158, () ->
+                                    !PathWeaverRuntime.get().entitySink()
+                                        .isRegistered(coordinateMob.getId())
+                                    && runtimeCounter("installed") == beforeFinalInstall + 1,
+                                "debug-excluded recompute did not terminally install", teardown, () -> {
+                                    teardown.run();
+                                    helper.succeed();
+                                });
+                        } else {
+                            check(helper, queryNav.getPath() != null,
+                                "denied recompute must complete through vanilla synchronously");
+                            check(helper, runtimeCounter("dispatched") == beforeFinalDispatch,
+                                "production denial must prevent a recompute dispatch");
+                            teardown.run();
+                            helper.succeed();
+                        }
                     });
             });
         } catch (Throwable t) {
@@ -309,10 +357,9 @@ public final class PathNavigationRoutingGameTest {
         }
     }
 
-    private static void restore(PathWeaverConfig cfg, boolean async, boolean fallback,
+    private static void restore(PathWeaverConfig cfg, boolean enabled,
                                 boolean moddedMobOverride, boolean elision, int tolerance) {
-        cfg.asyncEnabled = async;
-        cfg.syncFallbackOnly = fallback;
+        cfg.enabled = enabled;
         cfg.allowModdedMobAsync = moddedMobOverride;
         cfg.repathElisionEnabled = elision;
         cfg.repathToleranceBlocks = tolerance;

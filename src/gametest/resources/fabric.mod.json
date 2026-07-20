@@ -5,6 +5,9 @@
   "name": "PathWeaver Game Tests",
   "environment": "server",
   "entrypoints": {
+    "main": [
+      "dev.pathweaver.gametest.StartupConfigMigrationProbe"
+    ],
     "fabric-gametest": [
       "dev.pathweaver.gametest.PathNavigationRoutingGameTest"
     ]
