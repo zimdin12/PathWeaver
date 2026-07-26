@@ -621,12 +621,16 @@ public final class ForeignMixinScanner {
             for (String id : List.of(AuditedMixinCompatibility.SERVERCORE_ID,
                                      AuditedMixinCompatibility.RABBIT_ID,
                                      FabricInteractionCompatibility.MOD_ID,
-                                     LithiumPathfindingCompatibility.MOD_ID)) {
+                                     LithiumPathfindingCompatibility.MOD_ID,
+                                     DiagonalBlocksCompatibility.MOD_ID)) {
                 var module = loader.getModContainer(id);
                 if (module.isEmpty()) continue;
                 AuditedExemptionEvidence moduleEvidence;
                 if (id.equals(FabricInteractionCompatibility.MOD_ID)) {
                     moduleEvidence = FabricInteractionCompatibility.inspectRuntime(loader, module.get());
+                } else if (id.equals(DiagonalBlocksCompatibility.MOD_ID)) {
+                    moduleEvidence = DiagonalBlocksCompatibility.inspectRuntime(
+                        loader, module.get(), tier);
                 } else if (id.equals(LithiumPathfindingCompatibility.MOD_ID)) {
                     // Tier-gated: below AUDITED this deliberately yields no evidence, so Lithium's
                     // claims keep denying. The tier withholds proof rather than suppressing denial.

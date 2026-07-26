@@ -16,7 +16,7 @@ The verdict interacts with the `compatibilityTier` setting. `STRICT` (the defaul
 | Spiky Spikes | `26.1.0` | Registers a fixed-enum land path-type provider used by Fabric's pathfinding hook | Yes when its provider is registered | **DENIED** pending exact closed provider-set and lifecycle certification | `323d974770988a17c6d054dc879b528c5e5c25ac48241748316bb6aa679eee04` |
 | Carpet | `26.1+v260402` | Navigation `createPath` overload/deferred-return behavior and a piston transformation | Not from the audited worker search entry | **DENIED** pending a live logging/deferred-return semantic witness; it will be dropped if that witness is ambiguous | `59bd225d12423a7d7a635ca0c94fa786f97ccebb116922b16d76072da4ee67e7` |
 | Lithium | `0.24.6+mc26.1.2` | Region/block-state path-type shortcuts, block-state flag cache, chunk-access region lookup, and inactive-navigation listener bookkeeping | Yes, except the navigation hook | **STALE-PATH RISK ONLY** — bytecode proof that no worker-reachable method writes shared state; honoured at `compatibilityTier=AUDITED`, denied at the `STRICT` default | `509e7f770c7d48bd37e9592917329db2768e4695c72a43e22c19ef64d0f9839f` |
-| Diagonal Blocks | `26.1.0` | Extra `WalkNodeEvaluator` diagonal-validity reads | Yes | **DENIED** — believed equivalent in risk to Lithium, but not yet given the same bytecode proof, so it is not in the audited tier | `df59211601dc83718ec0189a56c9f5569a0654f56a58fbbd644ea462a51b74d6` |
+| Diagonal Blocks | `26.1.0` | `WalkNodeEvaluator.isDiagonalValid` override reading diagonal connection properties | Yes | **STALE-PATH RISK ONLY** — no field write; reads only the search-owned context plus one immutable map, and provably never reaches the unsynchronized shape caches; honoured at `compatibilityTier=AUDITED` | `df59211601dc83718ec0189a56c9f5569a0654f56a58fbbd644ea462a51b74d6` |
 
 ## Milestone 1 evidence details
 
@@ -106,3 +106,37 @@ worker and installs (`dispatched=1, installed=1, discarded=0`). The same test pr
 not vacuous by re-running the production decision over Lithium's own live configs with the audited
 evidence withheld and requiring that it denies Walk. At `compatibilityTier=STRICT` the same
 environment reports `deniedFamilies=2`.
+
+### Diagonal Blocks `26.1.0` — audited tier
+
+Shipped as a jar nested inside Diagonal Fences, Walls and Windows. The audited artifact is the
+nested `diagonalblocks-fabric-26.1.0.jar`, SHA-256
+`df59211601dc83718ec0189a56c9f5569a0654f56a58fbbd644ea462a51b74d6`.
+
+- Config: `diagonalblocks.common.mixins.json`, SHA-256 `8aeca65fac6618bb8d7c266c5b4194af876a963fabd77c55f86c9131abfe6ea8`. No mixin plugin.
+- Mixin: `fuzs.diagonalblocks.common.mixin.WalkNodeEvaluatorMixin`, SHA-256 `fb5324c681fac2f33145fc67560f2162059353ab5e010d29405af1119d063381`
+- The sibling `accessor.BlockBehaviorAccessor` targets `BlockBehaviour`, which is not a watched class, so it contributes no sensitive claim.
+
+**Shape proof.** The override performs no field write at all. It reads block state only through the
+`PathfindingContext` the search already owns, and one static field:
+`StarCollisionBlock.PROPERTY_BY_DIRECTION`, which is `static final`, built once in a class
+initializer via `Maps.immutableEnumMap`, and never written afterwards.
+
+The reason this needs a mechanical proof is what sits beside that map. `StarCollisionBlock` also
+holds `CORNER_SHAPES_CACHE` and `CORNER_SHAPES_BLOCK_CACHE`, plain unsynchronized fastutil maps
+mutated lazily on the collision-shape path. Reaching either from a worker would be a genuine data
+race. The verification therefore requires that the mixin's entire static-field-read surface is the
+immutable map and that it makes no call into `StarCollisionBlock` whatsoever, so a future version
+that routed the diagonal check through a shape cache would fail closed instead of inheriting this
+finding.
+
+**Live witness.** With Lithium and Diagonal Blocks both loaded at `compatibilityTier=AUDITED`, the
+startup scan reports `scanned=45, failed=0, deniedFamilies=0`, and a real vanilla zombie Walk
+request dispatches to a worker and installs. Each mod is separately checked for non-vacuity: the
+production decision is re-run over that mod's own live configs with the audited evidence withheld,
+and must deny Walk.
+
+**Harness note.** The `maven.modrinth:diagonal-fences` coordinate serves a *different* artifact from
+the release file — 128015 bytes with no `META-INF/jars` entry, against the 126183-byte release that
+actually contains the library. The harness fetches the release file directly and pins its SHA-1, so
+a substituted parent cannot stage a library the audit never examined.
