@@ -108,6 +108,38 @@ class LithiumPathfindingCompatibilityTest {
         assertTrue(CompatibilityTier.ALL.bypassesScan());
     }
 
+    /**
+     * Writes are permitted by method NAME, and the constructor-injection check is what makes those
+     * writes safe. A second overload sharing the name would inherit permission to write, so every
+     * method carrying it must be verified -- not just the first one encountered.
+     */
+    @Test
+    void checksEveryMethodSharingTheAllowedWriterName() {
+        List<String> diagnostics = new java.util.ArrayList<>();
+        LithiumPathfindingCompatibility.requireRegionInjectionIsConstructorOnly(
+            regionWithTwoInitMethods(), diagnostics);
+        assertEquals(1, diagnostics.size(), diagnostics.toString());
+        assertTrue(diagnostics.getFirst().contains("not a constructor injection"),
+            diagnostics.toString());
+    }
+
+    /** First {@code init} is a proper constructor injection; the second one is not. */
+    private static byte[] regionWithTwoInitMethods() {
+        ClassWriter writer = probeClass();
+        org.objectweb.asm.AnnotationVisitor injected = writer
+            .visitMethod(Opcodes.ACC_PRIVATE, "init", "()V", null, null)
+            .visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Inject;", false);
+        injected.visit("method", "<init>");
+        injected.visitEnd();
+        MethodVisitor smuggled = writer.visitMethod(Opcodes.ACC_PRIVATE, "init", "(I)V", null, null);
+        smuggled.visitCode();
+        smuggled.visitInsn(Opcodes.RETURN);
+        smuggled.visitMaxs(1, 2);
+        smuggled.visitEnd();
+        writer.visitEnd();
+        return writer.toByteArray();
+    }
+
     private static byte[] classWritingFieldIn(String methodName) {
         ClassWriter writer = probeClass();
         writer.visitField(Opcodes.ACC_PRIVATE, "cached", "Ljava/lang/Object;", null, null)

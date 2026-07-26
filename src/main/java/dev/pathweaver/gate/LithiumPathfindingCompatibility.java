@@ -347,19 +347,24 @@ final class LithiumPathfindingCompatibility {
      * the region on the main thread at dispatch, so a constructor-time write happens-before any
      * worker observes the object; a write from any other injection point would not.
      */
-    private static void requireRegionInjectionIsConstructorOnly(byte[] bytes,
-                                                                List<String> diagnostics) {
+    static void requireRegionInjectionIsConstructorOnly(byte[] bytes,
+                                                        List<String> diagnostics) {
         ClassNode node = AuditedMixinCompatibility.classNode(bytes);
+        int checked = 0;
+        // Every method carrying the allowed writer name must be verified, not just the first one
+        // found. The write-confinement check above allows writes by method NAME, so a second
+        // overload sharing that name would inherit permission to write while never being checked
+        // for constructor-injection -- which is the entire basis for those writes being safe.
         for (MethodNode method : node.methods) {
             if (!REGION_CTOR_INJECTION.equals(method.name)) continue;
+            checked++;
             AnnotationNode inject = findInject(method);
             if (inject == null || !mentionsConstructor(annotationValue(inject, "method"))) {
                 diagnostics.add("Lithium region writer is not a constructor injection: "
                     + method.name + method.desc);
             }
-            return;
         }
-        diagnostics.add("Lithium region constructor injection is missing");
+        if (checked == 0) diagnostics.add("Lithium region constructor injection is missing");
     }
 
     private static boolean mentionsConstructor(Object selector) {
