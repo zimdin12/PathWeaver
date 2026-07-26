@@ -1,5 +1,7 @@
 package dev.pathweaver.config;
 
+import me.shedaniel.clothconfig2.gui.entries.SelectionListEntry;
+
 /**
  * How much risk the server owner is willing to accept from mods that modify pathfinding.
  *
@@ -10,7 +12,7 @@ package dev.pathweaver.config;
  *
  * <p>The tiers are not "how likely is it to break" — they are "what kind of evidence exists".
  */
-public enum CompatibilityTier {
+public enum CompatibilityTier implements SelectionListEntry.Translatable {
     /**
      * Only run off-thread where a worker provably cannot observe the foreign change at all.
      *
@@ -56,4 +58,23 @@ public enum CompatibilityTier {
     public boolean bypassesScan() {
         return this == ALL;
     }
+
+    /**
+     * Translation key for the settings screen.
+     *
+     * <p>Cloth's default enum label provider calls {@code Component.translatable(toString())} unless
+     * the constant implements this interface, so without it the screen would render the bare
+     * constant name and the {@code option.compatibilityTier.*} entries in the language file would
+     * never be read. Supplying the key here keeps {@link #toString()} untouched, which matters
+     * because the tier is written into log lines and diagnostics where a translation key would be
+     * unreadable.
+     */
+    @Override
+    public String getKey() {
+        return TRANSLATION_PREFIX + name();
+    }
+
+    /** Shared with the ModMenu contract test so the key format cannot drift from the language file. */
+    public static final String TRANSLATION_PREFIX =
+        "text.autoconfig.pathweaver.option.compatibilityTier.";
 }

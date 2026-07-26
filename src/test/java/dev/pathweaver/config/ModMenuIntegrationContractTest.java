@@ -54,6 +54,26 @@ class ModMenuIntegrationContractTest {
         assertNull(screen, "missing registration must return the supplied parent screen");
     }
 
+    /**
+     * Cloth labels an enum option by calling {@code Component.translatable} on the key the constant
+     * supplies, so a constant whose key has no language entry renders as the raw key in the settings
+     * screen. That exact failure has shipped once already, so every tier is checked rather than
+     * assuming the three that exist today are all there will ever be.
+     */
+    @Test
+    void everyCompatibilityTierHasATranslatedLabel() throws Exception {
+        JsonObject lang = JsonParser.parseString(Files.readString(
+            RESOURCES.resolve(Path.of("assets", "pathweaver", "lang", "en_us.json"))))
+            .getAsJsonObject();
+        for (CompatibilityTier tier : CompatibilityTier.values()) {
+            String key = tier.getKey();
+            assertTrue(key.startsWith(CompatibilityTier.TRANSLATION_PREFIX),
+                "tier key format drifted: " + key);
+            assertTrue(lang.has(key), "missing language entry for " + key);
+            assertFalse(lang.get(key).getAsString().isBlank(), key);
+        }
+    }
+
     @Test
     void enabledMasterIsFirstVisibleDefaultOnAndHasHonestDrainTooltip() throws Exception {
         List<String> configFields = Arrays.stream(PathWeaverConfig.class.getDeclaredFields())
