@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased — compatibility tiers and the Lithium audit (held; not approved for publication)
+## 0.3.0 — Compatibility tiers, audited exemptions, and the first shipped-config benchmark
+
+_Not yet published. The audits below are version-exact; see COMPATIBILITY.md._
 
 ### Added
 
@@ -35,7 +37,7 @@
   `fabric.mod.json` declares, because such a config never reaches the attributed list and is
   recorded as a failure instead. Both paths now fail closed.
 
-## Unreleased — master Enabled schema v2 (held; not approved for publication)
+### Master Enabled switch (schema v2)
 
 ### Changed
 

@@ -192,6 +192,14 @@ test {
     useJUnitPlatform()
 }
 
+// The harness blocks below overwrite the generated game-test manifest in place. Gradle would
+// otherwise consider that output up to date on the next build, so a plain `./gradlew build` run
+// after any harness run would keep the harness manifest, demand mods the default run does not
+// supply, and fail. Regenerating these resources every time keeps the default build honest.
+tasks.named("processGametestResources") {
+    outputs.upToDateWhen { false }
+}
+
 // The M1 Rabbit worker probe is itself a sensitive PathNavigation mixin. The aggregate-Fabric
 // stock-gate witness therefore runs in a second, explicit harness with no test mixins; otherwise
 // the observer changes the production scanner decision it is meant to measure.
