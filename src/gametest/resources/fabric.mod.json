@@ -4,12 +4,16 @@
   "version": "1.0.0",
   "name": "PathWeaver Game Tests",
   "environment": "server",
+  "mixins": [
+    "pathweaver-gametest.mixins.json"
+  ],
   "entrypoints": {
     "main": [
       "dev.pathweaver.gametest.StartupConfigMigrationProbe"
     ],
     "fabric-gametest": [
-      "dev.pathweaver.gametest.PathNavigationRoutingGameTest"
+      "dev.pathweaver.gametest.PathNavigationRoutingGameTest",
+      "dev.pathweaver.gametest.AuditedCompatibilityRoutingGameTest"
     ]
   },
   "depends": {

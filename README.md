@@ -4,6 +4,8 @@
 
 PathWeaver can move eligible Walk/Swim A* searches off the server thread. It does not move entity ticks or collision processing off-thread. Version 0.2.3 is a conservative quality and compatibility pass over the experimental engine; it is not a universal-speed, vanilla-equivalence, or thread-safety claim.
 
+See the [version-exact compatibility matrix](COMPATIBILITY.md) for audited verdicts, artifact hashes, and the fail-closed evidence boundary.
+
 ## Toggle and disable instructions
 
 With ModMenu installed, open **Mods → PathWeaver → Config**. The first option is **Enabled**. Turning it off stops new off-thread searches and repath reuse. Work already accepted before the save drains safely; later routing is vanilla-synchronous. Save writes schema-v2 `config/pathweaver.json` and updates the live config; worker-thread and in-flight limits apply after restart.

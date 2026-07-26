@@ -37,6 +37,9 @@ dependencies {
 
     testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+    // Exact audited artifacts used by compatibility fingerprint/ASM-shape tests.
+    testRuntimeOnly "maven.modrinth:servercore:1.5.19+26.1.2"
+    testRuntimeOnly "maven.modrinth:rabbit-pathfinding-fix:1.3.0"
 }
 
 fabricApi {
@@ -46,6 +49,11 @@ fabricApi {
         enableGameTests = true
         eula = true
     }
+}
+
+dependencies {
+    gametestRuntimeOnly "maven.modrinth:servercore:1.5.19+26.1.2"
+    gametestRuntimeOnly "maven.modrinth:rabbit-pathfinding-fix:1.3.0"
 }
 
 processResources {

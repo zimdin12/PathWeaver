@@ -1,23 +1,37 @@
 package dev.pathweaver.gametest;
 
 import dev.pathweaver.PathWeaverRuntime;
+import dev.pathweaver.async.PathOutcome;
+import dev.pathweaver.async.PathRequest;
+import dev.pathweaver.async.PathWeaverThread;
+import dev.pathweaver.async.PathWorkerPool;
+import dev.pathweaver.async.RequestKey;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.gate.ForeignMixinScanner;
 import dev.pathweaver.gate.SafetyGate;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
+import net.minecraft.world.level.PathNavigationRegion;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.pathfinder.NodeEvaluator;
 import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.level.pathfinder.PathfindingContext;
+import net.minecraft.world.level.pathfinder.PathTypeCache;
 import net.minecraft.world.level.pathfinder.SwimNodeEvaluator;
 import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
 
 import java.lang.reflect.Field;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 
 /** Live contract proof for query-only versus genuine-navigation routing. */
@@ -49,9 +63,15 @@ public final class PathNavigationRoutingGameTest {
                 "live scanner discovery must complete without fallback denial");
             check(helper, scan.decision().scanned() > 0,
                 "live scanner must inspect prepared foreign configs");
+            check(helper, scan.configs().stream().noneMatch(c -> c.modId().equals("pathweaver")),
+                "PathWeaver's production config must be excluded from reported foreign claims");
             ForeignMixinScanner.ActiveConfig fabricPathHooks = scan.configs().stream()
                 .filter(c -> c.modId().equals("fabric-content-registries-v0")
                     && c.configName().equals("fabric-content-registries-v0.mixins.json"))
+                .findFirst().orElse(null);
+            ForeignMixinScanner.ActiveConfig fabricInteractionHooks = scan.configs().stream()
+                .filter(c -> c.modId().equals("fabric-events-interaction-v0")
+                    && c.configName().equals("fabric-events-interaction-v0.mixins.json"))
                 .findFirst().orElse(null);
             boolean contentRegistriesDebugDisabled = java.util.Arrays.stream(
                     System.getProperty("fabric.debug.disableModIds", "").split(","))
@@ -60,9 +80,6 @@ public final class PathNavigationRoutingGameTest {
             if (contentRegistriesDebugDisabled) {
                 check(helper, fabricPathHooks == null,
                     "Loader debug exclusion must remove the nested content-registry config");
-                check(helper, !oldDenials.contains(WalkNodeEvaluator.class)
-                        && !oldDenials.contains(SwimNodeEvaluator.class),
-                    "debug-excluded real configuration must leave Walk and Swim eligible");
             } else {
                 check(helper, fabricPathHooks != null,
                     "scanner must attribute Fabric content-registry pathfinding hooks exactly");
@@ -74,10 +91,18 @@ public final class PathNavigationRoutingGameTest {
                         "net.fabricmc.fabric.mixin.content.registry.WalkNodeEvaluatorMixin",
                         "net.minecraft.world.level.pathfinder.WalkNodeEvaluator"))),
                     "scanner must retain concrete mixin identities and sensitive targets");
-                check(helper, oldDenials.containsAll(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class)),
-                    "live scanner must fail closed on Fabric's pathfinding registry hooks");
-                SafetyGate.deniedBySafety.clear();
             }
+            check(helper, fabricInteractionHooks != null,
+                "full Fabric API must expose its interaction BlockStateBase transformation");
+            check(helper, fabricInteractionHooks.claims().contains(
+                new ForeignMixinScanner.TargetClaim(
+                    "net.fabricmc.fabric.mixin.event.interaction.BlockBehaviourBlockStateBaseMixin",
+                    "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase")),
+                "scanner must retain the second full-FAPI BlockStateBase claim");
+            check(helper, oldDenials.equals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class)),
+                "stock full Fabric API must fail closed for both families until its separate "
+                    + "interaction BlockStateBase mixin is independently audited");
+            SafetyGate.deniedBySafety.clear();
             cfg.enabled = true;
             cfg.allowModdedMobAsync = false;
             cfg.repathToleranceBlocks = 0;
@@ -265,33 +290,170 @@ public final class PathNavigationRoutingGameTest {
                         long beforeFinalDispatch = runtimeCounter("dispatched");
                         long beforeFinalInstall = runtimeCounter("installed");
                         queryNav.recomputePath();
-                        if (contentRegistriesDebugDisabled) {
-                            check(helper, PathWeaverRuntime.get().entitySink()
-                                    .isRegistered(coordinateMob.getId()),
-                                "debug-excluded real configuration must dispatch recompute asynchronously");
-                            check(helper, runtimeCounter("dispatched") == beforeFinalDispatch + 1,
-                                "debug-excluded recompute must contribute one real dispatch");
-                            pollUntil(helper, 158, () ->
-                                    !PathWeaverRuntime.get().entitySink()
-                                        .isRegistered(coordinateMob.getId())
-                                    && runtimeCounter("installed") == beforeFinalInstall + 1,
-                                "debug-excluded recompute did not terminally install", teardown, () -> {
-                                    teardown.run();
-                                    helper.succeed();
-                                });
-                        } else {
-                            check(helper, queryNav.getPath() != null,
-                                "denied recompute must complete through vanilla synchronously");
-                            check(helper, runtimeCounter("dispatched") == beforeFinalDispatch,
-                                "production denial must prevent a recompute dispatch");
-                            teardown.run();
-                            helper.succeed();
-                        }
+                        check(helper, queryNav.getPath() != null,
+                            "denied recompute must complete through vanilla synchronously");
+                        check(helper, runtimeCounter("dispatched") == beforeFinalDispatch,
+                            "stock full-FAPI Walk denial must prevent a recompute dispatch");
+                        check(helper, runtimeCounter("installed") == beforeFinalInstall,
+                            "synchronous denied recompute must not report an async install");
+                        startExactSwimProof(helper, cfg, teardown);
                     });
             });
         } catch (Throwable t) {
             teardown.run();
             throw t;
+        }
+    }
+
+    private static void startExactSwimProof(GameTestHelper helper, PathWeaverConfig cfg,
+                                            Runnable teardown) {
+        check(helper, SafetyGate.deniedBySafety.contains(WalkNodeEvaluator.class),
+            "normal full-FAPI must retain the independent Walk denial");
+        check(helper, SafetyGate.deniedBySafety.contains(SwimNodeEvaluator.class),
+            "normal full-FAPI must deny Swim through its separately unaudited interaction mixin");
+        // The content-registry tuple itself is audited, but aggregate Fabric API also ships an
+        // independent BlockStateBase interaction mixin. Keep production fail-closed; clear only
+        // that Swim denial here to retain a live routing/cache-isolation witness for the prototype.
+        synchronized (SafetyGate.deniedBySafety) {
+            SafetyGate.deniedBySafety.remove(SwimNodeEvaluator.class);
+        }
+        cfg.enabled = true;
+        cfg.allowModdedMobAsync = false;
+        cfg.repathElisionEnabled = false;
+
+        for (int x = 0; x <= 8; x++) {
+            for (int z = 7; z <= 11; z++) {
+                helper.setBlock(x, 1, z, Blocks.STONE);
+                helper.setBlock(x, 2, z, Blocks.WATER);
+                helper.setBlock(x, 3, z, Blocks.WATER);
+            }
+        }
+        Mob swimmer = helper.spawnWithNoFreeWill(EntityType.COD, 1, 2, 8);
+        PathNavigation navigation = swimmer.getNavigation();
+        check(helper, nodeEvaluator(navigation).getClass() == SwimNodeEvaluator.class,
+            "live proof requires the exact SwimNodeEvaluator class, not a subclass or Amphibious");
+
+        helper.runAfterDelay(1, () -> {
+            try {
+                proveRuntimeCacheIsolation(helper, swimmer);
+                long beforeDispatch = runtimeCounter("dispatched");
+                long beforeInstall = runtimeCounter("installed");
+                BlockPos target = helper.absolutePos(new BlockPos(6, 2, 8));
+                check(helper, navigation.moveTo(target.getX() + 0.5, target.getY(),
+                    target.getZ() + 0.5, 1.0), "test-cleared exact Swim movement must be accepted");
+                check(helper, PathWeaverRuntime.get().entitySink().isRegistered(swimmer.getId()),
+                    "test-cleared exact Swim must create a real worker registration");
+                check(helper, runtimeCounter("dispatched") == beforeDispatch + 1,
+                    "test-cleared exact Swim must contribute one real async dispatch");
+
+                pollUntil(helper, 150, () ->
+                        !PathWeaverRuntime.get().entitySink().isRegistered(swimmer.getId())
+                            && navigation.getPath() != null
+                            && runtimeCounter("installed") == beforeInstall + 1,
+                    "exact Swim request did not install before the deadline", teardown, () -> {
+                        navigation.stop();
+                        cfg.enabled = false;
+                        long offDispatch = runtimeCounter("dispatched");
+                        BlockPos offTarget = helper.absolutePos(new BlockPos(6, 2, 10));
+                        check(helper, navigation.moveTo(offTarget.getX() + 0.5, offTarget.getY(),
+                            offTarget.getZ() + 0.5, 1.0),
+                            "master OFF exact Swim must fall through to vanilla synchronous routing");
+                        check(helper, runtimeCounter("dispatched") == offDispatch,
+                            "master OFF must prevent a new exact Swim dispatch");
+                        check(helper, !PathWeaverRuntime.get().entitySink().isRegistered(swimmer.getId()),
+                            "master OFF must not register exact Swim work");
+                        check(helper, navigation.getPath() != null,
+                            "master OFF exact Swim must still produce a synchronous vanilla path");
+                        teardown.run();
+                        helper.succeed();
+                    });
+            } catch (Throwable t) {
+                teardown.run();
+                throw t;
+            }
+        });
+    }
+
+    private static void proveRuntimeCacheIsolation(GameTestHelper helper, Mob swimmer) {
+        PathWorkerPool pool = new PathWorkerPool();
+        pool.start(1, 1);
+        try {
+            ServerLevel level = (ServerLevel) swimmer.level();
+            PathTypeCache shared = level.getPathTypeCache();
+            PathfindingContext mainContext = new PathfindingContext(level, swimmer);
+            check(helper, contextCache(mainContext) == shared,
+                "main-thread PathfindingContext must retain the ServerLevel shared cache");
+
+            BlockPos center = swimmer.blockPosition();
+            PathNavigationRegion region = new PathNavigationRegion(level,
+                center.offset(-8, -8, -8), center.offset(8, 8, 8));
+            SwimNodeEvaluator evaluator = new SwimNodeEvaluator(false);
+            CountDownLatch done = new CountDownLatch(1);
+            AtomicReference<PathTypeCache> workerCache = new AtomicReference<>();
+            AtomicReference<PathOutcome> outcome = new AtomicReference<>();
+            AtomicBoolean callbackMarked = new AtomicBoolean(true);
+            boolean submitted = pool.submit(new PathRequest(new RequestKey(1L, 1L, swimmer.getId()),
+                0L, () -> {
+                    evaluator.prepare(region, swimmer);
+                    try {
+                        workerCache.set(contextCache(evaluatorContext(evaluator)));
+                    } finally {
+                        evaluator.done();
+                    }
+                    return null;
+                }, result -> {
+                    outcome.set(result);
+                    callbackMarked.set(PathWeaverThread.isWorker());
+                    done.countDown();
+                }));
+            check(helper, submitted, "cache-isolation witness must enter a real PathWorkerPool search");
+            try {
+                check(helper, done.await(5, TimeUnit.SECONDS),
+                    "cache-isolation witness did not terminate");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw helper.assertionException("cache-isolation witness interrupted");
+            }
+            check(helper, outcome.get() != null && outcome.get().status() == PathOutcome.Status.NO_PATH,
+                "cache-isolation witness search must terminate without failure");
+            check(helper, workerCache.get() != null && workerCache.get() != shared,
+                "async exact Swim context must use a fresh cache, never ServerLevel's shared cache");
+            check(helper, !callbackMarked.get(),
+                "PathWorkerPool must clear its worker marker before completion delivery");
+            check(helper, pool.inFlight() == 0,
+                "cache-isolation witness must balance worker capacity");
+        } finally {
+            pool.shutdown();
+        }
+    }
+
+    private static PathfindingContext evaluatorContext(NodeEvaluator evaluator) {
+        try {
+            Field field = NodeEvaluator.class.getDeclaredField("currentContext");
+            field.setAccessible(true);
+            return (PathfindingContext) field.get(evaluator);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("could not inspect NodeEvaluator.currentContext", e);
+        }
+    }
+
+    private static PathTypeCache contextCache(PathfindingContext context) {
+        try {
+            Field field = PathfindingContext.class.getDeclaredField("cache");
+            field.setAccessible(true);
+            return (PathTypeCache) field.get(context);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("could not inspect PathfindingContext.cache", e);
+        }
+    }
+
+    private static Object nodeEvaluator(PathNavigation navigation) {
+        try {
+            Field field = PathNavigation.class.getDeclaredField("nodeEvaluator");
+            field.setAccessible(true);
+            return field.get(navigation);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("could not inspect PathNavigation.nodeEvaluator", e);
         }
     }
 
