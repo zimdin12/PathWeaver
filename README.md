@@ -37,7 +37,26 @@ Foreign-mixin scan complete: scanned=…, failed=…, deniedFamilies=…
 
 Average tick rate is not what players notice — a server sitting at "20 TPS" still stutters when one tick in a hundred takes 80 ms. That is what PathWeaver reduces. It raises *throughput* only in the narrower case where path-searching alone already pushes the server past its 50 ms budget and spare CPU cores exist.
 
-All figures below were produced **with the compatibility gate manually cleared by a test harness, which a released build will never do for you**, on a 16-core / 32-thread desktop CPU with 8 worker threads. Measurements were reproduced by a second engineer using an audited derivative of the same corrected harness, with fresh worlds and reversed-order paired runs. That is a check on the runs and the analysis, not an independently written timer.
+### Measured on the configuration you would actually get
+
+This is the one benchmark that used **no harness intervention at all**: stock Fabric API, Lithium loaded, `compatibilityTier=AUDITED`, shipped limits (`maxInFlight=256`, `poolThreads=0`, repath reuse on). The gate opened on its own. The only difference between arms is the master switch. 1024 zombies in a walled maze, all retargeted every 6 ticks; two pairs, interleaved and order-reversed.
+
+| | Synchronous | With PathWeaver |
+|---|---|---|
+| Tick interval, mean | 82.4 / 96.5 ms | **48.8 / 50.0 ms** |
+| Tick interval, p99 | 769 / 1096 ms | **343 / 362 ms** |
+| Worst tick | 879 / 1180 ms | **358 / 391 ms** |
+| Effective tick rate | 10.4 / 12.1 TPS | **20.0 TPS** |
+
+Mean tick time fell **44.8%** (89.4 → 49.4 ms), with no overlap — every async run beat every synchronous run. Main-thread cost per request fell from ~441–516 µs to ~164–203 µs.
+
+**The caveat that matters: at the shipped in-flight limit, 14.8% of searches were discarded** (95,842 installed of 112,457 dispatched). Under this much load roughly one search in seven is thrown away and recomputed later. It still wins decisively, but that is the default doing real work at saturation, not a tuned value.
+
+This is still a synthetic burst with all other mob AI stripped out. It shows what happens when pathfinding alone overloads the server; it is not a measurement of ordinary play.
+
+### Earlier figures, measured with the gate forced open
+
+The figures below predate the audited exemptions and were produced **with the compatibility gate manually cleared by a test harness**, on a 16-core / 32-thread desktop CPU with 8 worker threads. Measurements were reproduced by a second engineer using an audited derivative of the same corrected harness, with fresh worlds and reversed-order paired runs. That is a check on the runs and the analysis, not an independently written timer.
 
 ### Saturated burst — where it helps
 
@@ -75,7 +94,7 @@ At 256 mobs, and at 1024 mobs with slower retargeting, the pattern repeated: ide
 - Main-thread cost of the `moveTo` call itself fell from ~430 µs to ~53 µs. That figure covers only the request call. Installing the finished path and running its callbacks also happen on the main thread and were **not** measured, so the end-to-end main-thread cost per request is unknown — do not read the ratio above as the total saving.
 - Fewer or contended cores will not behave like this test.
 
-**No benchmark has ever been run on the configuration you would actually get.** Every result above used a cleared gate, a much larger in-flight limit than the default, and repath reuse disabled.
+The figures in this subsection used a cleared gate, a much larger in-flight limit than the default, and repath reuse disabled. The shipped-configuration measurement at the top of this section does not.
 
 ## Who this will not help
 
@@ -100,7 +119,7 @@ You can also edit `config/pathweaver.json`. **The exact keys differ between vers
 
 ## What is unproven
 
-- **The shipped default configuration has never been benchmarked.** Measurements used a cleared gate, a much larger in-flight limit, and repath reuse disabled.
+- **Only the saturated-burst case has been measured at shipped defaults.** Realistic mob counts, mixed workloads and ordinary play remain unmeasured.
 - **No benefit measured at realistic mob counts or with mixed workloads.** The benchmark was almost entirely pathfinding, with all other mob AI stripped out.
 - **Path correctness is proven only in a static world.** Five Walk and Swim cases produced node-for-node identical paths to a synchronous oracle with the world held still, plus a 128-mob soak.
 - **Under live block changes we found no failures but did not check path quality.** Across 66,144 searches in three mod sets there was no crash, no search failure and no worker-pool failure. We did **not** compare the paths produced while blocks were changing, so stale or wrong paths during world mutation are simply not measured.

@@ -41,7 +41,27 @@ final class FabricInteractionCompatibility {
     static final String TARGET =
         "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase";
 
-    private static final String MODULE_SHA = "dc4a15c9250c6d0e5839e5b696792b06869c65f1ab7e71627986d8f9ed247d60";
+    /**
+     * The module jar legitimately ships in two byte-forms, so both are pinned.
+     *
+     * <p>Fabric API distributes this module twice: as a standalone Maven artifact, which is what a
+     * Loom development environment resolves, and as a jar nested inside the aggregate
+     * {@code fabric-api} jar, which is what every real install actually loads. The two are the same
+     * module version but are not byte-identical -- the nested copy is recompressed. Pinning only the
+     * development form made this audit fail on real servers while passing every game test, so the
+     * gate reported a clean scan in the harness and denied everything in production. Some other
+     * modules (content registries, for one) happen to be byte-identical across both packagings and
+     * never exposed this.
+     *
+     * <p>Both hashes are for module version {@code 5.2.2+07b380be4c}. The mixin class and config
+     * bytes -- which are what the audit actually reasons about -- are identical in both forms and
+     * remain pinned exactly, so accepting either packaging does not widen what is trusted.
+     */
+    private static final Set<String> MODULE_SHAS = Set.of(
+        // standalone Maven artifact, as resolved in a Loom dev environment
+        "dc4a15c9250c6d0e5839e5b696792b06869c65f1ab7e71627986d8f9ed247d60",
+        // nested inside the aggregate fabric-api jar, as shipped to users
+        "c86603921ac5fd84135a7af31d54de3761d3ad027cba3694c29945cec8c3e2bf");
     private static final String CONFIG_SHA = "9a8445db121fce8e80c928290b8623f2f6e126459fddcb259b2016ae777f9759";
     private static final String MIXIN_SHA = "c35a9d60b12e32f2b1540b0116f6459bf515e8d1901dc18be5ebff9fd5bf72e7";
     private static final String BLOCK_STATE_BASE_SHA = "91a6b29e9ec0bd3ca18c05cd677b3a8e689c7849a3793c27373e531f9a1834fb";
@@ -86,7 +106,10 @@ final class FabricInteractionCompatibility {
 
     static Verification verifyBundle(Bundle b) {
         List<String> diagnostics = new ArrayList<>();
-        checkHash("module jar", b.moduleJar(), MODULE_SHA, diagnostics);
+        String moduleSha = AuditedMixinCompatibility.sha256(b.moduleJar());
+        if (!MODULE_SHAS.contains(moduleSha)) {
+            diagnostics.add("module jar hash mismatch: " + moduleSha);
+        }
         checkHash("mixin config", b.config(), CONFIG_SHA, diagnostics);
         checkHash("interaction mixin", b.mixin(), MIXIN_SHA, diagnostics);
         checkHash("vanilla BlockStateBase", b.blockStateBase(), BLOCK_STATE_BASE_SHA, diagnostics);
