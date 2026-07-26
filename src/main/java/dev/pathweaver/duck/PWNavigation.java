@@ -26,4 +26,35 @@ public interface PWNavigation {
      * fired at dispatch and not yet balanced. Idempotent, so install-vs-discard both call it safely.
      */
     void pathweaver$onPathfindingDone();
+
+    /**
+     * Main thread: undo the optimistic {@code targetPos} write made at dispatch.
+     *
+     * <p>Dispatch sets {@code targetPos} before a path exists so recompute and repath reuse keep
+     * working during the in-flight window. Every route that does not install a path must undo it,
+     * otherwise {@code targetPos} names the new target while {@code path} still holds the previous,
+     * unrelated path — a pairing vanilla never produces. The next request for that target would
+     * then match vanilla's reuse short-circuit, hand back the stale path and report success, so the
+     * mob walks to the old destination while callers believe it is heading to the new one.
+     *
+     * <p>Restores only when {@code targetPos} is still exactly the value dispatch wrote, so a
+     * newer request that has already claimed it is never clobbered.
+     */
+    void pathweaver$rollbackOptimisticTarget();
+
+    /**
+     * Main thread: abandon a path installation that threw part-way through.
+     *
+     * <p>Installation calls vanilla {@code moveTo(path, speed)}, which foreign mixins can inject
+     * into. Such an injection can throw <em>after</em> vanilla has already set the path, so the
+     * navigation may hold a new or partially-applied path when the failure surfaces. Restoring only
+     * the target would then pair that path with the previous target — the same mismatched invariant
+     * the rollback exists to prevent, merely inverted.
+     *
+     * <p>This clears the path outright and restores the pre-dispatch target, so the navigation is
+     * left in a state vanilla can produce and the next request recomputes from scratch. Routes that
+     * never touched the path (no-path, discard, supersede, staleness) must keep using
+     * {@link #pathweaver$rollbackOptimisticTarget()} instead, which preserves the existing path.
+     */
+    void pathweaver$abortFailedInstall();
 }

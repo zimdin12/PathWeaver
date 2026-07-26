@@ -65,17 +65,41 @@ class PathWorkerPoolTest {
 
     @Test void throwingCompletionConsumerIsCountedRatherThanSwallowed() throws Exception {
         CountDownLatch attempted = new CountDownLatch(1);
-        assertTrue(pool.submit(new PathRequest(key(4), 0L, () -> null, outcome -> {
+        ResultInstaller installer = new ResultInstaller();
+        AtomicReference<Thread> terminalThread = new AtomicReference<>();
+        java.util.concurrent.atomic.AtomicInteger discards = new java.util.concurrent.atomic.AtomicInteger();
+        RequestKey key = key(4);
+        assertTrue(pool.submit(new PathRequest(key, 0L, () -> null, outcome -> {
             attempted.countDown();
             throw new IllegalStateException("delivery boom");
-        })));
+        }, installer::enqueueDiscard)));
         assertTrue(attempted.await(2, TimeUnit.SECONDS));
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-        while (pool.completionFailureCount() == 0L && System.nanoTime() < deadline) {
+        while ((pool.completionFailureCount() == 0L || installer.pending() == 0)
+                && System.nanoTime() < deadline) {
             Thread.onSpinWait();
         }
         assertEquals(1L, pool.completionFailureCount());
         assertEquals(0L, pool.failureCount());
+        assertEquals(1, installer.pending(), "delivery failure must queue one terminal discard");
+        assertEquals(0, discards.get(), "the worker must not invoke the sink directly");
+
+        Thread drainingThread = Thread.currentThread();
+        installer.drain(new ResultInstaller.InstallSink() {
+            @Override public boolean isStale(RequestKey ignored, long tick,
+                                             double x, double y, double z) { return false; }
+            @Override public void install(RequestKey ignored, net.minecraft.world.level.pathfinder.Path path) {
+                fail("delivery-failure fallback must not install");
+            }
+            @Override public void discard(RequestKey discarded) {
+                assertEquals(key, discarded);
+                terminalThread.set(Thread.currentThread());
+                discards.incrementAndGet();
+            }
+        });
+        assertEquals(1, discards.get());
+        assertSame(drainingThread, terminalThread.get(),
+            "terminal discard must execute only on the thread draining the installer");
     }
 
     @Test void throwingFailureReporterCannotPreventFailedDelivery() throws Exception {

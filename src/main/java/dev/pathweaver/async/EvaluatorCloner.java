@@ -35,10 +35,24 @@ public final class EvaluatorCloner {
         return fresh;
     }
 
+    /** Resolved once: this runs on every Swim dispatch, and reflection lookups are not cheap. */
+    private static final java.lang.reflect.Field SWIM_ALLOW_BREACHING = resolveAllowBreaching();
+
+    private static java.lang.reflect.Field resolveAllowBreaching() {
+        try {
+            var field = SwimNodeEvaluator.class.getDeclaredField("allowBreaching");
+            field.setAccessible(true);
+            return field;
+        } catch (ReflectiveOperationException | RuntimeException unavailable) {
+            return null;
+        }
+    }
+
     private static boolean readSwimAllowBreaching(SwimNodeEvaluator src)
             throws ReflectiveOperationException {
-        var field = SwimNodeEvaluator.class.getDeclaredField("allowBreaching");
-        field.setAccessible(true);
-        return field.getBoolean(src);
+        if (SWIM_ALLOW_BREACHING == null) {
+            throw new NoSuchFieldException("SwimNodeEvaluator.allowBreaching is unavailable");
+        }
+        return SWIM_ALLOW_BREACHING.getBoolean(src);
     }
 }

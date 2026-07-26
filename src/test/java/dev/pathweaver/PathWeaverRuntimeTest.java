@@ -13,6 +13,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PathWeaverRuntimeTest {
     private static final class FakeNavigation implements PWNavigation {
+        @Override public void pathweaver$rollbackOptimisticTarget() { }
+        @Override public void pathweaver$abortFailedInstall() { }
+
         int dones;
         private final Object world = new Object();
         public void pathweaver$install(Path path) { }

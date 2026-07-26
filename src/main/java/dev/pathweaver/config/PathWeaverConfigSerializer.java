@@ -36,7 +36,18 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
             PathWeaverConfig current = config == null ? createDefault() : config;
             current.validatePostLoad();
             Files.createDirectories(path.getParent());
-            Files.writeString(path, gson.toJson(current));
+            // Write to a sibling temp file and move it into place, so a crash or a full disk
+            // part-way through cannot leave truncated JSON where the config should be. Writing
+            // directly over the live file left a window in which the next launch would read a
+            // half-written file, fail closed, and silently lose the user's settings.
+            java.nio.file.Path temp = path.resolveSibling(path.getFileName() + ".tmp");
+            Files.writeString(temp, gson.toJson(current));
+            try {
+                Files.move(temp, path, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException atomicUnsupported) {
+                Files.move(temp, path, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException | RuntimeException failure) {
             throw new SerializationException(failure);
         }

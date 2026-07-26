@@ -2,6 +2,8 @@ package dev.pathweaver.async;
 
 import dev.pathweaver.duck.PWNavigation;
 import net.minecraft.world.level.pathfinder.Path;
+
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -9,6 +11,13 @@ import static org.junit.jupiter.api.Assertions.*;
 class EntityInstallSinkTest {
 
     static class FakeNav implements PWNavigation {
+        int rollbacks, aborts;
+        boolean pathCleared;
+        @Override public void pathweaver$abortFailedInstall() {
+            aborts++; pathCleared = true; rollbacks++;
+        }
+        @Override public void pathweaver$rollbackOptimisticTarget() { rollbacks++; }
+
         int installs, dones;
         boolean stale;
         Object uuid = new Object();
@@ -50,6 +59,124 @@ class EntityInstallSinkTest {
         assertFalse(sink.shouldForceSync(1, 140L));
         assertEquals(1, nav.dones);
         assertEquals(0, nav.installs);
+    }
+
+    @Test void everyNonInstallRouteRestoresThePreDispatchTarget() {
+        // Dispatch writes targetPos optimistically. If a route ends without installing a path and
+        // does not undo that write, targetPos names the new target while path still holds the old
+        // one; vanilla's reuse short-circuit then returns the stale path and reports success, so
+        // the mob walks to the previous destination forever. Every terminal route must roll back.
+        record Route(String name, java.util.function.BiConsumer<EntityInstallSink, RequestKey> run) { }
+        for (Route route : List.of(
+                new Route("noPath", (sink, key) -> sink.noPath(key)),
+                new Route("failed", (sink, key) -> sink.failed(key, new IllegalStateException("x"))),
+                new Route("discard", (sink, key) -> sink.discard(key)),
+                new Route("supersede", (sink, key) -> sink.supersede(key.entityId())))) {
+            EntityInstallSink sink = new EntityInstallSink();
+            FakeNav nav = new FakeNav();
+            RequestKey key = key(1L, 1L, 1);
+            sink.setTick(100L);
+            sink.register(key, nav);
+
+            route.run().accept(sink, key);
+
+            assertEquals(1, nav.rollbacks,
+                "route '" + route.name() + "' must restore the pre-dispatch target");
+            assertEquals(0, nav.installs, "route '" + route.name() + "' must not install a path");
+            assertEquals(1, nav.dones, "route '" + route.name() + "' must still balance the callback");
+        }
+    }
+
+    @Test void installThatSetsThePathThenThrowsIsFullyAborted() {
+        // A foreign mixin can inject into vanilla moveTo and throw AFTER the path is set, so the
+        // navigation may hold a new or partial path when the failure surfaces. Restoring only the
+        // target would pair that path with the old target — the same mismatched invariant the
+        // rollback exists to prevent. The install-failure route must clear the path as well.
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(30L);
+        FakeNav throwing = new FakeNav() {
+            @Override public void pathweaver$install(Path path) {
+                installs++;
+                this.path = new Object();      // vanilla already applied a path
+                throw new IllegalStateException("foreign injection threw after moveTo");
+            }
+        };
+        RequestKey key = key(1L, 9L, 12);
+        sink.register(key, throwing);
+
+        assertDoesNotThrow(() -> sink.install(key, dummyPath()));
+
+        assertEquals(1, throwing.aborts,
+            "a throwing install must abort, not merely restore the target");
+        assertTrue(throwing.pathCleared,
+            "the partially applied path must be cleared, not left paired with the old target");
+        assertEquals(1, throwing.dones, "the callback must still be balanced");
+        assertFalse(sink.isRegistered(12));
+        assertTrue(sink.shouldForceSync(12, 31L));
+    }
+
+    @Test void nonInstallRoutesPreserveTheExistingPath() {
+        // The counterpart: routes that never touched the path must NOT clear it, only restore
+        // the target. Clearing here would throw away a still-valid path the mob is following.
+        EntityInstallSink sink = new EntityInstallSink();
+        FakeNav nav = new FakeNav();
+        RequestKey key = key(1L, 1L, 1);
+        sink.setTick(100L);
+        sink.register(key, nav);
+
+        sink.noPath(key);
+
+        assertEquals(1, nav.rollbacks, "the target must be restored");
+        assertEquals(0, nav.aborts, "no-path must not abort the navigation");
+        assertFalse(nav.pathCleared, "no-path must leave the existing path alone");
+    }
+
+    @Test void cooldownSweepClockResetsSoAFreshServerSweepsImmediately() {
+        // clear() runs on server stop/start. If the sweep timestamp survived, a new server
+        // starting near tick 0 would not sweep until it had been up as long as the previous one.
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(500_000L);
+        FakeNav old = new FakeNav();
+        RequestKey oldKey = key(1L, 1L, 1);
+        sink.register(oldKey, old);
+        sink.failed(oldKey, new IllegalStateException("x"));
+        sink.shouldForceSync(1, 500_000L);      // advances the sweep clock to a large tick
+
+        sink.clear();
+
+        // New server: low tick numbers, one abandoned cooldown.
+        sink.setTick(10L);
+        FakeNav fresh = new FakeNav();
+        RequestKey freshKey = key(2L, 1L, 2);
+        sink.register(freshKey, fresh);
+        sink.failed(freshKey, new IllegalStateException("x"));
+        assertEquals(1, sink.cooldownEntryCount());
+
+        sink.shouldForceSync(9999, 10L + 40L + 21L);
+
+        assertEquals(0, sink.cooldownEntryCount(),
+            "a fresh server must sweep on its own tick timeline, not the previous server's");
+    }
+
+    @Test void expiredCooldownsAreSweptEvenIfTheEntityNeverAsksAgain() {
+        // A mob that fails a search and then dies never queries shouldForceSync again. Without a
+        // sweep its cooldown entry stays forever, and entity ids are not reused, so the map grew
+        // without bound on long-lived servers.
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(100L);
+        for (int entityId = 1; entityId <= 50; entityId++) {
+            FakeNav nav = new FakeNav();
+            RequestKey key = key(1L, entityId, entityId);
+            sink.register(key, nav);
+            sink.failed(key, new IllegalStateException("search failed"));
+        }
+        assertEquals(50, sink.cooldownEntryCount(), "all 50 cooldowns should be live initially");
+
+        // A single unrelated query well after expiry must clear the abandoned entries.
+        sink.shouldForceSync(9999, 100L + 40L + 21L);
+
+        assertEquals(0, sink.cooldownEntryCount(),
+            "expired cooldowns for entities that never returned must be swept");
     }
 
     @Test void successClearsAnyLingeringCooldown() {
@@ -122,6 +249,8 @@ class EntityInstallSinkTest {
 
         assertEquals(1, throwing.installs);
         assertEquals(1, throwing.dones);
+        assertEquals(1, throwing.rollbacks,
+            "a throwing install never installed a path, so the optimistic target must be undone");
         assertFalse(sink.isRegistered(8));
         assertTrue(sink.shouldForceSync(8, 31L));
     }

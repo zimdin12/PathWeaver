@@ -51,6 +51,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
     @Shadow protected NodeEvaluator nodeEvaluator;
     @Shadow @org.spongepowered.asm.mixin.Final private PathFinder pathFinder;
     @Shadow private BlockPos targetPos;
+    @Shadow public abstract void stop();
     @Shadow private int reachRange;
     @Shadow private float maxVisitedNodesMultiplier;
     @Shadow protected double speedModifier;
@@ -62,6 +63,10 @@ public abstract class PathNavigationMixin implements PWNavigation {
 
     // ---- per-in-flight capture (main thread only; the isRegistered guard ensures one search at a time) ----
     @Unique private int pathweaver$pendingReachRange;
+    /** The optimistic targetPos this navigation wrote at dispatch, or null when none is pending. */
+    @Unique private BlockPos pathweaver$optimisticTargetPos;
+    /** The targetPos to restore if the pending request never installs a path. */
+    @Unique private BlockPos pathweaver$targetPosBeforeDispatch;
     @Unique private int pathweaver$pendingDoneCallbacks;
     // Movement callers supply speed outside createPath. Capture it at those approved callers and
     // bind the exact double (including 0, negative values, and NaN) to the accepted registration.
@@ -336,7 +341,8 @@ public abstract class PathNavigationMixin implements PWNavigation {
             sink.register(requestKey, this, requestTarget);
             registered = true;
             boolean accepted = rt.pool().submit(new PathRequest(submittedKey, tick, search,
-                result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz)));
+                result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz),
+                rt.installer()::enqueueDiscard));
 
             if (!accepted) {
                 sink.discard(requestKey); // pool saturated -> let vanilla run synchronously
@@ -349,7 +355,12 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // window (vanilla would have null targetPos until install, killing both).
             this.pathweaver$pendingReachRange = reachRange;
             this.pathweaver$pendingInstallSpeed = this.pathweaver$requestSpeed;
+            // Remember what to restore if this request never installs a path. Without this the
+            // navigation is left with targetPos naming the new target while path still holds the
+            // previous one, and vanilla's reuse short-circuit then hands back the stale path.
+            this.pathweaver$targetPosBeforeDispatch = this.targetPos;
             this.targetPos = targetsCopy.iterator().next();
+            this.pathweaver$optimisticTargetPos = this.targetPos;
 
             // Replay the exact vanilla per-evaluator callback contract on the MAIN thread. Walk has one
             // start/done pair; Swim has none. Set the balance bit before invoking untrusted mod code so
@@ -395,6 +406,32 @@ public abstract class PathNavigationMixin implements PWNavigation {
             this.reachRange = this.pathweaver$pendingReachRange;
             resetStuckTimeout();
         }
+        // A real path is now installed, so there is nothing optimistic left to undo.
+        this.pathweaver$optimisticTargetPos = null;
+        this.pathweaver$targetPosBeforeDispatch = null;
+    }
+
+    @Override
+    public void pathweaver$abortFailedInstall() {
+        // moveTo may have set a new or partial path before a foreign injection threw. Clear it
+        // rather than leave it paired with a restored older target; the next request recomputes.
+        try {
+            stop();
+        } catch (Throwable stopFailure) {
+            this.path = null;
+        }
+        pathweaver$rollbackOptimisticTarget();
+    }
+
+    @Override
+    public void pathweaver$rollbackOptimisticTarget() {
+        BlockPos optimistic = this.pathweaver$optimisticTargetPos;
+        if (optimistic != null && optimistic.equals(this.targetPos)) {
+            // Still ours: no newer request has claimed targetPos, so restoring is safe.
+            this.targetPos = this.pathweaver$targetPosBeforeDispatch;
+        }
+        this.pathweaver$optimisticTargetPos = null;
+        this.pathweaver$targetPosBeforeDispatch = null;
     }
 
     @Override

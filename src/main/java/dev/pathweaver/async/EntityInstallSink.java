@@ -25,8 +25,12 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     private final Map<Integer, Registration> inFlight = new ConcurrentHashMap<>();
     private final Map<Integer, Long> failUntilTick = new ConcurrentHashMap<>();
     private final AtomicBoolean callbackFailureLogged = new AtomicBoolean();
+    private final AtomicBoolean rollbackFailureLogged = new AtomicBoolean();
+    /** Tick at which expired cooldown entries were last swept, so the map cannot grow forever. */
+    private long lastCooldownSweepTick;
     private final AtomicBoolean installFailureLogged = new AtomicBoolean();
     private static final long FAIL_COOLDOWN_TICKS = 40L;
+    private static final long COOLDOWN_SWEEP_INTERVAL_TICKS = 20L;
     private volatile long currentTick;
 
     public void setTick(long tick) { this.currentTick = tick; }
@@ -95,8 +99,45 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     }
 
     private void finishDiscard(Registration registration) {
+        rollbackOptimisticTarget(registration);
         finishCallback(registration);
         dev.pathweaver.PathWeaverRuntime.get().markDiscarded();
+    }
+
+    /**
+     * Undo the optimistic targetPos written at dispatch. Every route that reaches here ended
+     * without installing a path, so leaving it in place would pair the new target with the old
+     * path and make vanilla's reuse short-circuit hand back a stale path forever.
+     */
+    /** Install threw: clear any partially-applied path AND restore the pre-dispatch target. */
+    private void abortFailedInstall(Registration registration) {
+        try {
+            registration.navigation().pathweaver$abortFailedInstall();
+        } catch (Throwable abortFailure) {
+            if (rollbackFailureLogged.compareAndSet(false, true)) {
+                try {
+                    PathWeaver.LOG.warn("Aborting a failed path installation threw; the request was "
+                        + "still discarded.", abortFailure);
+                } catch (Throwable ignored) {
+                    // Cancellation stays terminal even if the logging backend is compromised.
+                }
+            }
+        }
+    }
+
+    private void rollbackOptimisticTarget(Registration registration) {
+        try {
+            registration.navigation().pathweaver$rollbackOptimisticTarget();
+        } catch (Throwable rollbackFailure) {
+            if (rollbackFailureLogged.compareAndSet(false, true)) {
+                try {
+                    PathWeaver.LOG.warn("Restoring the pre-dispatch navigation target threw; "
+                        + "cancellation continued.", rollbackFailure);
+                } catch (Throwable ignored) {
+                    // Cancellation stays terminal even if the logging backend is compromised.
+                }
+            }
+        }
     }
 
     private void finishCallback(Registration registration) {
@@ -114,7 +155,11 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         }
     }
 
+    /** Test seam: number of live sync-cooldown entries. */
+    int cooldownEntryCount() { return failUntilTick.size(); }
+
     public boolean shouldForceSync(int entityId, long tick) {
+        sweepExpiredCooldowns(tick);
         Long until = failUntilTick.get(entityId);
         if (until == null) return false;
         if (tick >= until) {
@@ -122,6 +167,22 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Drop cooldown entries whose deadline has passed.
+     *
+     * <p>An entry was previously removed only if that same entity asked again. A mob that failed a
+     * search and then died, despawned or changed dimension never asks again, and entity ids are not
+     * reused within a run, so on a long-lived server the map grew without bound. Sweeping is cheap
+     * because the map is normally empty and is only walked once per second of server time.
+     */
+    private void sweepExpiredCooldowns(long tick) {
+        if (failUntilTick.isEmpty() || tick - lastCooldownSweepTick < COOLDOWN_SWEEP_INTERVAL_TICKS) {
+            return;
+        }
+        lastCooldownSweepTick = tick;
+        failUntilTick.entrySet().removeIf(entry -> tick >= entry.getValue());
     }
 
     private Registration matching(RequestKey key) {
@@ -153,6 +214,11 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
                 failUntilTick.remove(key.entityId());
                 dev.pathweaver.PathWeaverRuntime.get().markInstalled();
             } catch (Throwable installFailure) {
+                // Installation calls vanilla moveTo, which foreign mixins can inject into, so a
+                // throw here may leave a new or partially-applied path behind. Restoring only the
+                // target would pair that path with the old target — the same broken invariant.
+                // Abort clears the path and restores the target together.
+                abortFailedInstall(registration);
                 failUntilTick.put(key.entityId(), currentTick + FAIL_COOLDOWN_TICKS);
                 dev.pathweaver.PathWeaverRuntime.get().markDiscarded();
                 if (installFailureLogged.compareAndSet(false, true)) {
@@ -204,5 +270,9 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
             }
         }
         failUntilTick.clear();
+        // Reset the sweep clock too. A new server starts its tick count near zero, so a
+        // timestamp left from a long previous run would suppress sweeping until the new
+        // server had been up as long as the old one.
+        lastCooldownSweepTick = 0L;
     }
 }
