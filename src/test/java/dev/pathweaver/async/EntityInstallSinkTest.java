@@ -1,6 +1,7 @@
 package dev.pathweaver.async;
 
 import dev.pathweaver.duck.PWNavigation;
+import dev.pathweaver.gate.FabricLandPathRegistryLatch;
 import net.minecraft.world.level.pathfinder.Path;
 
 import java.util.List;
@@ -42,6 +43,36 @@ class EntityInstallSinkTest {
         assertTrue(sink.isRegistered(2, registered));
         assertFalse(sink.isRegistered(2, new FakeNav()));
         assertFalse(sink.isRegistered(3, registered));
+    }
+
+    @Test void lateLandProviderRegistrationMakesOnlyCapturedWalkResultStale() throws Exception {
+        var publish = FabricLandPathRegistryLatch.class
+            .getDeclaredMethod("publishHooksVerified", boolean.class);
+        var reset = FabricLandPathRegistryLatch.class.getDeclaredMethod("resetForTests");
+        publish.setAccessible(true);
+        reset.setAccessible(true);
+        reset.invoke(null);
+        publish.invoke(null, true);
+        try {
+            EntityInstallSink sink = new EntityInstallSink();
+            sink.setTick(1L);
+            RequestTarget target = RequestTarget.of(java.util.Set.of("walk"), 8, false, 1, 32.0F);
+            RequestKey walk = key(1L, 1L, 20);
+            RequestKey swim = key(1L, 2L, 21);
+            sink.register(walk, new FakeNav(), target, true);
+            sink.register(swim, new FakeNav(), target, false);
+            assertFalse(sink.isStale(walk, 1L, 0.0, 0.0, 0.0));
+            assertFalse(sink.isStale(swim, 1L, 0.0, 0.0, 0.0));
+
+            FabricLandPathRegistryLatch.beforeProviderMutation();
+
+            assertTrue(sink.isStale(walk, 1L, 0.0, 0.0, 0.0),
+                "R before I must discard the exact Walk request");
+            assertFalse(sink.isStale(swim, 1L, 0.0, 0.0, 0.0),
+                "land-provider registration must not invalidate unrelated Swim work");
+        } finally {
+            reset.invoke(null);
+        }
     }
 
     @Test void failedMarksEntityForSyncThenCooldownExpires() {

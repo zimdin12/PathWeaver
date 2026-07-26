@@ -24,6 +24,7 @@ class FabricSwimCompatibilityTest {
             FabricSwimCompatibility.verifyBundle(exactBundle());
 
         assertTrue(result.valid(), () -> String.join("\n", result.diagnostics()));
+        assertTrue(result.landRegistryVerified(), "exact mutation/lookup hook targets must be pinned");
         assertEquals(Set.of(
             "getPathTypeFromState(III)Lnet/minecraft/world/level/pathfinder/PathType;"),
             result.fabricInjectedMethods());
@@ -36,8 +37,8 @@ class FabricSwimCompatibilityTest {
         FabricSwimCompatibility.Bundle exact = exactBundle();
         byte[][] parts = {
             exact.moduleJar(), exact.config(), exact.contextMixin(), exact.walkMixin(),
-            exact.blockStateBaseMixin(), exact.swim(), exact.nodeEvaluator(), exact.pathFinder(),
-            exact.pathContext(), exact.blockStateBase()
+            exact.blockStateBaseMixin(), exact.landRegistry(), exact.swim(), exact.nodeEvaluator(),
+            exact.pathFinder(), exact.pathContext(), exact.blockStateBase()
         };
         for (int changed = 0; changed < parts.length; changed++) {
             int changedIndex = changed;
@@ -45,7 +46,7 @@ class FabricSwimCompatibilityTest {
             copy[changedIndex][copy[changedIndex].length - 1] ^= 1;
             FabricSwimCompatibility.Verification result = FabricSwimCompatibility.verifyBundle(
                 new FabricSwimCompatibility.Bundle(copy[0], copy[1], copy[2], copy[3],
-                    copy[4], copy[5], copy[6], copy[7], copy[8], copy[9]));
+                    copy[4], copy[5], copy[6], copy[7], copy[8], copy[9], copy[10]));
             assertFalse(result.valid(), "resource " + changedIndex + " drift must fail closed");
             assertTrue(result.diagnostics().stream().anyMatch(s -> s.contains("hash mismatch")),
                 () -> "missing hash diagnostic for resource " + changedIndex + ": " + result.diagnostics());
@@ -66,6 +67,7 @@ class FabricSwimCompatibilityTest {
                     "net/fabricmc/fabric/mixin/content/registry/WalkNodeEvaluatorMixin.class"),
                 zipBytes(zip,
                     "net/fabricmc/fabric/mixin/content/registry/BlockBehaviourBlockStateBaseMixin.class"),
+                zipBytes(zip, "net/fabricmc/fabric/api/registry/LandPathTypeRegistry.class"),
                 classBytes(SwimNodeEvaluator.class), classBytes(NodeEvaluator.class),
                 classBytes(PathFinder.class), classBytes(PathfindingContext.class),
                 classBytes(BlockBehaviour.BlockStateBase.class));

@@ -123,6 +123,7 @@ class ModMenuIntegrationContractTest {
         Map<String, String> expectedCategories = new LinkedHashMap<>();
         expectedCategories.put("enabled", "general");
         expectedCategories.put("allowModdedMobAsync", "general");
+        expectedCategories.put("overrideCompatibilityScan", "general");
         expectedCategories.put("repathElisionEnabled", "general");
         expectedCategories.put("poolThreads", "performance");
         expectedCategories.put("maxInFlight", "performance");

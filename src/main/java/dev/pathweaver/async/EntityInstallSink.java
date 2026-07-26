@@ -18,7 +18,8 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     public enum PendingDecision { NONE, PRESERVE, SUPERSEDE }
 
     private record Registration(RequestKey key, PWNavigation navigation,
-                                NavigationIdentity identity, RequestTarget target) { }
+                                NavigationIdentity identity, RequestTarget target,
+                                boolean requiresEmptyLandRegistry) { }
 
     private static final RequestTarget UNSPECIFIED_TARGET =
         RequestTarget.of(Set.of(), 0, false, 0, 0.0F);
@@ -37,8 +38,14 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
 
     /** Called from the interceptor on the main thread at dispatch time. */
     public void register(RequestKey key, PWNavigation navigation, RequestTarget target) {
+        register(key, navigation, target, false);
+    }
+
+    /** Capture whether this exact request depends on Fabric's land-provider registry staying empty. */
+    public void register(RequestKey key, PWNavigation navigation, RequestTarget target,
+                         boolean requiresEmptyLandRegistry) {
         Registration next = new Registration(
-            key, navigation, navigation.pathweaver$identity(), target);
+            key, navigation, navigation.pathweaver$identity(), target, requiresEmptyLandRegistry);
         Registration existing = inFlight.putIfAbsent(key.entityId(), next);
         if (existing != null) {
             throw new IllegalStateException("Entity " + key.entityId()
@@ -194,6 +201,8 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     public boolean isStale(RequestKey key, long dispatchTick, double x, double y, double z) {
         Registration registration = matching(key);
         if (registration == null) return true;
+        if (registration.requiresEmptyLandRegistry()
+                && !dev.pathweaver.gate.FabricLandPathRegistryLatch.allowsWalkInstall()) return true;
         long age = currentTick - dispatchTick;
         if (age < 0L || age > PathWeaverConfig.get().maxResultAgeTicks) return true;
         try {

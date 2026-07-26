@@ -5,6 +5,7 @@
   "mixins": [
     "PathFinderAccessor",
     "PathfindingContextMixin",
+    "LandPathTypeRegistryMixin",
     "PathNavigationMixin",
     "WalkNodeEvaluatorMixin"
   ],

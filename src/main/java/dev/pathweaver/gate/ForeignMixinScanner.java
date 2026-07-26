@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.pathweaver.PathWeaver;
+import dev.pathweaver.config.PathWeaverConfig;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
@@ -110,7 +111,14 @@ public final class ForeignMixinScanner {
         new AuditKey(FABRIC_CONTENT_ID, FABRIC_CONTENT_VERSION, FABRIC_CONTENT_CONFIG,
             FABRIC_CONTEXT_MIXIN, PATHFINDING_CONTEXT, null),
         new AuditKey(FABRIC_CONTENT_ID, FABRIC_CONTENT_VERSION, FABRIC_CONTENT_CONFIG,
+            FABRIC_WALK_MIXIN, WALK_EVALUATOR, null),
+        new AuditKey(FABRIC_CONTENT_ID, FABRIC_CONTENT_VERSION, FABRIC_CONTENT_CONFIG,
             FABRIC_BLOCK_STATE_BASE_MIXIN, BLOCK_STATE_BASE, null),
+        new AuditKey(FabricInteractionCompatibility.MOD_ID,
+            FabricInteractionCompatibility.MOD_VERSION,
+            FabricInteractionCompatibility.CONFIG,
+            FabricInteractionCompatibility.MIXIN,
+            FabricInteractionCompatibility.TARGET, null),
         new AuditKey(AuditedMixinCompatibility.SERVERCORE_ID,
             AuditedMixinCompatibility.SERVERCORE_VERSION,
             AuditedMixinCompatibility.SERVERCORE_CONFIG,
@@ -206,14 +214,7 @@ public final class ForeignMixinScanner {
         diagnostics.addAll(auditedEvidence.diagnostics());
         for (ActiveConfig config : configs) {
             boolean exactSwimShape = exactFabricSwimClaimShape(config, swimEvidence);
-            Set<Class<?>> configDenials = denialsForConfig(config, exactSwimShape, auditedEvidence);
-            if (exactSwimShape && !configDenials.contains(WalkNodeEvaluator.class)) {
-                // Never allow the shared-context exemption without the independent Walk denial.
-                diagnostics.add("exact Fabric Swim tuple did not produce its required Walk denial");
-                denied.addAll(ELIGIBLE_EVALUATORS);
-            } else {
-                denied.addAll(configDenials);
-            }
+            denied.addAll(denialsForConfig(config, exactSwimShape, auditedEvidence));
         }
         if (!failures.isEmpty()) denied.addAll(ELIGIBLE_EVALUATORS);
         return new ScanDecision(Set.copyOf(denied), configs.size(), failures.size(),
@@ -369,6 +370,17 @@ public final class ForeignMixinScanner {
     private static volatile ScanReport lastScanReport = new ScanReport(
         new ScanDecision(Set.copyOf(ELIGIBLE_EVALUATORS), 0, 1,
             List.of("foreign-mixin scan has not completed")), List.of());
+
+    /**
+     * True once a live scan has published a report. Distinguishes "scan completed and attributed
+     * nothing to this mod" from "no scan has run yet", which the retained report alone cannot,
+     * because both present as an empty config list.
+     */
+    private static volatile boolean scanCompleted;
+
+    public static boolean scanCompleted() {
+        return scanCompleted;
+    }
 
     public static ScanReport lastScanReport() {
         return lastScanReport;
@@ -576,30 +588,42 @@ public final class ForeignMixinScanner {
         }
 
         SwimExemptionEvidence swimEvidence = new SwimExemptionEvidence(false, List.of());
+        AuditedExemptionEvidence auditedEvidence = AuditedExemptionEvidence.unverified();
+        FabricLandPathRegistryLatch.publishHooksVerified(false);
         try {
             FabricLoader loader = FabricLoader.getInstance();
             var module = loader.getModContainer(FABRIC_CONTENT_ID);
             if (module.isPresent()) {
                 swimEvidence = FabricSwimCompatibility.inspectRuntime(loader, module.get());
+                AuditedExemptionEvidence landEvidence =
+                    FabricSwimCompatibility.inspectLandRuntime(loader, module.get());
+                auditedEvidence = auditedEvidence.merge(landEvidence);
+                boolean landVerified = landEvidence.verified().size() == 3;
+                FabricLandPathRegistryLatch.publishHooksVerified(landVerified);
                 if (swimEvidence.verified()) {
-                    PathWeaver.LOG.info("Verified exact Fabric content-registry/vanilla Swim tuple; "
-                        + "the context-only claim may exempt Swim while Walk remains denied.");
+                    PathWeaver.LOG.info("Verified exact Fabric content-registry/vanilla Swim tuple.");
+                }
+                if (landVerified) {
+                    PathWeaver.LOG.info("Verified exact Fabric land-registry lifecycle and hook targets; "
+                        + "Walk may dispatch only while the monotonic registry latch remains empty.");
                 }
             }
         } catch (Throwable t) {
+            FabricLandPathRegistryLatch.publishHooksVerified(false);
             swimEvidence = SwimExemptionEvidence.unverified(
                 "exact Fabric Swim runtime verification aborted: " + t);
         }
 
-        AuditedExemptionEvidence auditedEvidence = AuditedExemptionEvidence.unverified();
         try {
             FabricLoader loader = FabricLoader.getInstance();
             for (String id : List.of(AuditedMixinCompatibility.SERVERCORE_ID,
-                                     AuditedMixinCompatibility.RABBIT_ID)) {
+                                     AuditedMixinCompatibility.RABBIT_ID,
+                                     FabricInteractionCompatibility.MOD_ID)) {
                 var module = loader.getModContainer(id);
                 if (module.isEmpty()) continue;
-                AuditedExemptionEvidence moduleEvidence =
-                    AuditedMixinCompatibility.inspectRuntime(loader, module.get());
+                AuditedExemptionEvidence moduleEvidence = id.equals(FabricInteractionCompatibility.MOD_ID)
+                    ? FabricInteractionCompatibility.inspectRuntime(loader, module.get())
+                    : AuditedMixinCompatibility.inspectRuntime(loader, module.get());
                 auditedEvidence = auditedEvidence.merge(moduleEvidence);
                 if (!moduleEvidence.verified().isEmpty()) {
                     PathWeaver.LOG.info("Verified exact audited compatibility tuple for '{}'; "
@@ -613,6 +637,7 @@ public final class ForeignMixinScanner {
 
         ScanDecision decision = decide(active, failures, swimEvidence, auditedEvidence);
         lastScanReport = new ScanReport(decision, active, auditedEvidence);
+        scanCompleted = true;
         SafetyGate.replaceDenials(decision.denied());
         for (ActiveConfig config : active) {
             Set<Class<?>> denied = denialsForConfig(config,
@@ -626,6 +651,17 @@ public final class ForeignMixinScanner {
         }
         for (String failure : decision.diagnostics()) {
             PathWeaver.LOG.warn("Foreign-mixin scan failure (fail-closed): {}", failure);
+        }
+        if (PathWeaverConfig.get().overrideCompatibilityScan && !SafetyGate.deniedBySafety.isEmpty()) {
+            Set<Class<?>> overridden = Set.copyOf(SafetyGate.deniedBySafety);
+            SafetyGate.replaceDenials(Set.of());
+            PathWeaver.LOG.warn("=========================== PathWeaver ===========================");
+            PathWeaver.LOG.warn("overrideCompatibilityScan is ON. The compatibility scan denied {}", overridden);
+            PathWeaver.LOG.warn("and that denial has been IGNORED at your request. Path searches will");
+            PathWeaver.LOG.warn("now run on worker threads alongside the mods listed above, whose code");
+            PathWeaver.LOG.warn("has not been audited for thread safety. Use worlds you can afford to");
+            PathWeaver.LOG.warn("lose, and keep backups. Set overrideCompatibilityScan=false to undo.");
+            PathWeaver.LOG.warn("==================================================================");
         }
         PathWeaver.LOG.info("Foreign-mixin scan complete: scanned={}, failed={}, deniedFamilies={}.",
             decision.scanned(), decision.failed(), SafetyGate.deniedBySafety.size());

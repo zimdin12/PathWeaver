@@ -281,6 +281,10 @@ public abstract class PathNavigationMixin implements PWNavigation {
         if (!rt.isRunning()) return;
         if (!(this.level instanceof ServerLevel)) return;                       // server-side only
         if (this.nodeEvaluator == null || !SafetyGate.isAllowed(this.nodeEvaluator.getClass())) return;
+        final boolean requiresEmptyLandRegistry =
+            this.nodeEvaluator.getClass() == net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class;
+        if (requiresEmptyLandRegistry
+                && !dev.pathweaver.gate.FabricLandPathRegistryLatch.allowsWalkDispatch()) return;
 
         final Mob theMob = this.mob;
         if (!MobOriginGate.isAllowed(theMob.getClass(), cfg.allowModdedMobAsync)) return;
@@ -338,7 +342,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
             requestKey = rt.nextRequestKey(entityId);
             final RequestKey submittedKey = requestKey;
             if (!intentAdvanced) pathweaver$targetRevision++;
-            sink.register(requestKey, this, requestTarget);
+            sink.register(requestKey, this, requestTarget, requiresEmptyLandRegistry);
             registered = true;
             boolean accepted = rt.pool().submit(new PathRequest(submittedKey, tick, search,
                 result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz),

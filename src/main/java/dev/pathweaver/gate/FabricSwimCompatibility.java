@@ -53,6 +53,8 @@ final class FabricSwimCompatibility {
         "9a762716beeeb06843108341ac6e0d1baadf7e1e1ba9b515b4ee9c27cf73fa7e";
     private static final String BLOCK_STATE_BASE_MIXIN_SHA =
         "79d862b4174e175e43c01c2ffd209db2248c193f696bbcd81475063df7f31fd7";
+    private static final String LAND_REGISTRY_SHA =
+        "292f7f5c80e2a7afe220e050940e83448e38262d1d517a3b89eb50f5ad138a9c";
     private static final String SWIM_SHA =
         "2c74707049f26c23a713ebcaf26569bc38925d6dd1d399aa078d0dbf53d6f889";
     private static final String NODE_EVALUATOR_SHA =
@@ -85,17 +87,30 @@ final class FabricSwimCompatibility {
     private FabricSwimCompatibility() {}
 
     record Bundle(byte[] moduleJar, byte[] config, byte[] contextMixin, byte[] walkMixin,
-                  byte[] blockStateBaseMixin, byte[] swim, byte[] nodeEvaluator, byte[] pathFinder,
+                  byte[] blockStateBaseMixin, byte[] landRegistry, byte[] swim,
+                  byte[] nodeEvaluator, byte[] pathFinder,
                   byte[] pathContext, byte[] blockStateBase) {}
 
     record Verification(boolean valid, List<String> diagnostics,
                         Set<String> fabricInjectedMethods,
-                        Set<String> swimContextCalls) {
+                        Set<String> swimContextCalls,
+                        boolean landRegistryVerified) {
         Verification {
             diagnostics = List.copyOf(diagnostics);
             fabricInjectedMethods = Set.copyOf(fabricInjectedMethods);
             swimContextCalls = Set.copyOf(swimContextCalls);
         }
+    }
+
+    static ForeignMixinScanner.AuditedExemptionEvidence exactLandEvidence() {
+        return new ForeignMixinScanner.AuditedExemptionEvidence(Set.of(
+            new ForeignMixinScanner.AuditKey(MOD_ID, MOD_VERSION, CONFIG, CONTEXT_MIXIN,
+                "net.minecraft.world.level.pathfinder.PathfindingContext", null),
+            new ForeignMixinScanner.AuditKey(MOD_ID, MOD_VERSION, CONFIG, WALK_MIXIN,
+                "net.minecraft.world.level.pathfinder.WalkNodeEvaluator", null),
+            new ForeignMixinScanner.AuditKey(MOD_ID, MOD_VERSION, CONFIG, BLOCK_STATE_BASE_MIXIN,
+                "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase", null)),
+            List.of());
     }
 
     static ForeignMixinScanner.SwimExemptionEvidence inspectRuntime(
@@ -114,17 +129,7 @@ final class FabricSwimCompatibility {
             if (!MINECRAFT_VERSION.equals(minecraft)) {
                 return invalidEvidence("unsupported Minecraft version: " + minecraft);
             }
-            Bundle bundle = new Bundle(
-                readModuleArtifact(module),
-                readModResource(module, CONFIG),
-                readModResource(module, CONTEXT_MIXIN.replace('.', '/') + ".class"),
-                readModResource(module, WALK_MIXIN.replace('.', '/') + ".class"),
-                readModResource(module, BLOCK_STATE_BASE_MIXIN.replace('.', '/') + ".class"),
-                readClassBytes(SwimNodeEvaluator.class),
-                readClassBytes(NodeEvaluator.class),
-                readClassBytes(PathFinder.class),
-                readClassBytes(PathfindingContext.class),
-                readClassBytes(BlockBehaviour.BlockStateBase.class));
+            Bundle bundle = loadRuntimeBundle(module);
             Verification verification = verifyBundle(bundle);
             diagnostics.addAll(verification.diagnostics());
             if (!verification.valid()) {
@@ -137,6 +142,39 @@ final class FabricSwimCompatibility {
         }
     }
 
+    static ForeignMixinScanner.AuditedExemptionEvidence inspectLandRuntime(
+            FabricLoader loader, ModContainer module) {
+        ForeignMixinScanner.SwimExemptionEvidence identityAndBundle = inspectRuntime(loader, module);
+        if (!identityAndBundle.verified()) {
+            return ForeignMixinScanner.AuditedExemptionEvidence.unverified(
+                String.join("; ", identityAndBundle.diagnostics()));
+        }
+        try {
+            Verification verification = verifyBundle(loadRuntimeBundle(module));
+            if (!verification.valid() || !verification.landRegistryVerified()) {
+                return ForeignMixinScanner.AuditedExemptionEvidence.unverified(
+                    String.join("; ", verification.diagnostics()));
+            }
+            return exactLandEvidence();
+        } catch (Throwable t) {
+            return ForeignMixinScanner.AuditedExemptionEvidence.unverified(
+                "exact Fabric land-registry runtime verification failed: " + t);
+        }
+    }
+
+    private static Bundle loadRuntimeBundle(ModContainer module) throws IOException {
+        return new Bundle(
+            readModuleArtifact(module),
+            readModResource(module, CONFIG),
+            readModResource(module, CONTEXT_MIXIN.replace('.', '/') + ".class"),
+            readModResource(module, WALK_MIXIN.replace('.', '/') + ".class"),
+            readModResource(module, BLOCK_STATE_BASE_MIXIN.replace('.', '/') + ".class"),
+            readModResource(module, REGISTRY_INTERNAL + ".class"),
+            readClassBytes(SwimNodeEvaluator.class), readClassBytes(NodeEvaluator.class),
+            readClassBytes(PathFinder.class), readClassBytes(PathfindingContext.class),
+            readClassBytes(BlockBehaviour.BlockStateBase.class));
+    }
+
     static Verification verifyBundle(Bundle bundle) {
         List<String> diagnostics = new ArrayList<>();
         Set<String> injected = new HashSet<>();
@@ -147,22 +185,28 @@ final class FabricSwimCompatibility {
         checkHash("Fabric WalkNodeEvaluatorMixin", bundle.walkMixin(), WALK_MIXIN_SHA, diagnostics);
         checkHash("Fabric BlockBehaviourBlockStateBaseMixin", bundle.blockStateBaseMixin(),
             BLOCK_STATE_BASE_MIXIN_SHA, diagnostics);
+        checkHash("Fabric LandPathTypeRegistry", bundle.landRegistry(), LAND_REGISTRY_SHA, diagnostics);
         checkHash("vanilla SwimNodeEvaluator", bundle.swim(), SWIM_SHA, diagnostics);
         checkHash("vanilla NodeEvaluator", bundle.nodeEvaluator(), NODE_EVALUATOR_SHA, diagnostics);
         checkHash("vanilla PathFinder", bundle.pathFinder(), PATH_FINDER_SHA, diagnostics);
         checkHash("vanilla PathfindingContext", bundle.pathContext(), PATH_CONTEXT_SHA, diagnostics);
         checkHash("vanilla BlockBehaviour.BlockStateBase", bundle.blockStateBase(),
             BLOCK_STATE_BASE_SHA, diagnostics);
+        boolean landRegistryVerified = false;
         try {
             verifyConfig(bundle.config(), diagnostics);
             verifyFabricContextMixin(bundle.contextMixin(), injected, diagnostics);
             verifyStructuralBlockStateMixin(bundle.blockStateBaseMixin(), diagnostics);
+            int beforeRegistry = diagnostics.size();
+            verifyLandRegistry(bundle.landRegistry(), diagnostics);
+            landRegistryVerified = diagnostics.size() == beforeRegistry;
             verifySwimRoute(bundle.swim(), bundle.nodeEvaluator(), bundle.pathFinder(),
                 bundle.pathContext(), swimCalls, diagnostics);
         } catch (Throwable t) {
             diagnostics.add("ASM/config shape parse failed: " + t);
         }
-        return new Verification(diagnostics.isEmpty(), diagnostics, injected, swimCalls);
+        return new Verification(diagnostics.isEmpty(), diagnostics, injected, swimCalls,
+            landRegistryVerified);
     }
 
     private static void verifyConfig(byte[] bytes, List<String> diagnostics) {
@@ -226,6 +270,64 @@ final class FabricSwimCompatibility {
         if (addedMethods != 1) {
             diagnostics.add("Fabric BlockStateBase mixin must add exactly one method, found "
                 + addedMethods);
+        }
+    }
+
+    private static void verifyLandRegistry(byte[] bytes, List<String> diagnostics) {
+        ClassNode node = classNode(bytes);
+        Set<String> fields = new HashSet<>();
+        node.fields.forEach(field -> fields.add(field.name + field.desc));
+        if (!fields.equals(Set.of("LOGGERLorg/slf4j/Logger;", "PATH_TYPESLjava/util/Map;"))) {
+            diagnostics.add("LandPathTypeRegistry field shape drift: " + fields);
+        }
+        Set<String> expectedMethods = Set.of(
+            "<init>()V",
+            "register(Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/pathfinder/PathType;Lnet/minecraft/world/level/pathfinder/PathType;)V",
+            "register(Lnet/minecraft/world/level/block/Block;Lnet/fabricmc/fabric/api/registry/LandPathTypeRegistry$StaticPathTypeProvider;)V",
+            "registerDynamic(Lnet/minecraft/world/level/block/Block;Lnet/fabricmc/fabric/api/registry/LandPathTypeRegistry$DynamicPathTypeProvider;)V",
+            "getPathType(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;Z)Lnet/minecraft/world/level/pathfinder/PathType;",
+            "getPathTypeProvider(Lnet/minecraft/world/level/block/Block;)Lnet/fabricmc/fabric/api/registry/LandPathTypeRegistry$PathTypeProvider;",
+            "lambda$register$0(Lnet/minecraft/world/level/pathfinder/PathType;Lnet/minecraft/world/level/pathfinder/PathType;Lnet/minecraft/world/level/block/state/BlockState;Z)Lnet/minecraft/world/level/pathfinder/PathType;",
+            "<clinit>()V");
+        Set<String> actualMethods = new HashSet<>();
+        int mapPuts = 0;
+        int providerReads = 0;
+        int simpleDelegations = 0;
+        for (MethodNode method : node.methods) {
+            actualMethods.add(method.name + method.desc);
+            int methodPuts = 0;
+            int methodGets = 0;
+            for (AbstractInsnNode insn : method.instructions) {
+                if (insn instanceof MethodInsnNode call) {
+                    if (call.owner.equals("java/util/Map") && call.name.equals("put")) {
+                        mapPuts++;
+                        methodPuts++;
+                    }
+                    if (call.owner.equals("java/util/Map") && call.name.equals("get")) {
+                        methodGets++;
+                    }
+                    if (method.name.equals("register")
+                            && method.desc.equals("(Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/pathfinder/PathType;Lnet/minecraft/world/level/pathfinder/PathType;)V")
+                            && call.owner.equals(REGISTRY_INTERNAL) && call.name.equals("register")
+                            && call.desc.equals("(Lnet/minecraft/world/level/block/Block;Lnet/fabricmc/fabric/api/registry/LandPathTypeRegistry$StaticPathTypeProvider;)V")) {
+                        simpleDelegations++;
+                    }
+                }
+            }
+            if ((method.name.equals("register")
+                    && method.desc.contains("StaticPathTypeProvider"))
+                    || method.name.equals("registerDynamic")) {
+                if (methodPuts != 1) diagnostics.add("registration mutation-site drift: "
+                    + method.name + method.desc + " puts=" + methodPuts);
+            }
+            if (method.name.equals("getPathTypeProvider")) providerReads += methodGets;
+        }
+        if (!actualMethods.equals(expectedMethods)) {
+            diagnostics.add("LandPathTypeRegistry method shape drift: " + actualMethods);
+        }
+        if (mapPuts != 2 || simpleDelegations != 1 || providerReads != 1) {
+            diagnostics.add("LandPathTypeRegistry lifecycle shape drift: puts=" + mapPuts
+                + " simpleDelegations=" + simpleDelegations + " providerReads=" + providerReads);
         }
     }
 
@@ -386,10 +488,11 @@ final class FabricSwimCompatibility {
             return Files.readAllBytes(nested);
         }
         if (origin.getKind() == ModOrigin.Kind.PATH) {
-            for (Path path : origin.getPaths()) {
-                if (Files.isRegularFile(path)) return Files.readAllBytes(path);
+            List<Path> regular = origin.getPaths().stream().filter(Files::isRegularFile).toList();
+            if (regular.size() != 1) {
+                throw new IOException("module PATH origin must provide exactly one regular artifact");
             }
-            throw new IOException("module PATH origin has no regular artifact");
+            return Files.readAllBytes(regular.get(0));
         }
         throw new IOException("unsupported module origin: " + origin.getKind());
     }

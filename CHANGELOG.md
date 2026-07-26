@@ -11,12 +11,28 @@
   `enabled = asyncEnabled && !syncFallbackOnly`; explicit save removes both legacy keys while
   preserving subordinate settings subject to existing clamps. Malformed or future schemas fail closed.
 
+- Add one narrow Swim-only compatibility candidate for the exact audited tuple Minecraft `26.1.2`,
+  `fabric-content-registries-v0` `11.2.1+76b0b6bb4c`, module/config/mixin/vanilla-class hashes,
+  and prepared declaration shape. Runtime ASM verifies Fabric modifies only
+  `PathfindingContext.getPathTypeFromState`, while exact `SwimNodeEvaluator` and its shared search
+  route reach only `getBlockState`/`level` and contain no land-provider lookup. Any version, hash,
+  class shape, declaration, plugin, parse, or route drift denies both families. The independent
+  `WalkNodeEvaluatorMixin` claim continues to deny Walk; subclasses and Amphibious remain ineligible.
+
+### Accepted review nonblockers
+
+- The Phase-1 CFG test's small dominator helper does not model exception-handler edges. The three
+  asserted sites occur before the later guarded setup block in this exact method, and independent
+  `javap` inspection confirms the required branch/return shape; accepted without broadening the helper.
+- The live GameTest mutates the already-published config instance in place. Its assertions deliberately
+  exercise the current live-save boundary, and manager review accepted that test shape; no refactor was
+  stacked onto the independently approved Phase-1 tree.
+
 ### Publish blocker
 
-- The current artifact requires official aggregate Fabric API, whose normal load includes the
-  content-registry pathfinding Mixins that make the fail-closed scanner deny Walk and Swim. Loader's
-  debug-only nested-mod exclusion live-proves the engine can dispatch, but it is not a supported or
-  representative user configuration; publication remains held.
+- Publication remains held pending Phase-2 replica validation and independent exact-tree review. Normal
+  aggregate Fabric API retains Walk denial. Swim is permitted only when every exact runtime fingerprint
+  and ASM proof passes; any mismatch falls back to the prior synchronous denial.
 
 ## 0.2.3 — ModMenu category cleanup (2026-07-19)
 

@@ -78,3 +78,24 @@ java {
 test {
     useJUnitPlatform()
 }
+
+// The M1 Rabbit worker probe is itself a sensitive PathNavigation mixin. The aggregate-Fabric
+// stock-gate witness therefore runs in a second, explicit harness with no test mixins; otherwise
+// the observer changes the production scanner decision it is meant to measure.
+if (providers.gradleProperty("fabricAggregateHarness").isPresent()) {
+    tasks.register("prepareFabricAggregateGameTestHarness") {
+        dependsOn tasks.named("processGametestResources")
+        outputs.upToDateWhen { false }
+        doLast {
+            copy {
+                from file("src/gametest/aggregateResources/fabric.mod.json")
+                into layout.buildDirectory.dir("resources/gametest")
+            }
+            delete layout.buildDirectory.file(
+                "resources/gametest/pathweaver-gametest.mixins.json")
+        }
+    }
+    tasks.named("runGameTest") {
+        dependsOn tasks.named("prepareFabricAggregateGameTestHarness")
+    }
+}

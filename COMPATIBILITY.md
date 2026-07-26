@@ -8,7 +8,8 @@ This table is version-exact. A verdict applies only to the listed artifact on Mi
 |---|---|---|---|---|---|
 | ServerCore | `1.5.19+26.1.2` | Three redirects in `PathFinder.findPath(PathNavigationRegion, Mob, Set, float, int, float)` replacing stream/map construction with a local map and per-search evaluator scratch | Yes | **SAFE** — exact exemption implemented | `593941ef360ba493b180c213bbb093d95223dba4a34d97e7559b914847363aa4` |
 | rabbit-pathfinding-fix | `1.3.0` | `PathNavigation.doStuckDetection(Vec3)` and `resetStuckTimeout()` navigation-maintenance injections | No in the pinned submitted search closure; a live worker-marker probe observed zero entries | **SAFE** — exact non-reachability exemption implemented | `6388f7a83b303c7de485f5f0089bd7e887ea45f9adf6bc9b099cad932fa58851` |
-| Fabric content registries | `11.2.1+76b0b6bb4c` | Land path-type lookup hook in `PathfindingContext`, Walk evaluator hook, and structural `BlockStateBase` refresher | Walk: yes; exact Swim route: no | **DENIED** pending the monotonic sealed-empty/provider lifecycle proof. Full Fabric API also has an independent interaction mixin, so aggregate FAPI remains denied. | `d1c8a0a2753850ec422f9c03824a0475a24f1d27bbbf1227d9f9d952406bebd1` |
+| Fabric content registries | `11.2.1+76b0b6bb4c` | Land path-type hooks in `PathfindingContext`/Walk plus the structural `BlockStateBase` refresher | Yes for Walk; exact Swim route is structurally independent | **SAFE only while sealed empty** — exact lifecycle hooks publish a process-lifetime registration latch before provider mutation, worker lookup returns before the live registry map, dispatch denies after publication, and an exact in-flight Walk result is discarded if registration wins before install. | `d1c8a0a2753850ec422f9c03824a0475a24f1d27bbbf1227d9f9d952406bebd1` |
+| Fabric events interaction | `5.2.2+07b380be4c` | Two cancellable `HEAD` injections into the exact `BlockStateBase.useItemOn` and `useWithoutItem` descriptors | No from the pinned MC 26.1.2 worker search call surface | **SAFE** — exact negative-reachability exemption implemented; identity, ownership, selector, injector count, plugin absence, and aggregate claims fail closed. | `dc4a15c9250c6d0e5839e5b696792b06869c65f1ab7e71627986d8f9ed247d60` |
 | Farmer's Delight Refabricated | `26.1-3.6.7+refabricated` | Registers a bounded land path-type provider used by Fabric's pathfinding hook | Yes when its provider is registered | **DENIED** pending exact closed provider-set and lifecycle certification | `25adee6361b37f1e559373bf6aedc90fa62b2da8ab084e3dee53f037ffcac636` |
 | Spiky Spikes | `26.1.0` | Registers a fixed-enum land path-type provider used by Fabric's pathfinding hook | Yes when its provider is registered | **DENIED** pending exact closed provider-set and lifecycle certification | `323d974770988a17c6d054dc879b528c5e5c25ac48241748316bb6aa679eee04` |
 | Carpet | `26.1+v260402` | Navigation `createPath` overload/deferred-return behavior and a piston transformation | Not from the audited worker search entry | **DENIED** pending a live logging/deferred-return semantic witness; it will be dropped if that witness is ambiguous | `59bd225d12423a7d7a635ca0c94fa786f97ccebb116922b16d76072da4ee67e7` |
@@ -33,6 +34,29 @@ This table is version-exact. A verdict applies only to the listed artifact on Mi
 - Vanilla `PathNavigation`, SHA-256 `ecfbf40003f91522f8cb99da84ff4ab9e4891e9511808412421fc640be7b339e`
 - Pinned worker `PathFinder`, SHA-256 `095d620eaac37aa71af017858682e89689039a3b999cf2a5fcfce3f1c3973b2c`
 - Shape proof: exactly two injections, into `doStuckDetection(Vec3)` at the pinned `Path.getNextNodePos()` invocation and into `resetStuckTimeout()` at `TAIL`. The pinned worker pool invokes one submitted `Callable`; its exact generated search closure invokes the pinned `PathFinder.findPath` descriptor and contains no `PathNavigation` call. A test-only live injection into both Rabbit-modified methods observed zero entries while `PathWeaverThread.isWorker()` across the exact dispatch/install witness.
+
+## Milestone 2 evidence details
+
+### Fabric content registries `11.2.1+76b0b6bb4c`
+
+- Module SHA-256 `d1c8a0a2753850ec422f9c03824a0475a24f1d27bbbf1227d9f9d952406bebd1`; config SHA-256 `0e9df73ad0f08696f4bf99024307b8b72151d13c7626f23e456d115b9eb65f9e`.
+- Exact `LandPathTypeRegistry` SHA-256 `292f7f5c80e2a7afe220e050940e83448e38262d1d517a3b89eb50f5ad138a9c`; exact hooks prove both registration routes mutate `PATH_TYPES` and the lookup route reads it.
+- Ordering contract: registration publishes a monotonic atomic latch before `PATH_TYPES.put`; dispatch reads that latch; workers cancel the provider lookup before its live `IdentityHashMap` read; main-thread installation rechecks the latch only for exact Walk requests captured under the sealed-empty assumption.
+- Explicit interleaving tests pin all outcomes: dispatch after publication denies; registration between dispatch and install discards that exact result; install before registration linearizes the empty-registry result before Fabric's later non-retroactive mutation. There is no production reset.
+
+### Fabric events interaction `5.2.2+07b380be4c`
+
+- Module SHA-256 `dc4a15c9250c6d0e5839e5b696792b06869c65f1ab7e71627986d8f9ed247d60`; config SHA-256 `9a8445db121fce8e80c928290b8623f2f6e126459fddcb259b2016ae777f9759`; mixin SHA-256 `c35a9d60b12e32f2b1540b0116f6459bf515e8d1901dc18be5ebff9fd5bf72e7`.
+- The exact mixin has only the two pinned cancellable `HEAD` injections on `useItemOn` and `useWithoutItem`. The MC 26.1.2 worker `BlockState` invocation inventory is pinned to `is`, `getFluidState`, `isAir`, `isPathfindable`, `getCollisionShape`, `getBlock`, and `getValue`; neither interaction descriptor is reachable.
+- Altered module/config/mixin/vanilla bytes, wrong version, plugin contribution, changed selector, added injector, added sensitive claim, incomplete bundle, and ambiguous module origin all deny.
+
+## Milestone 2 live verification scope
+
+The stock aggregate-Fabric witness runs in a dedicated GameTest harness that registers only the milestone-2 test and deliberately loads no test Mixin on sensitive pathfinding classes. This separation is required because the milestone-1 Rabbit worker probe itself targets `PathNavigation`; loading that probe would make the observer contribute the sensitive claim it is measuring. The test asserts both that the dedicated harness mod is loaded and that no active harness-owned Mixin config contributes a sensitive claim.
+
+With the exact aggregate Fabric API modules loaded, the unmodified production scanner reported `scanned=37`, `failed=0`, `deniedFamilies=0`. The test required active prepared claims, exact module/config/class/vanilla identity, no plugin, the complete audited claim bundles, and live near-miss denial. It observed a genuine Walk request increase both real counters, then dispatched a second exact Walk request and registered a real provider before installation; the terminal recheck discarded that captured result. Final live counters were `dispatched=2`, `installed=1`, `discarded=1`. A subsequent provider-present Walk produced a real synchronous path without adding an async dispatch. The run also exercised the worker provider-map bypass. No `SafetyGate` clearing or synthetic production decision was used.
+
+The original milestone-1 harness remains separate and green: all three registered tests passed with the intentional test-probe denial and ended at `dispatched=11`, `installed=8`, `discarded=3`. The full unit suite contains 166 passing tests, and production plus source JARs contain no GameTest/probe artifacts.
 
 ## Verification scope
 

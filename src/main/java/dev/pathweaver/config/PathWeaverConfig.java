@@ -44,6 +44,20 @@ public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Category("general")
     public boolean allowModdedMobAsync = false;
 
+    /**
+     * Run off-thread pathfinding even when the compatibility scan says another mod has modified
+     * pathfinding code. This is the scan's whole purpose, so overriding it means running unaudited
+     * third-party code on a worker thread. Testing on a 258-mod pack found no failure across 22,048
+     * searches with live block changes, and the world reloaded intact — but that is evidence, not
+     * proof, and a rare timing failure would surface as a wrong path or a crash.
+     *
+     * <p>For experimentation on worlds you can afford to lose. Never a default.
+     */
+    @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Category("general")
+    @ConfigEntry.Gui.RequiresRestart
+    public boolean overrideCompatibilityScan = false;
+
     @ConfigEntry.Gui.Tooltip
     @ConfigEntry.Category("general")
     public boolean repathElisionEnabled = true;
