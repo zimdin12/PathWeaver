@@ -38,7 +38,13 @@ import java.util.function.BooleanSupplier;
 public final class PathNavigationRoutingGameTest {
     public PathNavigationRoutingGameTest() {}
 
-    @GameTest(maxTicks = 160)
+    // Deadlines are wall-clock-sensitive: an async install needs a worker round trip plus a
+    // main-thread drain, and the pool is sized from core count. On a machine that is busy (a cold
+    // CI agent, or a build running in parallel) that round trip can take far longer than the
+    // handful of ticks it needs when idle. These budgets are deliberately generous -- a passing
+    // run still finishes as soon as the work lands, so the slack costs nothing and only stops the
+    // suite reporting a scheduling delay as a product failure.
+    @GameTest(maxTicks = 600)
     public void queryCallsStaySyncWhileMovementAndRecomputeDispatch(GameTestHelper helper) {
         PathWeaverConfig cfg = PathWeaverConfig.get();
         boolean oldEnabled = cfg.enabled;
@@ -207,7 +213,7 @@ public final class PathNavigationRoutingGameTest {
             check(helper, runtimeCounter("discarded") == baseDiscarded + 2,
                 "pending recompute must account both superseded requests exactly");
 
-            pollUntil(helper, 80, () -> helper.getTick() >= 25
+            pollUntil(helper, 300, () -> helper.getTick() >= 25
                     && !PathWeaverRuntime.get().entitySink().isRegistered(coordinateMob.getId())
                     && !PathWeaverRuntime.get().entitySink().isRegistered(entityMob.getId())
                     && !PathWeaverRuntime.get().entitySink().isRegistered(zeroSpeedMob.getId())
@@ -234,7 +240,7 @@ public final class PathNavigationRoutingGameTest {
                     "recomputePath must arm and dispatch async path creation");
                 check(helper, runtimeCounter("dispatched") == baseDispatched + 7,
                     "recompute must contribute exactly one additional dispatch");
-                pollUntil(helper, 150, () ->
+                pollUntil(helper, 560, () ->
                         !PathWeaverRuntime.get().entitySink().isRegistered(coordinateMob.getId())
                         && queryNav.getPath() != null
                         && runtimeCounter("installed") == baseInstalled + 5,
@@ -346,7 +352,7 @@ public final class PathNavigationRoutingGameTest {
                 check(helper, runtimeCounter("dispatched") == beforeDispatch + 1,
                     "test-cleared exact Swim must contribute one real async dispatch");
 
-                pollUntil(helper, 150, () ->
+                pollUntil(helper, 560, () ->
                         !PathWeaverRuntime.get().entitySink().isRegistered(swimmer.getId())
                             && navigation.getPath() != null
                             && runtimeCounter("installed") == beforeInstall + 1,

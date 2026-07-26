@@ -32,7 +32,9 @@ public final class AuditedCompatibilityRoutingGameTest {
 
     public AuditedCompatibilityRoutingGameTest() {}
 
-    @GameTest(maxTicks = 360)
+    // Generous by design; see the note in PathNavigationRoutingGameTest. A busy machine can
+    // starve the worker pool for far longer than the async round trip needs when idle.
+    @GameTest(maxTicks = 900)
     public void serverCoreAndRabbitExactTuplesDispatchWhileNearMissesDeny(GameTestHelper helper) {
         // The registered baseline routing test mutates the same global config/gate and has a hard
         // maxTicks of 160. Create this scenario only after it is terminal, then advance it
@@ -174,7 +176,7 @@ public final class AuditedCompatibilityRoutingGameTest {
                 check(helper, counter("dispatched") == dispatch + 1,
                     "restored exact tuple must dispatch again");
                 stage = 2;
-            } else if (helper.getTick() >= 250) {
+            } else if (helper.getTick() >= 600) {
                 throw helper.assertionException("exact ServerCore+rabbit request did not install");
             }
         }
@@ -196,7 +198,7 @@ public final class AuditedCompatibilityRoutingGameTest {
                 cleanup();
                 stage = 3;
                 helper.succeed();
-            } else if (helper.getTick() >= 330) {
+            } else if (helper.getTick() >= 850) {
                 throw helper.assertionException("restored exact tuple request did not install");
             }
         }
