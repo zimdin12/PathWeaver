@@ -119,6 +119,54 @@ class PathWeaverConfigSerializerTest {
         assertEquals(malformed, Files.readString(path));
     }
 
+    @Test void retiredOverrideTrueBecomesTheAllTier() throws Exception {
+        assertTier("{\"configVersion\":2,\"enabled\":true,\"overrideCompatibilityScan\":true}",
+            CompatibilityTier.ALL);
+    }
+
+    @Test void retiredOverrideFalseBecomesTheStrictDefault() throws Exception {
+        assertTier("{\"configVersion\":2,\"enabled\":true,\"overrideCompatibilityScan\":false}",
+            CompatibilityTier.STRICT);
+    }
+
+    /** An operator who already chose a tier must not have it rewritten by a stale legacy key. */
+    @Test void anExplicitTierWinsOverTheRetiredOverride() throws Exception {
+        assertTier("{\"configVersion\":2,\"enabled\":true,\"overrideCompatibilityScan\":true,"
+            + "\"compatibilityTier\":\"AUDITED\"}", CompatibilityTier.AUDITED);
+    }
+
+    @Test void absentTierDefaultsToStrictRatherThanInheritingRisk() throws Exception {
+        assertTier("{\"configVersion\":2,\"enabled\":true}", CompatibilityTier.STRICT);
+    }
+
+    /** An unreadable tier must fail closed, not silently fall back to a permissive value. */
+    @Test void unknownTierFailsClosedInsteadOfGuessing() throws Exception {
+        Path path = configPath();
+        Files.writeString(path,
+            "{\"configVersion\":2,\"enabled\":true,\"compatibilityTier\":\"EVERYTHING\"}");
+        assertThrows(Exception.class, () -> new PathWeaverConfigSerializer(path).deserialize());
+    }
+
+    @Test void migratedTierSurvivesASaveReloadRoundTrip() throws Exception {
+        Path path = configPath();
+        Files.writeString(path,
+            "{\"configVersion\":2,\"enabled\":true,\"overrideCompatibilityScan\":true}");
+        PathWeaverConfigSerializer serializer = new PathWeaverConfigSerializer(path);
+        PathWeaverConfig migrated = serializer.deserialize();
+        serializer.serialize(migrated);
+        String saved = Files.readString(path);
+        assertFalse(saved.contains("overrideCompatibilityScan"), saved);
+        assertEquals(CompatibilityTier.ALL,
+            new PathWeaverConfigSerializer(path).deserialize().compatibilityTier);
+    }
+
+    private void assertTier(String json, CompatibilityTier expected) throws Exception {
+        Path path = configPath();
+        Files.writeString(path, json);
+        assertEquals(expected, new PathWeaverConfigSerializer(path).deserialize().compatibilityTier,
+            json);
+    }
+
     private void assertLegacy(boolean async, boolean panic, boolean expected) throws Exception {
         assertMigrates("{\"asyncEnabled\":" + async + ",\"syncFallbackOnly\":" + panic + "}", expected);
     }

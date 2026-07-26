@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.pathweaver.PathWeaver;
+import dev.pathweaver.config.CompatibilityTier;
 import dev.pathweaver.config.PathWeaverConfig;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.FabricLoader;
@@ -616,14 +617,24 @@ public final class ForeignMixinScanner {
 
         try {
             FabricLoader loader = FabricLoader.getInstance();
+            CompatibilityTier tier = PathWeaverConfig.get().compatibilityTier;
             for (String id : List.of(AuditedMixinCompatibility.SERVERCORE_ID,
                                      AuditedMixinCompatibility.RABBIT_ID,
-                                     FabricInteractionCompatibility.MOD_ID)) {
+                                     FabricInteractionCompatibility.MOD_ID,
+                                     LithiumPathfindingCompatibility.MOD_ID)) {
                 var module = loader.getModContainer(id);
                 if (module.isEmpty()) continue;
-                AuditedExemptionEvidence moduleEvidence = id.equals(FabricInteractionCompatibility.MOD_ID)
-                    ? FabricInteractionCompatibility.inspectRuntime(loader, module.get())
-                    : AuditedMixinCompatibility.inspectRuntime(loader, module.get());
+                AuditedExemptionEvidence moduleEvidence;
+                if (id.equals(FabricInteractionCompatibility.MOD_ID)) {
+                    moduleEvidence = FabricInteractionCompatibility.inspectRuntime(loader, module.get());
+                } else if (id.equals(LithiumPathfindingCompatibility.MOD_ID)) {
+                    // Tier-gated: below AUDITED this deliberately yields no evidence, so Lithium's
+                    // claims keep denying. The tier withholds proof rather than suppressing denial.
+                    moduleEvidence = LithiumPathfindingCompatibility.inspectRuntime(
+                        loader, module.get(), tier);
+                } else {
+                    moduleEvidence = AuditedMixinCompatibility.inspectRuntime(loader, module.get());
+                }
                 auditedEvidence = auditedEvidence.merge(moduleEvidence);
                 if (!moduleEvidence.verified().isEmpty()) {
                     PathWeaver.LOG.info("Verified exact audited compatibility tuple for '{}'; "
@@ -652,15 +663,16 @@ public final class ForeignMixinScanner {
         for (String failure : decision.diagnostics()) {
             PathWeaver.LOG.warn("Foreign-mixin scan failure (fail-closed): {}", failure);
         }
-        if (PathWeaverConfig.get().overrideCompatibilityScan && !SafetyGate.deniedBySafety.isEmpty()) {
+        if (PathWeaverConfig.get().compatibilityTier.bypassesScan()
+                && !SafetyGate.deniedBySafety.isEmpty()) {
             Set<Class<?>> overridden = Set.copyOf(SafetyGate.deniedBySafety);
             SafetyGate.replaceDenials(Set.of());
             PathWeaver.LOG.warn("=========================== PathWeaver ===========================");
-            PathWeaver.LOG.warn("overrideCompatibilityScan is ON. The compatibility scan denied {}", overridden);
+            PathWeaver.LOG.warn("compatibilityTier=ALL. The compatibility scan denied {}", overridden);
             PathWeaver.LOG.warn("and that denial has been IGNORED at your request. Path searches will");
             PathWeaver.LOG.warn("now run on worker threads alongside the mods listed above, whose code");
             PathWeaver.LOG.warn("has not been audited for thread safety. Use worlds you can afford to");
-            PathWeaver.LOG.warn("lose, and keep backups. Set overrideCompatibilityScan=false to undo.");
+            PathWeaver.LOG.warn("lose, and keep backups. Set compatibilityTier=STRICT to undo.");
             PathWeaver.LOG.warn("==================================================================");
         }
         PathWeaver.LOG.info("Foreign-mixin scan complete: scanned={}, failed={}, deniedFamilies={}.",

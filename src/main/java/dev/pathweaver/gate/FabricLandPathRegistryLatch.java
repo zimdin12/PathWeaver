@@ -7,51 +7,78 @@ import java.util.concurrent.atomic.AtomicLong;
  * Process-lifetime publication barrier for Fabric's land path-type provider registry.
  *
  * <p>The registration hook calls {@link #beforeProviderMutation()} after argument validation and
- * before the live registry map is mutated. The bit is monotonic in production. Workers never read
- * the registry; dispatch and main-thread installation read only this published state.</p>
+ * before the live registry map is mutated. The production state is monotonic and has no reset.
+ * Workers never read the registry; dispatch and main-thread installation read only this published
+ * state.</p>
  */
 public final class FabricLandPathRegistryLatch {
-    private static final AtomicBoolean PROVIDER_REGISTRATION_OBSERVED = new AtomicBoolean();
-    private static final AtomicLong WORKER_PROVIDER_LOOKUP_BYPASSES = new AtomicLong();
-    private static volatile boolean hooksVerified;
+    private static final State PROCESS = new State();
 
     private FabricLandPathRegistryLatch() {}
 
     /** Called by the exact registration hooks before PATH_TYPES.put. */
     public static void beforeProviderMutation() {
-        PROVIDER_REGISTRATION_OBSERVED.set(true);
+        PROCESS.beforeProviderMutation();
     }
 
     /** Called only when the worker-side HEAD hook bypasses the live provider map. */
     public static void recordWorkerProviderLookupBypass() {
-        WORKER_PROVIDER_LOOKUP_BYPASSES.incrementAndGet();
+        PROCESS.recordWorkerProviderLookupBypass();
     }
 
     public static long workerProviderLookupBypasses() {
-        return WORKER_PROVIDER_LOOKUP_BYPASSES.get();
+        return PROCESS.workerProviderLookupBypasses();
     }
 
     /** Published only after the exact module/class/ASM verification has completed. */
     static void publishHooksVerified(boolean verified) {
-        hooksVerified = verified;
+        PROCESS.publishHooksVerified(verified);
     }
 
     public static boolean allowsWalkDispatch() {
-        return hooksVerified && !PROVIDER_REGISTRATION_OBSERVED.get();
+        return PROCESS.allowsWalk();
     }
 
     public static boolean allowsWalkInstall() {
-        return hooksVerified && !PROVIDER_REGISTRATION_OBSERVED.get();
+        return PROCESS.allowsWalk();
     }
 
     public static boolean providerRegistrationObserved() {
-        return PROVIDER_REGISTRATION_OBSERVED.get();
+        return PROCESS.providerRegistrationObserved();
     }
 
-    /** Package-private synthetic seam; production has no reset path. */
-    static void resetForTests() {
-        hooksVerified = false;
-        PROVIDER_REGISTRATION_OBSERVED.set(false);
-        WORKER_PROVIDER_LOOKUP_BYPASSES.set(0);
+    /** Fresh state for pure ordering tests; it cannot mutate or replace the production singleton. */
+    static State isolatedState() {
+        return new State();
+    }
+
+    static final class State {
+        private final AtomicBoolean providerRegistrationObserved = new AtomicBoolean();
+        private final AtomicLong workerProviderLookupBypasses = new AtomicLong();
+        private volatile boolean hooksVerified;
+
+        void beforeProviderMutation() {
+            providerRegistrationObserved.set(true);
+        }
+
+        void recordWorkerProviderLookupBypass() {
+            workerProviderLookupBypasses.incrementAndGet();
+        }
+
+        long workerProviderLookupBypasses() {
+            return workerProviderLookupBypasses.get();
+        }
+
+        void publishHooksVerified(boolean verified) {
+            hooksVerified = verified;
+        }
+
+        boolean allowsWalk() {
+            return hooksVerified && !providerRegistrationObserved.get();
+        }
+
+        boolean providerRegistrationObserved() {
+            return providerRegistrationObserved.get();
+        }
     }
 }

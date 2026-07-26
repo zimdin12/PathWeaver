@@ -342,7 +342,7 @@ final class AuditedMixinCompatibility {
 
     /** The worker enters the pinned PathFinder.findPath overload. It has no call edge into
      * PathNavigation, so Rabbit's two navigation-maintenance injections are unreachable on workers. */
-    private static void verifyRabbitTargetsNotReachableFromPathFinder(byte[] pathFinder,
+    static void verifyRabbitTargetsNotReachableFromPathFinder(byte[] pathFinder,
                                                                       List<String> diagnostics) {
         ClassNode node = classNode(pathFinder);
         requireVanillaMethod(pathFinder, "findPath", FIND_PATH_DESC, diagnostics);
@@ -357,7 +357,7 @@ final class AuditedMixinCompatibility {
         }
     }
 
-    private static void verifyConfig(byte[] bytes, String expectedPackage, String expectedPlugin,
+    static void verifyConfig(byte[] bytes, String expectedPackage, String expectedPlugin,
                                      String mixinName, List<String> diagnostics) {
         JsonObject config = JsonParser.parseString(
             new String(bytes, java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject();
@@ -376,7 +376,7 @@ final class AuditedMixinCompatibility {
         }
     }
 
-    private static void requireMixinTarget(ClassNode node, String internal,
+    static void requireMixinTarget(ClassNode node, String internal,
                                            List<String> diagnostics) {
         AnnotationNode mixin = findAnnotation(node.visibleAnnotations, node.invisibleAnnotations,
             MIXIN_DESC);
@@ -395,7 +395,7 @@ final class AuditedMixinCompatibility {
         if (count != 1) diagnostics.add("vanilla target method descriptor drift: " + name + desc);
     }
 
-    private static ClassNode classNode(byte[] bytes) {
+    static ClassNode classNode(byte[] bytes) {
         ClassNode node = new ClassNode();
         new ClassReader(bytes).accept(node, 0);
         return node;
@@ -447,17 +447,17 @@ final class AuditedMixinCompatibility {
         return null;
     }
 
-    private static void checkHash(String label, byte[] bytes, String expected,
+    static void checkHash(String label, byte[] bytes, String expected,
                                   List<String> diagnostics) {
         String actual = sha256(bytes);
         if (!expected.equals(actual)) diagnostics.add(label + " hash mismatch: " + actual);
     }
 
-    private static String classResource(String className) {
+    static String classResource(String className) {
         return className.replace('.', '/') + ".class";
     }
 
-    private static byte[] readModuleArtifact(ModContainer module) throws IOException {
+    static byte[] readModuleArtifact(ModContainer module) throws IOException {
         ModOrigin origin = module.getOrigin();
         if (origin.getKind() == ModOrigin.Kind.NESTED) {
             ModContainer parent = module.getContainingMod()
@@ -483,13 +483,13 @@ final class AuditedMixinCompatibility {
         return regular.getFirst();
     }
 
-    private static byte[] readModResource(ModContainer module, String resource) throws IOException {
+    static byte[] readModResource(ModContainer module, String resource) throws IOException {
         Path path = module.findPath(resource)
             .orElseThrow(() -> new IOException("module resource missing: " + resource));
         return Files.readAllBytes(path);
     }
 
-    private static byte[] readClassBytes(Class<?> type) throws IOException {
+    static byte[] readClassBytes(Class<?> type) throws IOException {
         String name = type.getName().substring(type.getPackageName().length() + 1) + ".class";
         try (InputStream in = type.getResourceAsStream(name)) {
             if (in == null) throw new IOException("class resource missing: " + type.getName());

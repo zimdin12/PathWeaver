@@ -2,7 +2,7 @@
 
 **Experimental server-side mod for Minecraft 26.1.2 (Fabric). Moves vanilla mob path searches off the server thread.**
 
-**Read this first: on most modpacks PathWeaver deliberately does nothing.** It refuses to run whenever another mod modifies pathfinding code, and the standard Fabric API is itself one of those mods. See [Will it actually do anything?](#will-it-actually-do-anything) before installing.
+**Read this first: PathWeaver refuses to run wherever another mod modifies pathfinding code and that mod has not been individually audited.** Stock Fabric API and Lithium have both been audited, so a typical performance pack can now use it — but plenty of packs will still find it inert. See [Will it actually do anything?](#will-it-actually-do-anything) before installing.
 
 See the [version-exact compatibility matrix](COMPATIBILITY.md) for audited verdicts, artifact hashes, and the evidence boundary. Future or modified artifacts fail closed.
 
@@ -14,15 +14,14 @@ It only touches the exact vanilla `WalkNodeEvaluator` and `SwimNodeEvaluator` se
 
 ## Will it actually do anything?
 
-At startup PathWeaver scans every loaded mod for mixins into pathfinding code. If it finds any, it disables itself for the affected movement family and everything runs vanilla-synchronous.
+At startup PathWeaver scans every loaded mod for mixins into pathfinding code. If a mod modifies that code and has not been audited, PathWeaver disables itself for the affected movement family and everything runs vanilla-synchronous.
 
-**This includes the Fabric API that PathWeaver itself requires.** The aggregate Fabric API bundles `fabric-content-registries-v0`, which mixes into pathfinding code. On a stock install that denies both Walk and Swim, so PathWeaver does nothing at all.
+Failing closed is better than running unaudited code on a worker thread and corrupting a world. The consequence is that PathWeaver only does something once the mods in your pack that touch pathfinding have each been individually audited. Two of the biggest have been:
 
-(A narrow, exactly-audited exemption for swimming mobs has been prototyped — vanilla's `SwimNodeEvaluator` provably never reaches the method Fabric injects into — but it is **not** active in a released build and is not something you should count on.)
+- **The Fabric API that PathWeaver itself requires.** It bundles `fabric-content-registries-v0`, which injects into a method the walk search calls for every block. That alone used to deny Walk on *every* stock install. It is now allowed while no mod has registered a land path-type provider — the condition that makes the injection inert — and denies permanently the moment one registers, including cancelling a search already in flight.
+- **Lithium**, which ships in most performance modpacks. Its pathfinding mixins are pinned by hash and verified at startup against a bytecode proof that nothing a worker executes writes shared state. Allowing it requires setting `compatibilityTier` to `AUDITED`; see below for the trade.
 
-Other common mods that trip the scanner: Lithium, Carpet, ServerCore, rabbit-pathfinding-fix, diagonalblocks. In one 250-mod pack we counted six.
-
-This is deliberate. Failing closed is better than running unaudited code on a worker thread and corrupting a world. But it means **for most people this mod is currently inert.**
+Still denied at the time of writing: Carpet, diagonalblocks, and any mod not in [the compatibility matrix](COMPATIBILITY.md). Mods that register a land path-type provider (Farmer's Delight, Spiky Spikes) also switch Walk back to synchronous.
 
 Check your server log for:
 
@@ -83,13 +82,19 @@ At 256 mobs, and at 1024 mobs with slower retargeting, the pattern repeated: ide
 - **Anyone whose server is not already exceeding 50 ms per tick because of pathfinding.** Below that threshold PathWeaver cannot raise TPS — the server is already keeping up. Under a staggered schedule of 1024 pathfinding mobs we measured **no throughput gain at all**. On an unloaded server a single paired sample measured mean MSPT 2.927 ms without and 3.012 ms with. That difference is well inside our observed run-to-run variance and was not repeated, so treat it as "no measurable benefit", not as a proven cost.
 - **Anyone overloaded by something other than mob pathfinding** — chunk generation, redstone, entity ticking, block entities. PathWeaver moves A* and nothing else.
 - **Anyone on a small host.** The worker pool defaults to `cores / 4`. On a 2–4 vCPU server that is one worker, competing with the server thread for the same CPU. Our numbers came from 8 workers on 32 idle cores.
-- **Anyone running a mod that touches pathfinding** — which is most modpacks.
+- **Anyone running an unaudited mod that touches pathfinding.** The audited list is short and version-exact; anything outside it keeps the affected mobs synchronous.
 
 ## Turning it off
 
 With ModMenu installed: **Mods → PathWeaver → Config**. The first option is the master switch; turning it off sends all new path requests through vanilla synchronous pathfinding and disables repath reuse. Work already accepted drains safely; later routing is vanilla-synchronous.
 
 You can also edit `config/pathweaver.json`. **The exact keys differ between versions — open your own file and edit what is there rather than copying an example from anywhere.** A malformed or unreadable config falls back to synchronous behaviour until a valid one is saved. Worker-thread and in-flight limits apply after a restart.
+
+`compatibilityTier` decides how much risk to accept from mods that modify pathfinding:
+
+- **`STRICT`** (default) only runs off-thread where a worker provably cannot observe the other mod's change at all.
+- **`AUDITED`** additionally allows mods whose bytecode has been checked to perform no shared-state writes on the search path. Right now that means Lithium, and it is what most performance packs need. The honest trade: these cannot corrupt your world from a worker, but they add live block reads, so a search running while the world changes can return a worse path. Path quality under live mutation has not been measured.
+- **`ALL`** ignores the scan completely. This runs unaudited third-party code on a worker thread, which is the exact thing the scan exists to prevent. Failures are not limited to bad paths. Keep backups.
 
 `allowModdedMobAsync` is an advanced, genuinely unsafe override. It bypasses only the vanilla-origin mob check; every other gate still applies. Do not enable it unless you accept running unaudited mod code on a worker thread.
 

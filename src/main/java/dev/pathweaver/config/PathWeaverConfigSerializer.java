@@ -79,6 +79,7 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
             }
 
             validateCurrentFieldTypes(current);
+            migrateCompatibilityTier(current);
             current.remove("asyncEnabled");
             current.remove("syncFallbackOnly");
             current.addProperty("configVersion", PathWeaverConfig.CURRENT_CONFIG_VERSION);
@@ -136,6 +137,37 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
         strictOptionalInteger(raw, "repathToleranceBlocks");
         strictOptionalNumber(raw, "stalenessMoveThreshold");
         strictOptionalInteger(raw, "maxResultAgeTicks");
+        strictOptionalEnum(raw, "compatibilityTier");
+    }
+
+    /**
+     * Carry the retired {@code overrideCompatibilityScan} boolean onto the tier it became.
+     *
+     * <p>That flag was an all-or-nothing bypass, so {@code true} maps to {@link CompatibilityTier#ALL}
+     * and nothing else — mapping it to the middle tier would silently tighten a setting the operator
+     * had deliberately loosened, and mapping it the other way would silently loosen one. An explicit
+     * {@code compatibilityTier} always wins, so a config carrying both is not re-migrated.
+     */
+    private static void migrateCompatibilityTier(JsonObject raw) {
+        if (!raw.has("overrideCompatibilityScan")) return;
+        boolean override = strictBoolean(raw, "overrideCompatibilityScan", null);
+        raw.remove("overrideCompatibilityScan");
+        if (raw.has("compatibilityTier")) return;
+        raw.addProperty("compatibilityTier",
+            (override ? CompatibilityTier.ALL : CompatibilityTier.STRICT).name());
+    }
+
+    private static void strictOptionalEnum(JsonObject raw, String key) {
+        if (!raw.has(key)) return;
+        JsonElement element = raw.get(key);
+        if (!(element instanceof JsonPrimitive primitive) || !primitive.isString()) {
+            throw new IllegalArgumentException(key + " must be a string");
+        }
+        String value = primitive.getAsString();
+        for (CompatibilityTier tier : CompatibilityTier.values()) {
+            if (tier.name().equals(value)) return;
+        }
+        throw new IllegalArgumentException(key + " is not a known tier: " + value);
     }
 
     private static void strictOptionalBoolean(JsonObject raw, String key) {

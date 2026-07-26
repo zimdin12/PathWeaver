@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased — compatibility tiers and the Lithium audit (held; not approved for publication)
+
+### Added
+
+- Add `compatibilityTier` (`STRICT` / `AUDITED` / `ALL`), replacing the blunt
+  `overrideCompatibilityScan` boolean. `STRICT` is the default and only runs off-thread where a
+  worker provably cannot observe another mod's change. `AUDITED` additionally honours mods proven by
+  bytecode analysis to perform no shared-state writes on the search path. `ALL` ignores the scan
+  entirely. Configs carrying the retired boolean migrate to `ALL` when it was on and `STRICT`
+  otherwise; an explicit tier always wins, and an unreadable tier fails closed.
+- Audit and exempt Lithium `0.24.6+mc26.1.2` at the `AUDITED` tier. Lithium ships in most
+  performance modpacks and previously kept PathWeaver switched off in exactly the packs that want
+  it. All eight of its sensitive claims are pinned by artifact hash and verified at startup.
+
+### Changed
+
+- Enforce the Lithium audit structurally rather than by assertion: every field write in the audited
+  classes must occur in a constructor, a static initializer, or one of the two eager cache
+  initializers, and no other method may call those initializers, so a worker cannot trigger a lazy
+  write. The region mixin must additionally write only from a constructor injection, which is what
+  makes its writes safe given PathWeaver builds the region on the main thread at dispatch.
+  Lithium's inactive-navigations hook does mutate shared state, and is exempt on non-reachability
+  instead: `PathFinder.findPath` has no call edge into `PathNavigation`.
+- Lithium's mixin plugin is not inert, so it is pinned by hash and every exempted claim carries its
+  plugin identity. A pack with different Lithium options produces different claims and falls back to
+  denial rather than reusing this audit.
+
+### Fixed
+
+- Fix the game-test harness self-check, which asserted the harness contributes no sensitive mixin
+  claim using `allMatch` over a stream that is empty before any scan publishes a report. It
+  therefore returned true and failed open. It also could not observe a harness config that no
+  `fabric.mod.json` declares, because such a config never reaches the attributed list and is
+  recorded as a failure instead. Both paths now fail closed.
+
 ## Unreleased — master Enabled schema v2 (held; not approved for publication)
 
 ### Changed

@@ -3,12 +3,14 @@ package dev.pathweaver.async;
 import dev.pathweaver.PathWeaver;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.duck.PWNavigation;
+import dev.pathweaver.gate.FabricLandPathRegistryLatch;
 import net.minecraft.world.level.pathfinder.Path;
 
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 
 /**
  * Main-thread bridge from request-keyed async completions to live navigation. Installation requires
@@ -27,12 +29,22 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     private final Map<Integer, Long> failUntilTick = new ConcurrentHashMap<>();
     private final AtomicBoolean callbackFailureLogged = new AtomicBoolean();
     private final AtomicBoolean rollbackFailureLogged = new AtomicBoolean();
+    private final BooleanSupplier landRegistryAllowsInstall;
     /** Tick at which expired cooldown entries were last swept, so the map cannot grow forever. */
     private long lastCooldownSweepTick;
     private final AtomicBoolean installFailureLogged = new AtomicBoolean();
     private static final long FAIL_COOLDOWN_TICKS = 40L;
     private static final long COOLDOWN_SWEEP_INTERVAL_TICKS = 20L;
     private volatile long currentTick;
+
+    public EntityInstallSink() {
+        this(FabricLandPathRegistryLatch::allowsWalkInstall);
+    }
+
+    /** Test seam accepts an isolated ordering model and cannot reset production lifecycle state. */
+    EntityInstallSink(BooleanSupplier landRegistryAllowsInstall) {
+        this.landRegistryAllowsInstall = java.util.Objects.requireNonNull(landRegistryAllowsInstall);
+    }
 
     public void setTick(long tick) { this.currentTick = tick; }
 
@@ -201,8 +213,9 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     public boolean isStale(RequestKey key, long dispatchTick, double x, double y, double z) {
         Registration registration = matching(key);
         if (registration == null) return true;
-        if (registration.requiresEmptyLandRegistry()
-                && !dev.pathweaver.gate.FabricLandPathRegistryLatch.allowsWalkInstall()) return true;
+        if (registration.requiresEmptyLandRegistry() && !landRegistryAllowsInstall.getAsBoolean()) {
+            return true;
+        }
         long age = currentTick - dispatchTick;
         if (age < 0L || age > PathWeaverConfig.get().maxResultAgeTicks) return true;
         try {

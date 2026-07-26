@@ -56,6 +56,40 @@ dependencies {
     gametestRuntimeOnly "maven.modrinth:rabbit-pathfinding-fix:1.3.0"
 }
 
+// Lithium is the mod that decides whether PathWeaver does anything on a real performance modpack,
+// so its exemption is proven against the actual artifact rather than a stand-in. Only pulled in for
+// the dedicated Lithium harness; the stock aggregate witness must stay Lithium-free.
+if (providers.gradleProperty("lithiumAuditedHarness").isPresent()) {
+    dependencies {
+        gametestRuntimeOnly "maven.modrinth:lithium:${lithium_version}"
+    }
+    tasks.register("prepareLithiumAuditedGameTestHarness") {
+        dependsOn tasks.named("processGametestResources")
+        outputs.upToDateWhen { false }
+        doLast {
+            copy {
+                from file("src/gametest/lithiumResources/fabric.mod.json")
+                into layout.buildDirectory.dir("resources/gametest")
+            }
+            // Same reason as the aggregate harness: our own test mixins target PathNavigation, so
+            // leaving them registered would deny the very families this witness measures.
+            delete layout.buildDirectory.file(
+                "resources/gametest/pathweaver-gametest.mixins.json")
+        }
+    }
+    tasks.named("runGameTest") {
+        dependsOn tasks.named("prepareLithiumAuditedGameTestHarness")
+        doFirst {
+            // The tier is read during the startup scan, long before a game test can set it, so it
+            // has to be on disk in the run directory before the server process starts.
+            def config = layout.buildDirectory
+                .file("run/gameTest/config/pathweaver.json").get().asFile
+            config.parentFile.mkdirs()
+            config.text = '{"configVersion":2,"enabled":true,"compatibilityTier":"AUDITED"}'
+        }
+    }
+}
+
 processResources {
     inputs.property "version", project.version
     filesMatching("fabric.mod.json") {
