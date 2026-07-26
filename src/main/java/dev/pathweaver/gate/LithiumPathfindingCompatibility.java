@@ -317,6 +317,18 @@ final class LithiumPathfindingCompatibility {
         }
     }
 
+    /**
+     * Fail if any method other than the initializer itself calls it.
+     *
+     * <p>Scoped to the mixin class rather than the whole jar, because scanning every Lithium class
+     * at startup is not worth the cost. That narrower check is sound only because the artifact is
+     * hash-pinned, and the wider property was verified by hand against those exact bytes: across
+     * the whole jar, {@code lithium$initializePathNodeTypeCache} is referenced only by its
+     * interface, by {@code BlockInfoInitializer}, and by this mixin, and
+     * {@code lithium$initializeFlags} only by {@code BlockStateFlagHolder},
+     * {@code BlockInfoInitializer}, and its own mixin. No search-path caller exists. A different
+     * Lithium build fails the hash check before reaching here, so it never inherits that finding.
+     */
     static void requireInitializerConfined(byte[] bytes, List<String> diagnostics) {
         ClassNode node = AuditedMixinCompatibility.classNode(bytes);
         for (MethodNode method : node.methods) {
