@@ -21,7 +21,9 @@ Failing closed is better than running unaudited code on a worker thread and corr
 - **The Fabric API that PathWeaver itself requires.** It bundles `fabric-content-registries-v0`, which injects into a method the walk search calls for every block. That alone used to deny Walk on *every* stock install. It is now allowed while no mod has registered a land path-type provider — the condition that makes the injection inert — and denies permanently the moment one registers, including cancelling a search already in flight.
 - **Lithium**, which ships in most performance modpacks, and **Diagonal Blocks** (Diagonal Fences/Walls/Windows). Their pathfinding mixins are pinned by hash and verified at startup against a bytecode proof that nothing a worker executes writes shared state. Allowing them requires setting `compatibilityTier` to `AUDITED`; see below for the trade.
 
-Still denied at the time of writing: Carpet, and any mod not in [the compatibility matrix](COMPATIBILITY.md). Mods that register a land path-type provider (Farmer's Delight, Spiky Spikes) also switch Walk back to synchronous.
+Mods that just mark a block dangerous — "mobs should avoid my spikes" — are handled generically and need no audit at all, because their rule can be precomputed and frozen before any worker sees it. The exception is a rule that inspects the surrounding world (Farmer's Delight's lit stove is one); those still switch Walk back to synchronous.
+
+Still denied at the time of writing: Carpet, and any mod not in [the compatibility matrix](COMPATIBILITY.md).
 
 Check your server log for:
 

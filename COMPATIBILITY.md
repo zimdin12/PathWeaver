@@ -12,8 +12,8 @@ The verdict interacts with the `compatibilityTier` setting. `STRICT` (the defaul
 | rabbit-pathfinding-fix | `1.3.0` | `PathNavigation.doStuckDetection(Vec3)` and `resetStuckTimeout()` navigation-maintenance injections | No in the pinned submitted search closure; a live worker-marker probe observed zero entries | **SAFE** — exact non-reachability exemption implemented | `6388f7a83b303c7de485f5f0089bd7e887ea45f9adf6bc9b099cad932fa58851` |
 | Fabric content registries | `11.2.1+76b0b6bb4c` | Land path-type hooks in `PathfindingContext`/Walk plus the structural `BlockStateBase` refresher | Yes for Walk; exact Swim route is structurally independent | **SAFE only while sealed empty** — exact lifecycle hooks publish a process-lifetime registration latch before provider mutation, worker lookup returns before the live registry map, dispatch denies after publication, and an exact in-flight Walk result is discarded if registration wins before install. | `d1c8a0a2753850ec422f9c03824a0475a24f1d27bbbf1227d9f9d952406bebd1` |
 | Fabric events interaction | `5.2.2+07b380be4c` | Two cancellable `HEAD` injections into the exact `BlockStateBase.useItemOn` and `useWithoutItem` descriptors | No from the pinned MC 26.1.2 worker search call surface | **SAFE** — exact negative-reachability exemption implemented; identity, ownership, selector, injector count, plugin absence, and aggregate claims fail closed. | `dc4a15c9250c6d0e5839e5b696792b06869c65f1ab7e71627986d8f9ed247d60` |
-| Farmer's Delight Refabricated | `26.1-3.6.7+refabricated` | Registers a bounded land path-type provider used by Fabric's pathfinding hook | Yes when its provider is registered | **DENIED** pending exact closed provider-set and lifecycle certification | `25adee6361b37f1e559373bf6aedc90fa62b2da8ab084e3dee53f037ffcac636` |
-| Spiky Spikes | `26.1.0` | Registers a fixed-enum land path-type provider used by Fabric's pathfinding hook | Yes when its provider is registered | **DENIED** pending exact closed provider-set and lifecycle certification | `323d974770988a17c6d054dc879b528c5e5c25ac48241748316bb6aa679eee04` |
+| Farmer's Delight Refabricated | `26.1-3.6.7+refabricated` | Registers a **dynamic** land path-type provider (`AbstractStoveBlock`) | Yes when its provider is registered | **DENIED** — dynamic providers receive the world, so their answers cannot be precomputed | `25adee6361b37f1e559373bf6aedc90fa62b2da8ab084e3dee53f037ffcac636` |
+| Spiky Spikes | `26.1.0` | Registers **static** land path-type providers (fixed enums) | Answers are precomputed, so its code never runs on a worker | **ALLOWED** — certified generically; no audit or hash pin needed | `323d974770988a17c6d054dc879b528c5e5c25ac48241748316bb6aa679eee04` |
 | Carpet | `26.1+v260402` | Navigation `createPath` overload/deferred-return behavior and a piston transformation | Not from the audited worker search entry | **DENIED** pending a live logging/deferred-return semantic witness; it will be dropped if that witness is ambiguous | `59bd225d12423a7d7a635ca0c94fa786f97ccebb116922b16d76072da4ee67e7` |
 | Lithium | `0.24.6+mc26.1.2` | Region/block-state path-type shortcuts, block-state flag cache, chunk-access region lookup, and inactive-navigation listener bookkeeping | Yes, except the navigation hook | **STALE-PATH RISK ONLY** — bytecode proof that no worker-reachable method writes shared state; honoured at `compatibilityTier=AUDITED`, denied at the `STRICT` default | `509e7f770c7d48bd37e9592917329db2768e4695c72a43e22c19ef64d0f9839f` |
 | Diagonal Blocks | `26.1.0` | `WalkNodeEvaluator.isDiagonalValid` override reading diagonal connection properties | Yes | **STALE-PATH RISK ONLY** — no field write; reads only the search-owned context plus one immutable map, and provably never reaches the unsynchronized shape caches; honoured at `compatibilityTier=AUDITED` | `df59211601dc83718ec0189a56c9f5569a0654f56a58fbbd644ea462a51b74d6` |
@@ -140,3 +140,24 @@ and must deny Walk.
 the release file — 128015 bytes with no `META-INF/jars` entry, against the 126183-byte release that
 actually contains the library. The harness fetches the release file directly and pins its SHA-1, so
 a substituted parent cannot stage a library the audit never examined.
+
+## Land path-type providers (generic, no per-mod entry)
+
+Mods that mark a block dangerous are not modifying pathfinding code; they are calling a public
+Fabric API, and any mod may do it. Auditing them individually does not scale, so they are handled
+by capability rather than by this table.
+
+`StaticPathTypeProvider` receives only a block state and a neighbour flag — no `BlockGetter`, no
+`BlockPos` — so it cannot read the world or vary by position, and its input domain (every state a
+block can have, times two) is finite. PathWeaver calls such a provider on the main thread once per
+input at registration and freezes the answers. Workers read the frozen table, so third-party
+provider code never executes off-thread. **This requires no audit, no artifact hash, and no entry
+here, and works for mods written after this release.**
+
+`DynamicPathTypeProvider` additionally receives the world and the position, so its answers cannot be
+precomputed. Such a registration still denies Walk for the remainder of the process.
+
+Residual assumption: a static provider that closes over mutable state and changes its answer after
+registration would leave the frozen table stale. Lithium already caches path types per block state
+eagerly at startup, so such a provider is already misbehaving on any pack running Lithium — but this
+is an assumption, not a proof.

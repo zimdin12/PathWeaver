@@ -3,6 +3,7 @@ package dev.pathweaver.gametest;
 import dev.pathweaver.PathWeaverRuntime;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.gate.FabricAggregateCompatibilityProbe;
+import dev.pathweaver.gate.CertifiedLandProviders;
 import dev.pathweaver.gate.FabricLandPathRegistryLatch;
 import dev.pathweaver.gate.ForeignMixinScanner;
 import dev.pathweaver.gate.SafetyGate;
@@ -149,10 +150,58 @@ public final class FabricAggregateWalkRoutingGameTest {
             check(PathWeaverRuntime.get().entitySink().isRegistered(mob.getId()),
                 "late-registration witness did not capture an in-flight Walk request");
 
+            // A static provider cannot read the world, so its answers are precomputed on the
+            // main thread and frozen. That must NOT deny: the whole point is that an ordinary mod
+            // adding a path-type rule no longer switches PathWeaver off.
             LandPathTypeRegistry.register(Blocks.STRUCTURE_BLOCK,
                 PathType.DAMAGING, PathType.DAMAGING);
+            check(CertifiedLandProviders.isCertified(Blocks.STRUCTURE_BLOCK),
+                "static provider registration was not certified");
+            check(!FabricLandPathRegistryLatch.providerRegistrationObserved(),
+                "a certified static provider must not trip the denial latch");
+            check(FabricLandPathRegistryLatch.allowsWalkDispatch(),
+                "Walk must keep dispatching after a certified static registration");
+            check(SafetyGate.isAllowed(WalkNodeEvaluator.class),
+                "the production gate must still admit Walk after certification");
+
+            // The frozen answer must match what the mod actually returns, or a worker would route
+            // a mob over a block the mod marked dangerous.
+            check(CertifiedLandProviders.frozenProvider().getPathType(
+                    Blocks.STRUCTURE_BLOCK.defaultBlockState(), false) == PathType.DAMAGING,
+                "frozen answer does not match the registered static rule");
+
+            // A provider may legitimately decline for some states, meaning "use vanilla". The
+            // immutable map factories reject null values, so an earlier version of certification
+            // turned a perfectly valid provider into a failure and denied instead.
+            LandPathTypeRegistry.register(Blocks.GLASS,
+                (state, isNeighbour) -> isNeighbour ? PathType.DAMAGING : null);
+            check(CertifiedLandProviders.isCertified(Blocks.GLASS),
+                "a provider returning null for some states must still certify");
+            check(CertifiedLandProviders.frozenProvider().getPathType(
+                    Blocks.GLASS.defaultBlockState(), false) == null,
+                "declined answer was not preserved as null");
+            check(CertifiedLandProviders.frozenProvider().getPathType(
+                    Blocks.GLASS.defaultBlockState(), true) == PathType.DAMAGING,
+                "neighbour answer lost while freezing a partially declining provider");
+            check(CertifiedLandProviders.isCertified(Blocks.STRUCTURE_BLOCK),
+                "certifying a second block dropped the first block's frozen answers");
+            check(FabricLandPathRegistryLatch.allowsWalkDispatch(),
+                "a declining static provider must not deny Walk");
+
+            // A provider that throws must leave nothing behind: a partial table would answer some
+            // states and silently diverge from vanilla on the rest.
+            check(!CertifiedLandProviders.certify(Blocks.SAND, (state, isNeighbour) -> {
+                throw new IllegalStateException("provider blew up");
+            }), "a throwing provider must not report successful certification");
+            check(!CertifiedLandProviders.isCertified(Blocks.SAND),
+                "a throwing provider left a partial table behind");
+
+            // A dynamic provider does receive the world, so it is not certifiable and must still
+            // deny -- including invalidating the request already in flight.
+            LandPathTypeRegistry.registerDynamic(Blocks.BEDROCK,
+                (state, level, pos, isNeighbour) -> PathType.DAMAGING);
             check(FabricLandPathRegistryLatch.providerRegistrationObserved(),
-                "real provider registration did not publish before the registry mutation");
+                "dynamic provider registration did not publish before the registry mutation");
             check(!FabricLandPathRegistryLatch.allowsWalkDispatch(),
                 "monotonic provider latch must deny future Walk dispatch");
             stage = 2;
