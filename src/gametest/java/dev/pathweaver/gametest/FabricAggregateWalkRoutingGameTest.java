@@ -1,6 +1,7 @@
 package dev.pathweaver.gametest;
 
 import dev.pathweaver.PathWeaverRuntime;
+import dev.pathweaver.config.CompatibilityTier;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.gate.FabricAggregateCompatibilityProbe;
 import dev.pathweaver.gate.CertifiedLandProviders;
@@ -42,6 +43,7 @@ public final class FabricAggregateWalkRoutingGameTest {
         private final boolean oldEnabled;
         private final boolean oldModded;
         private final boolean oldElision;
+        private final CompatibilityTier oldTier;
         private Mob mob;
         private PathNavigation navigation;
         private long installBefore;
@@ -57,6 +59,7 @@ public final class FabricAggregateWalkRoutingGameTest {
             this.oldEnabled = cfg.enabled;
             this.oldModded = cfg.allowModdedMobAsync;
             this.oldElision = cfg.repathElisionEnabled;
+            this.oldTier = cfg.compatibilityTier;
         }
 
         void tick() {
@@ -231,6 +234,28 @@ public final class FabricAggregateWalkRoutingGameTest {
                 "provider-present request retained an async registration");
             check(navigation.getPath() != null,
                 "provider-present denial must still produce a real synchronous path");
+
+            // ALL means all. With the provider latch tripped, STRICT correctly keeps Walk
+            // synchronous -- but an operator who has explicitly asked for no compatibility
+            // checking must actually get async dispatch, and previously did not: the land-provider
+            // gate stayed armed regardless of tier, so "ignore every check" silently still refused
+            // to run Walk. The gate is checked per request, so flipping the tier here exercises
+            // exactly that waiver and nothing else (the scan already left this harness undenied).
+            CompatibilityTier previousTier = cfg.compatibilityTier;
+            cfg.compatibilityTier = CompatibilityTier.ALL;
+            try {
+                navigation.stop();
+                long beforeAll = counter("dispatched");
+                BlockPos allTarget = helper.absolutePos(new BlockPos(11, 2, 3));
+                check(navigation.moveTo(allTarget.getX() + 0.5, allTarget.getY(),
+                        allTarget.getZ() + 0.5, 1.0),
+                    "ALL-tier Walk request must be accepted");
+                check(counter("dispatched") == beforeAll + 1,
+                    "compatibilityTier=ALL must waive the land-provider gate and dispatch Walk");
+            } finally {
+                cfg.compatibilityTier = previousTier;
+            }
+
             cleanup();
             stage = 3;
             helper.succeed();
@@ -242,6 +267,7 @@ public final class FabricAggregateWalkRoutingGameTest {
             cfg.enabled = oldEnabled;
             cfg.allowModdedMobAsync = oldModded;
             cfg.repathElisionEnabled = oldElision;
+            cfg.compatibilityTier = oldTier;
         }
 
         private void check(boolean condition, String message) {

@@ -107,6 +107,19 @@ public class PathWeaverConfig implements ConfigData {
         else set(loaded);
     }
 
+    /**
+     * True when the operator asked for no compatibility checking at all.
+     *
+     * <p>Exposed as a primitive on purpose. The dispatch interceptor is a mixin applied to a vanilla
+     * class during early transformation; naming {@link CompatibilityTier} in its bytecode forces
+     * that enum -- and, through it, the Cloth GUI interface it implements for its settings label --
+     * to resolve at that moment, which stalls server startup. Reading the tier behind a boolean
+     * keeps that resolution on the ordinary configuration path.
+     */
+    public boolean bypassesCompatibilityScan() {
+        return compatibilityTier.bypassesScan();
+    }
+
     public static InteractionResult onSave(
             ConfigHolder<PathWeaverConfig> holder, PathWeaverConfig config) {
         set(config);

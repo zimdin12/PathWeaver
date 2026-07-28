@@ -281,8 +281,17 @@ public abstract class PathNavigationMixin implements PWNavigation {
         if (!rt.isRunning()) return;
         if (!(this.level instanceof ServerLevel)) return;                       // server-side only
         if (this.nodeEvaluator == null || !SafetyGate.isAllowed(this.nodeEvaluator.getClass())) return;
+        // ALL means all: the operator has asked for no compatibility checking whatsoever, so the
+        // land-provider gate is waived too. It is a correctness gate rather than a thread-safety
+        // one -- with it waived a mob can be routed over a block a mod marked dangerous -- but
+        // leaving it armed made "ignore every check" silently still refuse to run Walk, which is
+        // not what the setting says and not what an operator choosing it expects.
+        //
+        // Clearing the flag here waives the dispatch gate and the install-time re-check together,
+        // because both are driven from it.
         final boolean requiresEmptyLandRegistry =
-            this.nodeEvaluator.getClass() == net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class;
+            this.nodeEvaluator.getClass() == net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class
+                && !cfg.bypassesCompatibilityScan();
         if (requiresEmptyLandRegistry
                 && !dev.pathweaver.gate.FabricLandPathRegistryLatch.allowsWalkDispatch()) return;
 
