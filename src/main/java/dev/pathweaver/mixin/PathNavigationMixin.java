@@ -296,7 +296,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
                 && !dev.pathweaver.gate.FabricLandPathRegistryLatch.allowsWalkDispatch()) return;
 
         final Mob theMob = this.mob;
-        if (!MobOriginGate.isAllowed(theMob.getClass(), cfg.allowModdedMobAsync)) return;
+        if (!MobOriginGate.isAllowed(theMob.getClass(), cfg.moddedMobAsyncAllowed())) return;
         final long tick = ((ServerLevel) this.level).getServer().getTickCount();
 
         // This entity's last async search failed and it's in cooldown -> run vanilla sync this tick.

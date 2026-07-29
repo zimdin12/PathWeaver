@@ -107,6 +107,35 @@ class PathWeaverConfigTest {
         assertEquals(0, c.poolThreads);
         assertEquals(1, c.maxInFlight);
     }
+    @Test void moddedMobAsyncFollowsTheTierAndTheFlagIndependently() {
+        PathWeaverConfig c = new PathWeaverConfig();
+        // The default must keep mod-defined mobs synchronous; this is the gate's whole purpose.
+        assertSame(CompatibilityTier.STRICT, c.compatibilityTier);
+        assertFalse(c.allowModdedMobAsync);
+        assertFalse(c.moddedMobAsyncAllowed(), "default must not dispatch mod-defined mobs");
+
+        c.compatibilityTier = CompatibilityTier.AUDITED;
+        assertFalse(c.moddedMobAsyncAllowed(),
+            "AUDITED rests on per-artifact proofs and grants nothing about mob subclasses");
+
+        // ALL means all: the operator asked for no checking, and the origin gate is a check.
+        c.compatibilityTier = CompatibilityTier.ALL;
+        assertTrue(c.moddedMobAsyncAllowed(), "ALL must not silently keep modded mobs synchronous");
+
+        // The dedicated flag stays reachable from the stricter tiers.
+        c.compatibilityTier = CompatibilityTier.STRICT;
+        c.allowModdedMobAsync = true;
+        assertTrue(c.moddedMobAsyncAllowed());
+    }
+    @Test void moddedMobBypassNeverNamesTheTierEnumInItsSignature() throws Exception {
+        // The only caller is a mixin applied during early transformation. Returning the enum, or
+        // taking it as a parameter, would force it -- and the Cloth GUI interface it implements --
+        // to resolve at that moment. Keep the accessor primitive.
+        assertSame(boolean.class,
+            PathWeaverConfig.class.getMethod("moddedMobAsyncAllowed").getReturnType());
+        assertEquals(0,
+            PathWeaverConfig.class.getMethod("moddedMobAsyncAllowed").getParameterCount());
+    }
     @Test void saveListenerNormalizesAndPublishesTheSavedObject() {
         PathWeaverConfig previous = PathWeaverConfig.get();
         PathWeaverConfig saved = new PathWeaverConfig();

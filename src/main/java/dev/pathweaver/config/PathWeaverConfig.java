@@ -120,6 +120,22 @@ public class PathWeaverConfig implements ConfigData {
         return compatibilityTier.bypassesScan();
     }
 
+    /**
+     * True when a mob defined by a mod may path off-thread.
+     *
+     * <p>{@link CompatibilityTier#ALL} implies this. The origin gate is a compatibility check like
+     * any other — it refuses mod-defined mob classes because their navigation overrides have not
+     * been inspected — so leaving it armed under "ignore every check" kept most of a heavily-modded
+     * pack's mobs synchronous while reporting that nothing was being checked. The dedicated flag is
+     * retained so the bypass is still reachable from the stricter tiers.
+     *
+     * <p>Primitive for the same reason as {@link #bypassesCompatibilityScan()}: the caller is a
+     * mixin applied during early transformation and must not name the tier enum.
+     */
+    public boolean moddedMobAsyncAllowed() {
+        return allowModdedMobAsync || compatibilityTier.bypassesScan();
+    }
+
     public static InteractionResult onSave(
             ConfigHolder<PathWeaverConfig> holder, PathWeaverConfig config) {
         set(config);

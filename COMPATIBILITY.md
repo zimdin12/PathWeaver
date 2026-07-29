@@ -157,6 +157,75 @@ here, and works for mods written after this release.**
 `DynamicPathTypeProvider` additionally receives the world and the position, so its answers cannot be
 precomputed. Such a registration still denies Walk for the remainder of the process.
 
+### Worked example: Farmer's Delight is denied, and does not have to be
+
+`farmersdelight 26.1-3.6.7+refabricated` (artifact SHA-256 `25adee63…c636`) registers a *dynamic*
+provider on its stove, so the rule above denies Walk for the whole process. Disassembling it shows
+the denial is conservative rather than necessary:
+
+```
+AbstractStoveBlock.<init> → invokedynamic getPathType()DynamicPathTypeProvider
+                            implMethod = AbstractStoveBlock.lambda$new$0
+lambda$new$0(BlockState, BlockGetter, BlockPos, boolean)
+    → state.getBlock() → (AbstractStoveBlock) → getBlockPathType(state, world, pos, null)
+getBlockPathType(BlockState, BlockGetter, BlockPos, Mob)
+    0: aload_1                    // the BlockState, and nothing else
+    1: getstatic LIT
+    4: getValue → booleanValue
+   13: ifeq 22 → PathType.FIRE : null
+```
+
+The world and position are *received and never loaded* — locals 2 and 3 are absent from the method
+body. The answer is a function of the `LIT` property alone, so it is precomputable exactly like a
+static provider. `AbstractStoveBlock` is also the only class in the jar that declares
+`getBlockPathType` (its one subclass, `StoveBlock`, does not override it) and the jar has no
+`META-INF/jars` entries, so no other implementation can be dispatched to.
+
+Generalising this is *not* the same problem as the static case. Certifying an arbitrary dynamic
+provider requires proving that the world and position never reach a dereference through an arbitrary
+call chain with virtual dispatch — a transitive escape analysis, not a signature check. Two shortcuts
+were considered and rejected as unsound: invoking the provider with `null` world and position (a
+provider that branches on `world == null` would answer differently under a real world), and checking
+only that the implementation method itself never loads those locals (Farmer's Delight fails that
+check, because it forwards them to a method that ignores them). No dynamic provider is certified.
+
+## Shipped-artifact verification, outside Loom
+
+Every gametest runs inside Loom's dev classpath. That has hidden a production-only failure before —
+`fabric-events-interaction-v0` hashes differently when nested inside Fabric API than when resolved
+standalone, so the audit passed in dev and denied in production. The released jar is therefore also
+booted on a plain dedicated server built from release artifacts only.
+
+Fabric API `0.153.0+26.1.2`, Cloth Config `26.1.154`, Lithium `0.24.6+mc26.1.2`, and
+`pathweaver-0.3.0+26.1.2` (SHA-256 `60ca580f…ae5b`), on JDK 25. 1024-mob maze load,
+`maxInFlight=256`.
+
+| Mods added | Tier | Scan result | Dispatched |
+|---|---|---|---|
+| Farmer's Delight | `AUDITED` | scanned=36, failed=0, denied=0 | **0** — dynamic provider closed the latch |
+| Farmer's Delight | `ALL` | scanned=36, failed=0, denied=0 | 11133 |
+| Farmer's Delight + FerriteCore | `AUDITED` | scanned=41, failed=0, **denied=2** | **0** — `WalkNodeEvaluator`, `SwimNodeEvaluator` |
+| Farmer's Delight + FerriteCore | `ALL` | scanned=41, failed=0, denied=0 (waived, logged `WARN`) | 11132 |
+
+The same runs also pin the mob-origin gate's tier coupling, which is otherwise easy to get silently
+wrong — a tier that reports "nothing is being checked" while most of a modded pack's mobs stay
+synchronous:
+
+| Tier | `moddedBypass` | Logged boundary |
+|---|---|---|
+| `AUDITED` | `false` | `mod-defined mobs are synchronous by the origin gate` |
+| `ALL` | `true` | `mod-defined mobs are allowed by compatibilityTier=ALL (unsafe)` |
+
+The two `AUDITED` rows are the two distinct ways the gate closes, and they close for different
+reasons — the provider latch and a mixin denial. The final row is the one that matters for `ALL`:
+the scan *did* find a real denial, `ALL` waived it, said so at `WARN`, and dispatched anyway. An
+`ALL` run against a pack with nothing to waive would not have tested that path.
+
+The benchmark harness refuses to report an async arm that dispatched nothing
+(`async arm dispatched no work; the measurement would be vacuous`) or one whose gate was closed at
+startup, so a silently-synchronous run cannot be mistaken for a win. Both `AUDITED` rows above were
+rejected by that check rather than reported as results.
+
 Residual assumption: a static provider that closes over mutable state and changes its answer after
 registration would leave the frozen table stale. Lithium already caches path types per block state
 eagerly at startup, so such a provider is already misbehaving on any pack running Lithium — but this

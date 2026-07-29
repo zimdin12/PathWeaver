@@ -31,6 +31,18 @@ _Not yet published. The audits below are version-exact; see COMPATIBILITY.md._
 
 ### Fixed
 
+- Make `compatibilityTier=ALL` waive the mob-origin gate as well. The origin gate refuses mob classes
+  defined by a mod because their navigation overrides have not been inspected — a compatibility check
+  like any other — so leaving it armed under "ignore every check" kept most of a heavily-modded
+  pack's mobs synchronous while the startup log reported `moddedBypass=false` and nothing denied.
+  `allowModdedMobAsync` remains the way to reach that bypass from `STRICT` or `AUDITED`. The startup
+  warning now distinguishes the two causes. Verified on a dedicated server outside the dev classpath:
+  `moddedBypass` is `false` at `AUDITED` and `true` at `ALL`.
+- Correct the shipped-configuration benchmark headline from a 44.8% mean tick-time reduction to
+  about 40% (median 40.1%, range 36.2–48.2% over four pairs). The original figure came from a single
+  pair whose synchronous baseline was the heaviest of four such runs; the asynchronous arm is stable
+  at 49–50 ms across two builds while the synchronous baseline varies 78–96 ms with ambient load.
+  The discard-rate caveat widens from 14.8% to a 13.6–20.6% range for the same reason.
 - Fix the game-test harness self-check, which asserted the harness contributes no sensitive mixin
   claim using `allMatch` over a stream that is empty before any scan publishes a report. It
   therefore returned true and failed open. It also could not observe a harness config that no

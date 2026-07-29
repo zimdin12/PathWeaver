@@ -41,18 +41,20 @@ Average tick rate is not what players notice — a server sitting at "20 TPS" st
 
 ### Measured on the configuration you would actually get
 
-This is the one benchmark that used **no harness intervention at all**: stock Fabric API, Lithium loaded, `compatibilityTier=AUDITED`, shipped limits (`maxInFlight=256`, `poolThreads=0`, repath reuse on). The gate opened on its own. The only difference between arms is the master switch. 1024 zombies in a walled maze, all retargeted every 6 ticks; two pairs, interleaved and order-reversed.
+This is the one benchmark that used **no harness intervention at all**: stock Fabric API, Lithium loaded, `compatibilityTier=AUDITED`, shipped limits (`maxInFlight=256`, `poolThreads=0`, repath reuse on). The gate opened on its own. The only difference between arms is the master switch. 1024 zombies in a walled maze, all retargeted every 6 ticks; **four pairs, interleaved and order-reversed, across two builds** (0.2.3 and the released 0.3.0).
 
-| | Synchronous | With PathWeaver |
+| | Synchronous (n=4) | With PathWeaver (n=4) |
 |---|---|---|
-| Tick interval, mean | 82.4 / 96.5 ms | **48.8 / 50.0 ms** |
-| Tick interval, p99 | 769 / 1096 ms | **343 / 362 ms** |
-| Worst tick | 879 / 1180 ms | **358 / 391 ms** |
-| Effective tick rate | 10.4 / 12.1 TPS | **20.0 TPS** |
+| Tick interval, mean | 78–96 ms | **49–50 ms** |
+| Tick interval, p99 | 726–1096 ms | **338–390 ms** |
+| Effective tick rate | 10.4–12.7 TPS | **20.0 TPS** |
+| Main-thread cost per request | 421–516 µs | **164–222 µs** |
 
-Mean tick time fell **44.8%** (89.4 → 49.4 ms), with no overlap — every async run beat every synchronous run. Main-thread cost per request fell from ~441–516 µs to ~164–203 µs.
+Mean tick time fell **about 40%** — median 40.1%, mean 41.2%, range 36.2–48.2% across the four pairs — with no overlap: every async run beat every synchronous run.
 
-**The caveat that matters: at the shipped in-flight limit, 14.8% of searches were discarded** (95,842 installed of 112,457 dispatched). Under this much load roughly one search in seven is thrown away and recomputed later. It still wins decisively, but that is the default doing real work at saturation, not a tuned value.
+**Read the spread, not the headline.** The async arm is strikingly stable (49–50 ms in all four runs, across two builds), while the *synchronous* baseline swings 78–96 ms depending on ambient machine load. A single pair therefore over- or under-states the gain by several points; an earlier revision of this table quoted 44.8% because it happened to be paired against the heaviest sync run. Quote the range.
+
+**The caveat that matters: at the shipped in-flight limit, 13.6–20.6% of searches were discarded.** Under this much load roughly one search in six is thrown away and recomputed later. It still wins decisively, but that is the default doing real work at saturation, not a tuned value.
 
 This is still a synthetic burst with all other mob AI stripped out. It shows what happens when pathfinding alone overloads the server; it is not a measurement of ordinary play.
 
@@ -118,6 +120,8 @@ You can also edit `config/pathweaver.json`. **The exact keys differ between vers
 - **`ALL`** ignores the scan completely. This runs unaudited third-party code on a worker thread, which is the exact thing the scan exists to prevent. Failures are not limited to bad paths. Keep backups.
 
 `allowModdedMobAsync` is an advanced, genuinely unsafe override. It bypasses only the vanilla-origin mob check; every other gate still applies. Do not enable it unless you accept running unaudited mod code on a worker thread.
+
+`compatibilityTier=ALL` implies `allowModdedMobAsync`, because the origin gate is a compatibility check like any other. Leaving it armed under "ignore every check" kept most of a heavily-modded pack's mobs synchronous while the log reported that nothing was being checked. The separate flag remains the way to reach that bypass from `STRICT` or `AUDITED`.
 
 ## What is unproven
 
