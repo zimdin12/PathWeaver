@@ -50,6 +50,9 @@ class PathNavigationRepathContractTest {
     }
 
     private static final class TestNavigationMixin extends PathNavigationMixin {
+        boolean stopped;
+        @Override public void stop() { stopped = true; this.path = null; }
+
         @Override protected boolean canUpdatePath() { return true; }
         @Override public boolean moveTo(Path path, double speed) { return false; }
     }

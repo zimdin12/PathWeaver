@@ -1,5 +1,88 @@
 # Changelog
 
+## 0.3.0 — Compatibility tiers, audited exemptions, and the first shipped-config benchmark
+
+_Not yet published. The audits below are version-exact; see COMPATIBILITY.md._
+
+### Added
+
+- Add `compatibilityTier` (`STRICT` / `AUDITED` / `ALL`), replacing the blunt
+  `overrideCompatibilityScan` boolean. `STRICT` is the default and only runs off-thread where a
+  worker provably cannot observe another mod's change. `AUDITED` additionally honours mods proven by
+  bytecode analysis to perform no shared-state writes on the search path. `ALL` ignores the scan
+  entirely. Configs carrying the retired boolean migrate to `ALL` when it was on and `STRICT`
+  otherwise; an explicit tier always wins, and an unreadable tier fails closed.
+- Audit and exempt Lithium `0.24.6+mc26.1.2` at the `AUDITED` tier. Lithium ships in most
+  performance modpacks and previously kept PathWeaver switched off in exactly the packs that want
+  it. All eight of its sensitive claims are pinned by artifact hash and verified at startup.
+
+### Changed
+
+- Enforce the Lithium audit structurally rather than by assertion: every field write in the audited
+  classes must occur in a constructor, a static initializer, or one of the two eager cache
+  initializers, and no other method may call those initializers, so a worker cannot trigger a lazy
+  write. The region mixin must additionally write only from a constructor injection, which is what
+  makes its writes safe given PathWeaver builds the region on the main thread at dispatch.
+  Lithium's inactive-navigations hook does mutate shared state, and is exempt on non-reachability
+  instead: `PathFinder.findPath` has no call edge into `PathNavigation`.
+- Lithium's mixin plugin is not inert, so it is pinned by hash and every exempted claim carries its
+  plugin identity. A pack with different Lithium options produces different claims and falls back to
+  denial rather than reusing this audit.
+
+### Fixed
+
+- Make `compatibilityTier=ALL` waive the mob-origin gate as well. The origin gate refuses mob classes
+  defined by a mod because their navigation overrides have not been inspected — a compatibility check
+  like any other — so leaving it armed under "ignore every check" kept most of a heavily-modded
+  pack's mobs synchronous while the startup log reported `moddedBypass=false` and nothing denied.
+  `allowModdedMobAsync` remains the way to reach that bypass from `STRICT` or `AUDITED`. The startup
+  warning now distinguishes the two causes. Verified on a dedicated server outside the dev classpath:
+  `moddedBypass` is `false` at `AUDITED` and `true` at `ALL`.
+- Correct the shipped-configuration benchmark headline from a 44.8% mean tick-time reduction to
+  about 40% (median 40.1%, range 36.2–48.2% over four pairs). The original figure came from a single
+  pair whose synchronous baseline was the heaviest of four such runs; the asynchronous arm is stable
+  at 49–50 ms across two builds while the synchronous baseline varies 78–96 ms with ambient load.
+  The discard-rate caveat widens from 14.8% to a 13.6–20.6% range for the same reason.
+- Fix the game-test harness self-check, which asserted the harness contributes no sensitive mixin
+  claim using `allMatch` over a stream that is empty before any scan publishes a report. It
+  therefore returned true and failed open. It also could not observe a harness config that no
+  `fabric.mod.json` declares, because such a config never reaches the attributed list and is
+  recorded as a failure instead. Both paths now fail closed.
+
+### Master Enabled switch (schema v2)
+
+### Changed
+
+- Replace `asyncEnabled` plus the lower `syncFallbackOnly` panic switch with one first-listed,
+  default-on `Enabled` master. OFF gates both new async dispatch and repath reuse while work accepted
+  before the save drains through its existing exact registration.
+- Add raw-JSON schema-v2 migration. Legacy state maps with
+  `enabled = asyncEnabled && !syncFallbackOnly`; explicit save removes both legacy keys while
+  preserving subordinate settings subject to existing clamps. Malformed or future schemas fail closed.
+
+- Add one narrow Swim-only compatibility candidate for the exact audited tuple Minecraft `26.1.2`,
+  `fabric-content-registries-v0` `11.2.1+76b0b6bb4c`, module/config/mixin/vanilla-class hashes,
+  and prepared declaration shape. Runtime ASM verifies Fabric modifies only
+  `PathfindingContext.getPathTypeFromState`, while exact `SwimNodeEvaluator` and its shared search
+  route reach only `getBlockState`/`level` and contain no land-provider lookup. Any version, hash,
+  class shape, declaration, plugin, parse, or route drift denies both families. The independent
+  `WalkNodeEvaluatorMixin` claim continues to deny Walk; subclasses and Amphibious remain ineligible.
+
+### Accepted review nonblockers
+
+- The Phase-1 CFG test's small dominator helper does not model exception-handler edges. The three
+  asserted sites occur before the later guarded setup block in this exact method, and independent
+  `javap` inspection confirms the required branch/return shape; accepted without broadening the helper.
+- The live GameTest mutates the already-published config instance in place. Its assertions deliberately
+  exercise the current live-save boundary, and manager review accepted that test shape; no refactor was
+  stacked onto the independently approved Phase-1 tree.
+
+### Publish blocker
+
+- Publication remains held pending Phase-2 replica validation and independent exact-tree review. Normal
+  aggregate Fabric API retains Walk denial. Swim is permitted only when every exact runtime fingerprint
+  and ASM proof passes; any mismatch falls back to the prior synchronous denial.
+
 ## 0.2.3 — ModMenu category cleanup (2026-07-19)
 
 ### Fixed

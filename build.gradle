@@ -37,6 +37,9 @@ dependencies {
 
     testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+    // Exact audited artifacts used by compatibility fingerprint/ASM-shape tests.
+    testRuntimeOnly "maven.modrinth:servercore:1.5.19+26.1.2"
+    testRuntimeOnly "maven.modrinth:rabbit-pathfinding-fix:1.3.0"
 }
 
 fabricApi {
@@ -45,6 +48,124 @@ fabricApi {
         modId = "pathweaver_gametest"
         enableGameTests = true
         eula = true
+    }
+}
+
+dependencies {
+    gametestRuntimeOnly "maven.modrinth:servercore:1.5.19+26.1.2"
+    gametestRuntimeOnly "maven.modrinth:rabbit-pathfinding-fix:1.3.0"
+}
+
+// The audited-tier mods decide whether PathWeaver does anything on a real modpack, so their
+// exemptions are proven against the actual artifacts rather than stand-ins. Only pulled in for the
+// dedicated audited harness; the stock aggregate witness must stay free of them.
+if (providers.gradleProperty("auditedTierHarness").isPresent()) {
+    // Diagonal Blocks ships only as a jar nested inside Diagonal Fences, and Fabric Loader does
+    // not unpack jar-in-jar from a classpath entry in this launch mode, so the nested library is
+    // extracted and put on the game-test classpath directly -- the same way Lithium is supplied.
+    //
+    // The parent is fetched from the release CDN rather than through maven.modrinth. That endpoint
+    // serves a DIFFERENT artifact for this mod: 128015 bytes with no META-INF/jars at all, versus
+    // the 126183-byte release file that actually contains the library. Pin the release hash and
+    // fail on mismatch, because a silently substituted parent would stage a library the audit never
+    // examined.
+    ext.diagonalFencesUrl = "https://cdn.modrinth.com/data/IKARgflD/versions/UUuyVvvj/" +
+        "DiagonalFences-v26.1.0-mc26.1.x-Fabric.jar"
+    ext.diagonalFencesSha1 = "8327833779f9ad90421fedf50cdd48003b038af2"
+    // diagonalblocks declares hard dependencies of its own; loader refuses to start without them.
+    // They are staging scaffolding only -- nothing about them is audited or exempted.
+    ext.diagonalBlocksDepSources = [
+        "puzzleslib.jar": [
+            "https://cdn.modrinth.com/data/QAGBst4M/versions/A85OttK1/" +
+                "PuzzlesLib-v26.1.12-mc26.1.x-Fabric.jar",
+            "d50ebfa970866ec1ae28da4da40407de68b6d92f"],
+        "forgeconfigapiport.jar": [
+            "https://cdn.modrinth.com/data/ohNO6lps/versions/jUe0ucoE/" +
+                "ForgeConfigAPIPort-v26.1.5-mc26.1.x-Fabric.jar",
+            "82e4deaa210b75d3b51a268769ad24cc85796235"]]
+    ext.diagonalBlocksDeps = diagonalBlocksDepSources.collectEntries { name, spec ->
+        [(name): layout.buildDirectory.file("auditedHarness/${name}").get().asFile]
+    }
+    ext.extractedDiagonalBlocks =
+        layout.buildDirectory.file("auditedHarness/diagonalblocks.jar").get().asFile
+    tasks.register("extractDiagonalBlocks") {
+        outputs.file(extractedDiagonalBlocks)
+        outputs.files(diagonalBlocksDeps.values())
+        doLast {
+            def parent = layout.buildDirectory
+                .file("auditedHarness/diagonal-fences-parent.jar").get().asFile
+            parent.parentFile.mkdirs()
+            if (!parent.exists()) {
+                parent.withOutputStream { out ->
+                    new java.net.URI(diagonalFencesUrl).toURL().withInputStream {
+                        it.transferTo(out)
+                    }
+                }
+            }
+            def actual = java.security.MessageDigest.getInstance("SHA-1")
+                .digest(parent.bytes).encodeHex().toString()
+            if (actual != diagonalFencesSha1) {
+                throw new GradleException(
+                    "Diagonal Fences parent hash mismatch: expected ${diagonalFencesSha1}, got ${actual}")
+            }
+            diagonalBlocksDepSources.each { name, spec ->
+                def target = diagonalBlocksDeps[name]
+                if (!target.exists()) {
+                    target.withOutputStream { out ->
+                        new java.net.URI(spec[0]).toURL().withInputStream { it.transferTo(out) }
+                    }
+                }
+                def depHash = java.security.MessageDigest.getInstance("SHA-1")
+                    .digest(target.bytes).encodeHex().toString()
+                if (depHash != spec[1]) {
+                    throw new GradleException(
+                        "${name} hash mismatch: expected ${spec[1]}, got ${depHash}")
+                }
+            }
+            def zip = new java.util.zip.ZipFile(parent)
+            try {
+                def entry = zip.entries().toList().find {
+                    it.name.startsWith("META-INF/jars/diagonalblocks-fabric-")
+                }
+                if (entry == null) throw new GradleException("nested diagonalblocks jar not found")
+                extractedDiagonalBlocks.parentFile.mkdirs()
+                extractedDiagonalBlocks.withOutputStream { out ->
+                    zip.getInputStream(entry).withStream { it.transferTo(out) }
+                }
+            } finally {
+                zip.close()
+            }
+        }
+    }
+    dependencies {
+        gametestRuntimeOnly "maven.modrinth:lithium:${lithium_version}"
+        gametestRuntimeOnly files(extractedDiagonalBlocks) { builtBy "extractDiagonalBlocks" }
+        gametestRuntimeOnly files(diagonalBlocksDeps.values()) { builtBy "extractDiagonalBlocks" }
+    }
+    tasks.register("prepareAuditedTierGameTestHarness") {
+        dependsOn tasks.named("processGametestResources")
+        outputs.upToDateWhen { false }
+        doLast {
+            copy {
+                from file("src/gametest/auditedResources/fabric.mod.json")
+                into layout.buildDirectory.dir("resources/gametest")
+            }
+            // Same reason as the aggregate harness: our own test mixins target PathNavigation, so
+            // leaving them registered would deny the very families this witness measures.
+            delete layout.buildDirectory.file(
+                "resources/gametest/pathweaver-gametest.mixins.json")
+        }
+    }
+    tasks.named("runGameTest") {
+        dependsOn tasks.named("prepareAuditedTierGameTestHarness")
+        doFirst {
+            // The tier is read during the startup scan, long before a game test can set it, so it
+            // has to be on disk in the run directory before the server process starts.
+            def config = layout.buildDirectory
+                .file("run/gameTest/config/pathweaver.json").get().asFile
+            config.parentFile.mkdirs()
+            config.text = '{"configVersion":2,"enabled":true,"compatibilityTier":"AUDITED"}'
+        }
     }
 }
 
@@ -69,4 +190,33 @@ java {
 
 test {
     useJUnitPlatform()
+}
+
+// The harness blocks below overwrite the generated game-test manifest in place. Gradle would
+// otherwise consider that output up to date on the next build, so a plain `./gradlew build` run
+// after any harness run would keep the harness manifest, demand mods the default run does not
+// supply, and fail. Regenerating these resources every time keeps the default build honest.
+tasks.named("processGametestResources") {
+    outputs.upToDateWhen { false }
+}
+
+// The M1 Rabbit worker probe is itself a sensitive PathNavigation mixin. The aggregate-Fabric
+// stock-gate witness therefore runs in a second, explicit harness with no test mixins; otherwise
+// the observer changes the production scanner decision it is meant to measure.
+if (providers.gradleProperty("fabricAggregateHarness").isPresent()) {
+    tasks.register("prepareFabricAggregateGameTestHarness") {
+        dependsOn tasks.named("processGametestResources")
+        outputs.upToDateWhen { false }
+        doLast {
+            copy {
+                from file("src/gametest/aggregateResources/fabric.mod.json")
+                into layout.buildDirectory.dir("resources/gametest")
+            }
+            delete layout.buildDirectory.file(
+                "resources/gametest/pathweaver-gametest.mixins.json")
+        }
+    }
+    tasks.named("runGameTest") {
+        dependsOn tasks.named("prepareFabricAggregateGameTestHarness")
+    }
 }

@@ -4,6 +4,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.pathweaver.PathWeaver;
+import dev.pathweaver.config.CompatibilityTier;
+import dev.pathweaver.config.PathWeaverConfig;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
@@ -13,6 +15,7 @@ import org.spongepowered.asm.mixin.MixinEnvironment;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfig;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,12 +44,39 @@ public final class ForeignMixinScanner {
         SwimNodeEvaluator.class.getName(), SwimNodeEvaluator.class
     );
     private static final String PATHFINDER = "net.minecraft.world.level.pathfinder.PathFinder";
+    /**
+     * Classes a worker thread reads or mutates during an async search. A foreign mixin into any of
+     * them invalidates every eligible evaluator, because the worker would then run modified code
+     * whose thread-safety we cannot audit.
+     *
+     * <p>This must cover the whole worker-reachable surface, not just pathfinder entry points.
+     * Lithium, for example, rewrites {@code PathNavigationRegion.getBlockState} and adds cached
+     * path-type metadata to shared {@code BlockStateBase} objects. Its audited implementation does
+     * not write that cache from workers, but it still adds live section/palette reads whose stale
+     * decisions and concurrent-resize exception exposure require an explicit risk-tier decision.
+     * The search-scratch types are listed for the same reason: a mixin that adds shared state to
+     * {@code BinaryHeap}, {@code Node}, {@code Path} or {@code Target} breaks the per-search
+     * isolation the design depends on.
+     */
     private static final Set<String> SHARED_PATHFINDING_TARGETS = Set.of(
         "net.minecraft.world.level.pathfinder.NodeEvaluator",
         "net.minecraft.world.level.pathfinder.PathfindingContext",
         "net.minecraft.world.entity.ai.navigation.PathNavigation",
         "net.minecraft.world.entity.ai.navigation.GroundPathNavigation",
-        PATHFINDER
+        PATHFINDER,
+        // World view handed to the worker, and the block state it reads through.
+        "net.minecraft.world.level.PathNavigationRegion",
+        "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase",
+        "net.minecraft.world.level.pathfinder.PathTypeCache",
+        // Navigations that own an eligible evaluator; GroundPathNavigation alone was not enough.
+        "net.minecraft.world.entity.ai.navigation.WaterBoundPathNavigation",
+        "net.minecraft.world.entity.ai.navigation.AmphibiousPathNavigation",
+        "net.minecraft.world.entity.ai.navigation.FlyingPathNavigation",
+        // Per-search scratch structures that must stay confined to the searching thread.
+        "net.minecraft.world.level.pathfinder.BinaryHeap",
+        "net.minecraft.world.level.pathfinder.Node",
+        "net.minecraft.world.level.pathfinder.Path",
+        "net.minecraft.world.level.pathfinder.Target"
     );
     private static final Set<Class<?>> ELIGIBLE_EVALUATORS =
         Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class);
@@ -56,14 +86,61 @@ public final class ForeignMixinScanner {
      * The initial fail-closed policy deliberately starts empty; entries require retained evidence for
      * one exact mod version, config, concrete mixin class, and target before they can be added.
      */
-    private static final Set<AuditKey> AUDITED_EXEMPTIONS = Set.of();
+    private static final String FABRIC_CONTENT_ID = "fabric-content-registries-v0";
+    private static final String FABRIC_CONTENT_VERSION = "11.2.1+76b0b6bb4c";
+    private static final String FABRIC_CONTENT_CONFIG = "fabric-content-registries-v0.mixins.json";
+    private static final String FABRIC_CONTEXT_MIXIN =
+        "net.fabricmc.fabric.mixin.content.registry.PathfindingContextMixin";
+    private static final String FABRIC_WALK_MIXIN =
+        "net.fabricmc.fabric.mixin.content.registry.WalkNodeEvaluatorMixin";
+    private static final String FABRIC_BLOCK_STATE_BASE_MIXIN =
+        "net.fabricmc.fabric.mixin.content.registry.BlockBehaviourBlockStateBaseMixin";
+    private static final String PATHFINDING_CONTEXT =
+        "net.minecraft.world.level.pathfinder.PathfindingContext";
+    private static final String WALK_EVALUATOR =
+        "net.minecraft.world.level.pathfinder.WalkNodeEvaluator";
+    private static final String BLOCK_STATE_BASE =
+        "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase";
+    private static final TargetClaim EXACT_FABRIC_CONTEXT_CLAIM =
+        new TargetClaim(FABRIC_CONTEXT_MIXIN, PATHFINDING_CONTEXT);
+    private static final TargetClaim EXACT_FABRIC_WALK_CLAIM =
+        new TargetClaim(FABRIC_WALK_MIXIN, WALK_EVALUATOR);
+    private static final TargetClaim EXACT_FABRIC_BLOCK_STATE_BASE_CLAIM =
+        new TargetClaim(FABRIC_BLOCK_STATE_BASE_MIXIN, BLOCK_STATE_BASE);
+
+    private static final Set<AuditKey> AUDITED_EXEMPTIONS = Set.of(
+        new AuditKey(FABRIC_CONTENT_ID, FABRIC_CONTENT_VERSION, FABRIC_CONTENT_CONFIG,
+            FABRIC_CONTEXT_MIXIN, PATHFINDING_CONTEXT, null),
+        new AuditKey(FABRIC_CONTENT_ID, FABRIC_CONTENT_VERSION, FABRIC_CONTENT_CONFIG,
+            FABRIC_WALK_MIXIN, WALK_EVALUATOR, null),
+        new AuditKey(FABRIC_CONTENT_ID, FABRIC_CONTENT_VERSION, FABRIC_CONTENT_CONFIG,
+            FABRIC_BLOCK_STATE_BASE_MIXIN, BLOCK_STATE_BASE, null),
+        new AuditKey(FabricInteractionCompatibility.MOD_ID,
+            FabricInteractionCompatibility.MOD_VERSION,
+            FabricInteractionCompatibility.CONFIG,
+            FabricInteractionCompatibility.MIXIN,
+            FabricInteractionCompatibility.TARGET, null),
+        new AuditKey(AuditedMixinCompatibility.SERVERCORE_ID,
+            AuditedMixinCompatibility.SERVERCORE_VERSION,
+            AuditedMixinCompatibility.SERVERCORE_CONFIG,
+            AuditedMixinCompatibility.SERVERCORE_MIXIN,
+            AuditedMixinCompatibility.PATH_FINDER,
+            new PluginIdentity(AuditedMixinCompatibility.SERVERCORE_PLUGIN,
+                AuditedMixinCompatibility.SERVERCORE_PLUGIN_SHA)),
+        new AuditKey(AuditedMixinCompatibility.RABBIT_ID,
+            AuditedMixinCompatibility.RABBIT_VERSION,
+            AuditedMixinCompatibility.RABBIT_CONFIG,
+            AuditedMixinCompatibility.RABBIT_MIXIN,
+            AuditedMixinCompatibility.PATH_NAVIGATION, null)
+    );
 
     private ForeignMixinScanner() {}
 
     public static boolean isAuditedExemption(String modId, String version, String config,
                                              String mixinClass, String target) {
-        return AUDITED_EXEMPTIONS.contains(
-            new AuditKey(modId, version, config, mixinClass, target));
+        return AUDITED_EXEMPTIONS.stream().anyMatch(key -> key.modId().equals(modId)
+            && key.version().equals(version) && key.config().equals(config)
+            && key.mixinClass().equals(mixinClass) && key.target().equals(target));
     }
 
     /** Pure, testable: map fully-qualified mixin target names to the allowlisted classes they hit. */
@@ -90,21 +167,107 @@ public final class ForeignMixinScanner {
         return target.replace('/', '.');
     }
 
+    /**
+     * Decide whether an active Mixin configuration that no Fabric mod declares must fail closed.
+     *
+     * <p>Fabric metadata is the only ownership evidence available, so a config missing from every
+     * {@code fabric.mod.json} cannot be audited and normally denies everything. The single
+     * exception is a config that transforms <em>nothing at all</em>: some mods register an
+     * undeclared parent config whose mixin list is empty. That cannot influence any code, so it
+     * must not veto the feature.
+     *
+     * <p>The test is deliberately "claims nothing", not "claims nothing I recognise as sensitive".
+     * The sensitive-target list is a best-effort enumeration and is known to be incomplete, so
+     * judging an unauditable config against it would silently admit mixins into pathfinding
+     * internals that the list happens to omit. A config carrying an {@link IMixinConfigPlugin}
+     * also always fails closed: a plugin can rewrite classes belonging to <em>other</em> configs
+     * while owning no targets of its own, so an empty claim set proves nothing about it.
+     *
+     * @return the failure to record, or {@code null} only when the config declares no mixins and
+     *     carries no plugin.
+     */
+    static String unattributableConfigFailure(String configName, Set<TargetClaim> claims,
+                                              boolean pluginContributed) {
+        if (claims.isEmpty() && !pluginContributed) return null;
+        return "active mixin config has no unique Fabric owner: " + configName;
+    }
+
     /** Pure fail-closed decision layer used by startup scanning and unit tests. */
     public static ScanDecision decide(Collection<ActiveConfig> configs, Collection<String> failures) {
+        return decide(configs, failures,
+            SwimExemptionEvidence.unverified("exact Swim runtime fingerprint not supplied"),
+            AuditedExemptionEvidence.unverified());
+    }
+
+    /** Pure decision layer with an explicit runtime fingerprint witness. */
+    public static ScanDecision decide(Collection<ActiveConfig> configs, Collection<String> failures,
+                                      SwimExemptionEvidence swimEvidence) {
+        return decide(configs, failures, swimEvidence, AuditedExemptionEvidence.unverified());
+    }
+
+    /** Pure decision layer with exact runtime witnesses for all audited foreign tuples. */
+    public static ScanDecision decide(Collection<ActiveConfig> configs, Collection<String> failures,
+                                      SwimExemptionEvidence swimEvidence,
+                                      AuditedExemptionEvidence auditedEvidence) {
         Set<Class<?>> denied = new HashSet<>();
         List<String> diagnostics = new ArrayList<>(failures);
+        diagnostics.addAll(swimEvidence.diagnostics());
+        diagnostics.addAll(auditedEvidence.diagnostics());
         for (ActiveConfig config : configs) {
-            for (TargetClaim claim : config.claims()) {
-                if (!isAuditedExemption(config.modId(), config.version(), config.configName(),
-                        claim.mixinClass(), claim.target())) {
-                    denied.addAll(denialsForTargets(List.of(claim.target())));
-                }
-            }
+            boolean exactSwimShape = exactFabricSwimClaimShape(config, swimEvidence);
+            denied.addAll(denialsForConfig(config, exactSwimShape, auditedEvidence));
         }
         if (!failures.isEmpty()) denied.addAll(ELIGIBLE_EVALUATORS);
         return new ScanDecision(Set.copyOf(denied), configs.size(), failures.size(),
             List.copyOf(diagnostics));
+    }
+
+    private static Set<Class<?>> denialsForConfig(ActiveConfig config, boolean exactSwimShape,
+                                                   AuditedExemptionEvidence auditedEvidence) {
+        Set<Class<?>> denied = new HashSet<>();
+        for (TargetClaim claim : config.claims()) {
+            if (exactSwimShape && (claim.equals(EXACT_FABRIC_CONTEXT_CLAIM)
+                    || claim.equals(EXACT_FABRIC_BLOCK_STATE_BASE_CLAIM))) {
+                // The context handler modifies only getPathTypeFromState, which exact Swim never
+                // reaches. The BlockStateBase mixin is structural only: the pinned artifact adds
+                // one refresher interface/method and modifies no worker-read method. The separate
+                // Walk claim remains non-exempt and must deny Walk.
+                continue;
+            }
+            AuditKey key = new AuditKey(config.modId(), config.version(), config.configName(),
+                claim.mixinClass(), normalizeTargetName(claim.target()), config.pluginIdentity());
+            if (auditedEvidence.verified().contains(key)) continue;
+            denied.addAll(denialsForTargets(List.of(claim.target())));
+        }
+        return Set.copyOf(denied);
+    }
+
+    static boolean isForeignModId(String modId) {
+        return !PathWeaver.MOD_ID.equals(modId);
+    }
+
+    private static boolean exactFabricSwimClaimShape(ActiveConfig config,
+                                                      SwimExemptionEvidence evidence) {
+        if (!evidence.verified() || config.pluginContributed()
+                || !FABRIC_CONTENT_ID.equals(config.modId())
+                || !FABRIC_CONTENT_VERSION.equals(config.version())
+                || !FABRIC_CONTENT_CONFIG.equals(config.configName())
+                || !config.claims().contains(EXACT_FABRIC_CONTEXT_CLAIM)
+                || !config.claims().contains(EXACT_FABRIC_WALK_CLAIM)
+                || !config.claims().contains(EXACT_FABRIC_BLOCK_STATE_BASE_CLAIM)) {
+            return false;
+        }
+        for (TargetClaim claim : config.claims()) {
+            String target = normalizeTargetName(claim.target());
+            boolean sensitive = ALLOWLISTED_BY_NAME.containsKey(target)
+                || SHARED_PATHFINDING_TARGETS.contains(target);
+            if (sensitive && !claim.equals(EXACT_FABRIC_CONTEXT_CLAIM)
+                    && !claim.equals(EXACT_FABRIC_WALK_CLAIM)
+                    && !claim.equals(EXACT_FABRIC_BLOCK_STATE_BASE_CLAIM)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Read server-applicable mixin config names from Fabric metadata's string or object forms. */
@@ -153,10 +316,24 @@ public final class ForeignMixinScanner {
 
     public record TargetClaim(String mixinClass, String target) {}
 
+    /** Exact prepared-plugin identity; both class name and loaded class bytes are authenticated. */
+    public record PluginIdentity(String className, String classSha256) {}
+
     public record ActiveConfig(String modId, String version, String configName,
-                               Set<TargetClaim> claims, boolean pluginContributed) {
+                               Set<TargetClaim> claims, PluginIdentity pluginIdentity) {
         public ActiveConfig {
             claims = Set.copyOf(claims);
+        }
+
+        /** Compatibility constructor for generic scanner tests; never matches an exact plugin proof. */
+        public ActiveConfig(String modId, String version, String configName,
+                            Set<TargetClaim> claims, boolean pluginContributed) {
+            this(modId, version, configName, claims, pluginContributed
+                ? new PluginIdentity("<unidentified-plugin>", "<unverified>") : null);
+        }
+
+        public boolean pluginContributed() {
+            return pluginIdentity != null;
         }
 
         public Set<String> targets() {
@@ -169,9 +346,25 @@ public final class ForeignMixinScanner {
     public record ScanDecision(Set<Class<?>> denied, int scanned, int failed,
                                List<String> diagnostics) {}
 
-    public record ScanReport(ScanDecision decision, List<ActiveConfig> configs) {
+    /** Runtime proof for the exact Fabric/vanilla bytecode tuple; false is always fail-closed. */
+    public record SwimExemptionEvidence(boolean verified, List<String> diagnostics) {
+        public SwimExemptionEvidence {
+            diagnostics = List.copyOf(diagnostics);
+        }
+
+        public static SwimExemptionEvidence unverified(String reason) {
+            return new SwimExemptionEvidence(false, List.of(reason));
+        }
+    }
+
+    public record ScanReport(ScanDecision decision, List<ActiveConfig> configs,
+                             AuditedExemptionEvidence auditedEvidence) {
         public ScanReport {
             configs = List.copyOf(configs);
+        }
+
+        public ScanReport(ScanDecision decision, List<ActiveConfig> configs) {
+            this(decision, configs, AuditedExemptionEvidence.unverified());
         }
     }
 
@@ -179,13 +372,59 @@ public final class ForeignMixinScanner {
         new ScanDecision(Set.copyOf(ELIGIBLE_EVALUATORS), 0, 1,
             List.of("foreign-mixin scan has not completed")), List.of());
 
+    /**
+     * True once a live scan has published a report. Distinguishes "scan completed and attributed
+     * nothing to this mod" from "no scan has run yet", which the retained report alone cannot,
+     * because both present as an empty config list.
+     */
+    private static volatile boolean scanCompleted;
+
+    public static boolean scanCompleted() {
+        return scanCompleted;
+    }
+
     public static ScanReport lastScanReport() {
         return lastScanReport;
     }
 
     private record DeclaredConfig(String modId, String version, String configName) {}
-    private record AuditKey(String modId, String version, String config,
-                            String mixinClass, String target) {}
+    record AuditKey(String modId, String version, String config,
+                    String mixinClass, String target, PluginIdentity pluginIdentity) {}
+
+    /** Runtime proof set. A nominal audit tuple is never exempt until its exact key is present. */
+    public record AuditedExemptionEvidence(Set<AuditKey> verified, List<String> diagnostics) {
+        public AuditedExemptionEvidence {
+            verified = Set.copyOf(verified);
+            diagnostics = List.copyOf(diagnostics);
+        }
+
+        static AuditedExemptionEvidence verified(AuditKey key) {
+            return new AuditedExemptionEvidence(Set.of(key), List.of());
+        }
+
+        /** Public non-vacuity witness for live tests and diagnostics without exposing AuditKey. */
+        public boolean verifies(ActiveConfig config, TargetClaim claim) {
+            return verified.contains(new AuditKey(config.modId(), config.version(),
+                config.configName(), claim.mixinClass(), claim.target(),
+                config.pluginIdentity()));
+        }
+
+        public static AuditedExemptionEvidence unverified() {
+            return new AuditedExemptionEvidence(Set.of(), List.of());
+        }
+
+        public static AuditedExemptionEvidence unverified(String reason) {
+            return new AuditedExemptionEvidence(Set.of(), List.of(reason));
+        }
+
+        AuditedExemptionEvidence merge(AuditedExemptionEvidence other) {
+            Set<AuditKey> keys = new HashSet<>(verified);
+            keys.addAll(other.verified);
+            List<String> reasons = new ArrayList<>(diagnostics);
+            reasons.addAll(other.diagnostics);
+            return new AuditedExemptionEvidence(keys, reasons);
+        }
+    }
 
     /**
      * Mixin 0.8.7 removes selected configs from Mixins.getConfigs(); inspect the active transformer's
@@ -243,6 +482,22 @@ public final class ForeignMixinScanner {
         return Set.copyOf(claims);
     }
 
+    static PluginIdentity preparedPluginIdentity(IMixinConfig config) throws java.io.IOException {
+        Object plugin = config.getPlugin();
+        if (plugin == null) return null;
+        Class<?> type = plugin.getClass();
+        String simpleResource = type.getName().substring(type.getPackageName().length() + 1)
+            + ".class";
+        try (InputStream in = type.getResourceAsStream(simpleResource)) {
+            if (in == null) {
+                throw new java.io.IOException("prepared plugin class resource missing: "
+                    + type.getName());
+            }
+            return new PluginIdentity(type.getName(),
+                AuditedMixinCompatibility.sha256(in.readAllBytes()));
+        }
+    }
+
     /**
      * Scan every resolved Fabric mod container and every active Mixin configuration. Fabric Loader
      * expands jar-in-jar candidates into their own containers; active config targets include plugin
@@ -298,13 +553,29 @@ public final class ForeignMixinScanner {
                 preparedNames.add(name);
                 DeclaredConfig owner = owners.get(name);
                 if (owner == null) {
-                    failures.add("active mixin config has no unique Fabric owner: " + name);
+                    // An unattributable config only matters if it can actually affect pathfinding.
+                    // Some mods ship a parent/vestigial config that declares no mixins at all and is
+                    // not listed in any fabric.mod.json (c2me.mixins.json is one). Treating those as
+                    // scan failures disabled the whole feature over a config that transforms nothing.
+                    // Still fail closed whenever the config cannot be inspected or does touch a
+                    // sensitive target: unauditable *and* relevant remains a denial.
+                    Set<TargetClaim> unownedClaims;
+                    try {
+                        unownedClaims = preparedClaims(config);
+                    } catch (Throwable t) {
+                        failures.add("unattributable mixin config could not be inspected: "
+                            + name + ": " + t);
+                        continue;
+                    }
+                    String unownedFailure = unattributableConfigFailure(name, unownedClaims,
+                        config.getPlugin() != null);
+                    if (unownedFailure != null) failures.add(unownedFailure);
                     continue;
                 }
                 Set<TargetClaim> claims = preparedClaims(config);
-                if (PathWeaver.MOD_ID.equals(owner.modId())) continue;
+                if (!isForeignModId(owner.modId())) continue;
                 active.add(new ActiveConfig(owner.modId(), owner.version(), name, claims,
-                    config.getPlugin() != null));
+                    preparedPluginIdentity(config)));
             }
         } catch (Throwable t) {
             failures.add("active Mixin configuration discovery failed: " + t);
@@ -317,11 +588,75 @@ public final class ForeignMixinScanner {
             }
         }
 
-        ScanDecision decision = decide(active, failures);
-        lastScanReport = new ScanReport(decision, active);
+        SwimExemptionEvidence swimEvidence = new SwimExemptionEvidence(false, List.of());
+        AuditedExemptionEvidence auditedEvidence = AuditedExemptionEvidence.unverified();
+        FabricLandPathRegistryLatch.publishHooksVerified(false);
+        try {
+            FabricLoader loader = FabricLoader.getInstance();
+            var module = loader.getModContainer(FABRIC_CONTENT_ID);
+            if (module.isPresent()) {
+                swimEvidence = FabricSwimCompatibility.inspectRuntime(loader, module.get());
+                AuditedExemptionEvidence landEvidence =
+                    FabricSwimCompatibility.inspectLandRuntime(loader, module.get());
+                auditedEvidence = auditedEvidence.merge(landEvidence);
+                boolean landVerified = landEvidence.verified().size() == 3;
+                FabricLandPathRegistryLatch.publishHooksVerified(landVerified);
+                if (swimEvidence.verified()) {
+                    PathWeaver.LOG.info("Verified exact Fabric content-registry/vanilla Swim tuple.");
+                }
+                if (landVerified) {
+                    PathWeaver.LOG.info("Verified exact Fabric land-registry lifecycle and hook targets; "
+                        + "Walk may dispatch only while the monotonic registry latch remains empty.");
+                }
+            }
+        } catch (Throwable t) {
+            FabricLandPathRegistryLatch.publishHooksVerified(false);
+            swimEvidence = SwimExemptionEvidence.unverified(
+                "exact Fabric Swim runtime verification aborted: " + t);
+        }
+
+        try {
+            FabricLoader loader = FabricLoader.getInstance();
+            CompatibilityTier tier = PathWeaverConfig.get().compatibilityTier;
+            for (String id : List.of(AuditedMixinCompatibility.SERVERCORE_ID,
+                                     AuditedMixinCompatibility.RABBIT_ID,
+                                     FabricInteractionCompatibility.MOD_ID,
+                                     LithiumPathfindingCompatibility.MOD_ID,
+                                     DiagonalBlocksCompatibility.MOD_ID)) {
+                var module = loader.getModContainer(id);
+                if (module.isEmpty()) continue;
+                AuditedExemptionEvidence moduleEvidence;
+                if (id.equals(FabricInteractionCompatibility.MOD_ID)) {
+                    moduleEvidence = FabricInteractionCompatibility.inspectRuntime(loader, module.get());
+                } else if (id.equals(DiagonalBlocksCompatibility.MOD_ID)) {
+                    moduleEvidence = DiagonalBlocksCompatibility.inspectRuntime(
+                        loader, module.get(), tier);
+                } else if (id.equals(LithiumPathfindingCompatibility.MOD_ID)) {
+                    // Tier-gated: below AUDITED this deliberately yields no evidence, so Lithium's
+                    // claims keep denying. The tier withholds proof rather than suppressing denial.
+                    moduleEvidence = LithiumPathfindingCompatibility.inspectRuntime(
+                        loader, module.get(), tier);
+                } else {
+                    moduleEvidence = AuditedMixinCompatibility.inspectRuntime(loader, module.get());
+                }
+                auditedEvidence = auditedEvidence.merge(moduleEvidence);
+                if (!moduleEvidence.verified().isEmpty()) {
+                    PathWeaver.LOG.info("Verified exact audited compatibility tuple for '{}'; "
+                        + "only its pinned claim is exempt.", id);
+                }
+            }
+        } catch (Throwable t) {
+            auditedEvidence = auditedEvidence.merge(AuditedExemptionEvidence.unverified(
+                "audited compatibility runtime verification aborted: " + t));
+        }
+
+        ScanDecision decision = decide(active, failures, swimEvidence, auditedEvidence);
+        lastScanReport = new ScanReport(decision, active, auditedEvidence);
+        scanCompleted = true;
         SafetyGate.replaceDenials(decision.denied());
         for (ActiveConfig config : active) {
-            Set<Class<?>> denied = denialsForTargets(config.targets());
+            Set<Class<?>> denied = denialsForConfig(config,
+                exactFabricSwimClaimShape(config, swimEvidence), auditedEvidence);
             if (!denied.isEmpty()) {
                 PathWeaver.LOG.warn("Mod '{}' config '{}' targets sensitive pathfinding code{}; "
                         + "forcing {} to sync pathing.",
@@ -331,6 +666,18 @@ public final class ForeignMixinScanner {
         }
         for (String failure : decision.diagnostics()) {
             PathWeaver.LOG.warn("Foreign-mixin scan failure (fail-closed): {}", failure);
+        }
+        if (PathWeaverConfig.get().compatibilityTier.bypassesScan()
+                && !SafetyGate.deniedBySafety.isEmpty()) {
+            Set<Class<?>> overridden = Set.copyOf(SafetyGate.deniedBySafety);
+            SafetyGate.replaceDenials(Set.of());
+            PathWeaver.LOG.warn("=========================== PathWeaver ===========================");
+            PathWeaver.LOG.warn("compatibilityTier=ALL. The compatibility scan denied {}", overridden);
+            PathWeaver.LOG.warn("and that denial has been IGNORED at your request. Path searches will");
+            PathWeaver.LOG.warn("now run on worker threads alongside the mods listed above, whose code");
+            PathWeaver.LOG.warn("has not been audited for thread safety. Use worlds you can afford to");
+            PathWeaver.LOG.warn("lose, and keep backups. Set compatibilityTier=STRICT to undo.");
+            PathWeaver.LOG.warn("==================================================================");
         }
         PathWeaver.LOG.info("Foreign-mixin scan complete: scanned={}, failed={}, deniedFamilies={}.",
             decision.scanned(), decision.failed(), SafetyGate.deniedBySafety.size());

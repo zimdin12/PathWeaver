@@ -1,7 +1,5 @@
 package dev.pathweaver.config;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import me.shedaniel.autoconfig.ConfigHolder;
@@ -12,7 +10,6 @@ import net.minecraft.world.InteractionResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.nio.file.Files;
@@ -57,20 +54,43 @@ class ModMenuIntegrationContractTest {
         assertNull(screen, "missing registration must return the supplied parent screen");
     }
 
+    /**
+     * Cloth labels an enum option by calling {@code Component.translatable} on the key the constant
+     * supplies, so a constant whose key has no language entry renders as the raw key in the settings
+     * screen. That exact failure has shipped once already, so every tier is checked rather than
+     * assuming the three that exist today are all there will ever be.
+     */
     @Test
-    void asyncToggleIsFirstAndHasTheRequiredTooltip() throws Exception {
+    void everyCompatibilityTierHasATranslatedLabel() throws Exception {
+        JsonObject lang = JsonParser.parseString(Files.readString(
+            RESOURCES.resolve(Path.of("assets", "pathweaver", "lang", "en_us.json"))))
+            .getAsJsonObject();
+        for (CompatibilityTier tier : CompatibilityTier.values()) {
+            String key = tier.getKey();
+            assertTrue(key.startsWith(CompatibilityTier.TRANSLATION_PREFIX),
+                "tier key format drifted: " + key);
+            assertTrue(lang.has(key), "missing language entry for " + key);
+            assertFalse(lang.get(key).getAsString().isBlank(), key);
+        }
+    }
+
+    @Test
+    void enabledMasterIsFirstVisibleDefaultOnAndHasHonestDrainTooltip() throws Exception {
         List<String> configFields = Arrays.stream(PathWeaverConfig.class.getDeclaredFields())
             .filter(field -> !Modifier.isStatic(field.getModifiers()))
+            .filter(field -> !field.isAnnotationPresent(ConfigEntry.Gui.Excluded.class))
             .map(Field::getName)
             .toList();
-        assertEquals("asyncEnabled", configFields.getFirst());
-        assertTrue(configFields.indexOf("syncFallbackOnly") > configFields.indexOf("asyncEnabled"));
+        assertEquals("enabled", configFields.getFirst());
+        assertFalse(configFields.contains("asyncEnabled"));
+        assertFalse(configFields.contains("syncFallbackOnly"));
+        assertTrue(new PathWeaverConfig().enabled);
 
         JsonObject lang = JsonParser.parseString(Files.readString(
             RESOURCES.resolve(Path.of("assets", "pathweaver", "lang", "en_us.json"))))
             .getAsJsonObject();
-        assertEquals("Experimental off-thread pathfinding; disable if you see issues",
-            lang.get("text.autoconfig.pathweaver.option.asyncEnabled.@Tooltip").getAsString());
+        assertEquals("Stops new off-thread searches and repath reuse; accepted searches finish, then routing is vanilla-sync.",
+            lang.get("text.autoconfig.pathweaver.option.enabled.@Tooltip").getAsString());
     }
 
     @Test
@@ -121,18 +141,19 @@ class ModMenuIntegrationContractTest {
             RESOURCES.resolve(Path.of("assets", "pathweaver", "lang", "en_us.json"))))
             .getAsJsonObject();
         Map<String, String> expectedCategories = new LinkedHashMap<>();
-        expectedCategories.put("asyncEnabled", "general");
+        expectedCategories.put("enabled", "general");
         expectedCategories.put("allowModdedMobAsync", "general");
+        expectedCategories.put("compatibilityTier", "general");
         expectedCategories.put("repathElisionEnabled", "general");
         expectedCategories.put("poolThreads", "performance");
         expectedCategories.put("maxInFlight", "performance");
-        expectedCategories.put("syncFallbackOnly", "general");
         expectedCategories.put("repathToleranceBlocks", "repath");
         expectedCategories.put("stalenessMoveThreshold", "repath");
         expectedCategories.put("maxResultAgeTicks", "repath");
 
         for (Field field : PathWeaverConfig.class.getDeclaredFields()) {
-            if (Modifier.isStatic(field.getModifiers())) continue;
+            if (Modifier.isStatic(field.getModifiers())
+                    || field.isAnnotationPresent(ConfigEntry.Gui.Excluded.class)) continue;
             assertTrue(field.isAnnotationPresent(ConfigEntry.Gui.Tooltip.class), field.getName());
             ConfigEntry.Category category = field.getAnnotation(ConfigEntry.Category.class);
             assertNotNull(category, field.getName());
@@ -156,9 +177,9 @@ class ModMenuIntegrationContractTest {
         Files.writeString(configPath, """
             {"asyncEnabled":false,"distanceThrottleEnabled":true}
             """);
-        ConfigHolder<PathWeaverConfig> holder = new TestConfigHolder(new TestDiskSerializer(configPath));
+        ConfigHolder<PathWeaverConfig> holder = new TestConfigHolder(new PathWeaverConfigSerializer(configPath));
         assertTrue(holder.load());
-        assertFalse(holder.getConfig().asyncEnabled, "known explicit-off value survives upgrade");
+        assertFalse(holder.getConfig().enabled, "known explicit-off value survives upgrade");
         holder.save();
         JsonObject saved = JsonParser.parseString(Files.readString(configPath)).getAsJsonObject();
         assertFalse(saved.has("distanceThrottleEnabled"), "retired unknown field is dropped on save");
@@ -168,26 +189,26 @@ class ModMenuIntegrationContractTest {
     void toggleSaveRoundTripsToDiskAndRuntime(@TempDir Path tempDir) throws Exception {
         Path configPath = tempDir.resolve("config").resolve("pathweaver.json");
         PathWeaverConfig previousRuntime = PathWeaverConfig.get();
-        ConfigHolder<PathWeaverConfig> holder = new TestConfigHolder(new TestDiskSerializer(configPath));
+        ConfigHolder<PathWeaverConfig> holder = new TestConfigHolder(new PathWeaverConfigSerializer(configPath));
         PathWeaverConfig originalHolderConfig = holder.getConfig();
-        boolean desired = !originalHolderConfig.asyncEnabled;
+        boolean desired = !originalHolderConfig.enabled;
         PathWeaverConfig sentinel = new PathWeaverConfig();
-        sentinel.asyncEnabled = !desired;
+        sentinel.enabled = !desired;
         try {
             holder.registerSaveListener(PathWeaverConfig::onSave);
             PathWeaverConfig.set(sentinel);
-            holder.getConfig().asyncEnabled = desired;
+            holder.getConfig().enabled = desired;
             holder.getConfig().poolThreads = -3;
             holder.getConfig().maxInFlight = 0;
             holder.save();
 
             assertSame(holder.getConfig(), PathWeaverConfig.get(), "save listener publishes holder object");
-            assertEquals(desired, holder.getConfig().asyncEnabled, "AutoConfig holder");
-            assertEquals(desired, PathWeaverConfig.get().asyncEnabled, "live runtime config");
+            assertEquals(desired, holder.getConfig().enabled, "AutoConfig holder");
+            assertEquals(desired, PathWeaverConfig.get().enabled, "live runtime config");
             assertEquals(0, holder.getConfig().poolThreads, "normalized holder poolThreads");
             assertEquals(1, holder.getConfig().maxInFlight, "normalized holder maxInFlight");
             JsonObject disk = JsonParser.parseString(Files.readString(configPath)).getAsJsonObject();
-            assertEquals(desired, disk.get("asyncEnabled").getAsBoolean(), "config/pathweaver.json");
+            assertEquals(desired, disk.get("enabled").getAsBoolean(), "config/pathweaver.json");
             assertEquals(0, disk.get("poolThreads").getAsInt(), "normalized disk poolThreads");
             assertEquals(1, disk.get("maxInFlight").getAsInt(), "normalized disk maxInFlight");
         } finally {
@@ -197,11 +218,11 @@ class ModMenuIntegrationContractTest {
     }
 
     private static final class TestConfigHolder implements ConfigHolder<PathWeaverConfig> {
-        private final TestDiskSerializer serializer;
+        private final ConfigSerializer<PathWeaverConfig> serializer;
         private PathWeaverConfig config = new PathWeaverConfig();
         private ConfigSerializeEvent.Save<PathWeaverConfig> saveListener;
 
-        private TestConfigHolder(TestDiskSerializer serializer) {
+        private TestConfigHolder(ConfigSerializer<PathWeaverConfig> serializer) {
             this.serializer = serializer;
         }
 
@@ -233,37 +254,4 @@ class ModMenuIntegrationContractTest {
         }
     }
 
-    private static final class TestDiskSerializer implements ConfigSerializer<PathWeaverConfig> {
-        private final Path path;
-        private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
-
-        private TestDiskSerializer(Path path) {
-            this.path = path;
-        }
-
-        @Override
-        public void serialize(PathWeaverConfig config) throws SerializationException {
-            try {
-                Files.createDirectories(path.getParent());
-                Files.writeString(path, gson.toJson(config));
-            } catch (IOException e) {
-                throw new SerializationException(e);
-            }
-        }
-
-        @Override
-        public PathWeaverConfig deserialize() throws SerializationException {
-            if (!Files.exists(path)) return createDefault();
-            try {
-                return gson.fromJson(Files.readString(path), PathWeaverConfig.class);
-            } catch (IOException e) {
-                throw new SerializationException(e);
-            }
-        }
-
-        @Override
-        public PathWeaverConfig createDefault() {
-            return new PathWeaverConfig();
-        }
-    }
 }

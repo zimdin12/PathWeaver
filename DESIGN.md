@@ -1,16 +1,16 @@
-# PathWeaver 0.2.2 design status
+# PathWeaver post-0.2.3 design status
 
 **Target:** Minecraft 26.1.2, Fabric Loader 0.19.3, Java 25
 
-**Product decision:** ship the correctness baseline; fail closed; no private A* engine
+**Product decision:** hold publication while the required aggregate Fabric API makes every supported install fail closed
 
-**Defaults:** `asyncEnabled=true`, `allowModdedMobAsync=false`, `repathToleranceBlocks=0`
+**Defaults:** schema v2, `enabled=true`, `allowModdedMobAsync=false`, `repathToleranceBlocks=0`
 
 ## 1. Product boundary
 
-PathWeaver 0.2.2 is an experimental opt-out engine with conservative compatibility eligibility. It does not claim universal speed, vanilla-identical paths, immutable worker inputs, or blanket thread safety.
+PathWeaver is an experimental opt-out engine with conservative compatibility eligibility. It does not claim universal speed, vanilla-identical paths, immutable worker inputs, or blanket thread safety.
 
-The standard Fabric content-registry module installs dynamic path-type provider hooks into `PathfindingContext` and `WalkNodeEvaluator`. Provider purity and worker safety are not declared. PathWeaver therefore denies Walk and Swim in standard content-registry packs and runs them synchronously. This inert fail-closed outcome is an intentional safety boundary.
+The current manifest requires the official aggregate `fabric-api`, which normally JiJ-loads `fabric-content-registries-v0`. Its required prepared Mixin config targets `PathfindingContext` and `WalkNodeEvaluator`. Provider purity and worker safety are not declared, so the declaration-driven scanner denies Walk and Swim. The current supported dependency graph is therefore inert. Loader's debug-only `fabric.debug.disableModIds` exclusion can remove the nested module and has live-proven dispatch, but it is documented as mostly for unit testing and is not a representative release configuration.
 
 ## 2. Routing
 
@@ -63,7 +63,7 @@ The shipped tolerance is `0`; Feature B's wider reuse is available but inactive 
 
 ## 6. Configuration UI
 
-`fabric.mod.json` declares an explicit ModMenu entrypoint implementing `ModMenuApi#getModConfigScreenFactory`. Cloth AutoConfig supplies the persistent screen. `asyncEnabled` is the first option with the short experimental warning; `syncFallbackOnly` remains a lower panic switch. `allowModdedMobAsync` is a default-off advanced unsafe override for only the mob-origin gate. Direct JSON edits and previously persisted false values remain supported.
+`fabric.mod.json` declares an explicit ModMenu entrypoint implementing `ModMenuApi#getModConfigScreenFactory`. Cloth AutoConfig supplies the persistent screen. Schema v2 exposes one first-listed default-on `Enabled` master. OFF gates both new async dispatch and repath reuse; accepted work drains through its existing exact registration. `allowModdedMobAsync` is a subordinate default-off unsafe override for only the mob-origin gate. Raw JSON migration computes `enabled = legacyAsyncEnabled && !legacySyncFallbackOnly`, so no old OFF combination becomes ON; malformed and future schemas fail closed.
 
 ## 7. Unresolved live-input boundary
 
@@ -77,6 +77,6 @@ The engine is cancelled, not pending implementation. The only plausible future a
 
 ## 9. Performance evidence
 
-The retained four-pair Spark benchmark proves isolated server-thread A* offload: Walk evaluator inclusive samples fell 90.97% and `PathFinder` samples moved off the server thread. It does not prove net MSPT improvement: mean MSPT averaged 2.927 ms OFF and 3.012 ms ON with noisy pairs.
+The retained four-pair test-only denial-cleared Spark benchmark proves only that the isolated engine path can offload server-thread A*: Walk evaluator inclusive samples fell 90.97% and `PathFinder` samples moved off the server thread. It is not a user-real benchmark under the current required dependency graph and does not prove net MSPT improvement: mean MSPT averaged 2.927 ms OFF and 3.012 ms ON with noisy pairs.
 
 No load/scaling matrix is claimed for an engine that will not be built.

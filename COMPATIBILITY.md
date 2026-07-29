@@ -1,0 +1,232 @@
+# PathWeaver compatibility matrix
+
+This table is version-exact. A verdict applies only to the listed artifact on Minecraft **26.1.2**. PathWeaver fingerprints audited artifacts and relevant vanilla classes at startup; a changed version, byte, mixin selector, target descriptor, plugin contribution, missing class, or partial bundle fails closed to synchronous pathing.
+
+`SAFE` means the exact audited worker-reachable behavior uses parameters, immutable data, or per-search state and performs no unsafe shared mutation or unbounded callback. `STALE-PATH RISK ONLY` means no worker shared-state mutation was found, but concurrent live reads can select a stale/wrong path and may expose the existing palette/storage lookup-exception envelope. `DENIED` means the default proven-safe tier keeps the affected evaluator family synchronous.
+
+The verdict interacts with the `compatibilityTier` setting. `STRICT` (the default) honours only `SAFE` rows. `AUDITED` additionally honours `STALE-PATH RISK ONLY` rows, which is the setting a Lithium pack needs. `ALL` ignores this table entirely and is not covered by any evidence here.
+
+| Mod | Exact version tested | What it modifies | Worker can reach it? | Verdict | Evidence hash (artifact SHA-256) |
+|---|---|---|---|---|---|
+| ServerCore | `1.5.19+26.1.2` | Three redirects in `PathFinder.findPath(PathNavigationRegion, Mob, Set, float, int, float)` replacing stream/map construction with a local map and per-search evaluator scratch | Yes | **SAFE** — exact exemption implemented | `593941ef360ba493b180c213bbb093d95223dba4a34d97e7559b914847363aa4` |
+| rabbit-pathfinding-fix | `1.3.0` | `PathNavigation.doStuckDetection(Vec3)` and `resetStuckTimeout()` navigation-maintenance injections | No in the pinned submitted search closure; a live worker-marker probe observed zero entries | **SAFE** — exact non-reachability exemption implemented | `6388f7a83b303c7de485f5f0089bd7e887ea45f9adf6bc9b099cad932fa58851` |
+| Fabric content registries | `11.2.1+76b0b6bb4c` | Land path-type hooks in `PathfindingContext`/Walk plus the structural `BlockStateBase` refresher | Yes for Walk; exact Swim route is structurally independent | **SAFE only while sealed empty** — exact lifecycle hooks publish a process-lifetime registration latch before provider mutation, worker lookup returns before the live registry map, dispatch denies after publication, and an exact in-flight Walk result is discarded if registration wins before install. | `d1c8a0a2753850ec422f9c03824a0475a24f1d27bbbf1227d9f9d952406bebd1` |
+| Fabric events interaction | `5.2.2+07b380be4c` | Two cancellable `HEAD` injections into the exact `BlockStateBase.useItemOn` and `useWithoutItem` descriptors | No from the pinned MC 26.1.2 worker search call surface | **SAFE** — exact negative-reachability exemption implemented; identity, ownership, selector, injector count, plugin absence, and aggregate claims fail closed. | `dc4a15c9250c6d0e5839e5b696792b06869c65f1ab7e71627986d8f9ed247d60` |
+| Farmer's Delight Refabricated | `26.1-3.6.7+refabricated` | Registers a **dynamic** land path-type provider (`AbstractStoveBlock`) | Yes when its provider is registered | **DENIED** — dynamic providers receive the world, so their answers cannot be precomputed | `25adee6361b37f1e559373bf6aedc90fa62b2da8ab084e3dee53f037ffcac636` |
+| Spiky Spikes | `26.1.0` | Registers **static** land path-type providers (fixed enums) | Answers are precomputed, so its code never runs on a worker | **ALLOWED** — certified generically; no audit or hash pin needed | `323d974770988a17c6d054dc879b528c5e5c25ac48241748316bb6aa679eee04` |
+| Carpet | `26.1+v260402` | Navigation `createPath` overload/deferred-return behavior and a piston transformation | Not from the audited worker search entry | **DENIED** pending a live logging/deferred-return semantic witness; it will be dropped if that witness is ambiguous | `59bd225d12423a7d7a635ca0c94fa786f97ccebb116922b16d76072da4ee67e7` |
+| Lithium | `0.24.6+mc26.1.2` | Region/block-state path-type shortcuts, block-state flag cache, chunk-access region lookup, and inactive-navigation listener bookkeeping | Yes, except the navigation hook | **STALE-PATH RISK ONLY** — bytecode proof that no worker-reachable method writes shared state; honoured at `compatibilityTier=AUDITED`, denied at the `STRICT` default | `509e7f770c7d48bd37e9592917329db2768e4695c72a43e22c19ef64d0f9839f` |
+| Diagonal Blocks | `26.1.0` | `WalkNodeEvaluator.isDiagonalValid` override reading diagonal connection properties | Yes | **STALE-PATH RISK ONLY** — no field write; reads only the search-owned context plus one immutable map, and provably never reaches the unsynchronized shape caches; honoured at `compatibilityTier=AUDITED` | `df59211601dc83718ec0189a56c9f5569a0654f56a58fbbd644ea462a51b74d6` |
+
+## Milestone 1 evidence details
+
+### ServerCore `1.5.19+26.1.2`
+
+- Configs: `servercore.common.mixins.json`, SHA-256 `39a5120066542578e74e3775a880d14f04bee935e2d6764132cdf3f7d7af82a7`; `servercore.fabric.mixins.json`, SHA-256 `93b73019559e3c40245fc684d3d4e1b06049362ae3eaa5db53b179807a014a9f`
+- Mixin: `me.wesley1808.servercore.mixin.optimizations.misc.PathFinderMixin`, SHA-256 `ff0e986419f4685469063772c85e477810dfe425bf33a1ad1a62ed65ac6aefa7`
+- Plugin: `me.wesley1808.servercore.mixin.ServerCoreMixinPlugin`, SHA-256 `0e6ddc8d3c66c7e5826831845e0da41f6594b758a128d207419083b081e33cf6`
+- Vanilla `PathFinder`, SHA-256 `095d620eaac37aa71af017858682e89689039a3b999cf2a5fcfce3f1c3973b2c`
+- Shape proof: exactly three `@Redirect` sites on the exact public `findPath` descriptor; the first two return null sentinels, and the third allocates a local `Object2ObjectOpenHashMap`, iterates the request-local target set, and calls only `NodeEvaluator.getTarget` plus collection/value accessors. Its only field read is the per-search `nodeEvaluator`; no field write exists.
+- Plugin proof: `getMixins()` returns null and `acceptTargets`, `preApply`, and `postApply` are inert. The prepared runtime claim proves the configured PathFinder mixin was actually selected.
+
+### rabbit-pathfinding-fix `1.3.0`
+
+- Config: `rabbit-pathfinding-fix.mixins.json`, SHA-256 `4adce45f270e2890686cd403392fdb81f1450024ff6814df04e51c57ec49fde6`
+- Mixin: `net.litetex.rpf.mixin.EntityNavigationMixin`, SHA-256 `bb31e6819c0d00216c9f2841849beff0ce5234f298d804876a91f7e5b225926b`
+- Vanilla `PathNavigation`, SHA-256 `ecfbf40003f91522f8cb99da84ff4ab9e4891e9511808412421fc640be7b339e`
+- Pinned worker `PathFinder`, SHA-256 `095d620eaac37aa71af017858682e89689039a3b999cf2a5fcfce3f1c3973b2c`
+- Shape proof: exactly two injections, into `doStuckDetection(Vec3)` at the pinned `Path.getNextNodePos()` invocation and into `resetStuckTimeout()` at `TAIL`. The pinned worker pool invokes one submitted `Callable`; its exact generated search closure invokes the pinned `PathFinder.findPath` descriptor and contains no `PathNavigation` call. A test-only live injection into both Rabbit-modified methods observed zero entries while `PathWeaverThread.isWorker()` across the exact dispatch/install witness.
+
+## Milestone 2 evidence details
+
+### Fabric content registries `11.2.1+76b0b6bb4c`
+
+- Module SHA-256 `d1c8a0a2753850ec422f9c03824a0475a24f1d27bbbf1227d9f9d952406bebd1`; config SHA-256 `0e9df73ad0f08696f4bf99024307b8b72151d13c7626f23e456d115b9eb65f9e`.
+- Exact `LandPathTypeRegistry` SHA-256 `292f7f5c80e2a7afe220e050940e83448e38262d1d517a3b89eb50f5ad138a9c`; exact hooks prove both registration routes mutate `PATH_TYPES` and the lookup route reads it.
+- Ordering contract: registration publishes a monotonic atomic latch before `PATH_TYPES.put`; dispatch reads that latch; workers cancel the provider lookup before its live `IdentityHashMap` read; main-thread installation rechecks the latch only for exact Walk requests captured under the sealed-empty assumption.
+- Explicit interleaving tests pin all outcomes: dispatch after publication denies; registration between dispatch and install discards that exact result; install before registration linearizes the empty-registry result before Fabric's later non-retroactive mutation. There is no production reset.
+
+### Fabric events interaction `5.2.2+07b380be4c`
+
+- Module SHA-256 `dc4a15c9250c6d0e5839e5b696792b06869c65f1ab7e71627986d8f9ed247d60`; config SHA-256 `9a8445db121fce8e80c928290b8623f2f6e126459fddcb259b2016ae777f9759`; mixin SHA-256 `c35a9d60b12e32f2b1540b0116f6459bf515e8d1901dc18be5ebff9fd5bf72e7`.
+- The exact mixin has only the two pinned cancellable `HEAD` injections on `useItemOn` and `useWithoutItem`. The MC 26.1.2 worker `BlockState` invocation inventory is pinned to `is`, `getFluidState`, `isAir`, `isPathfindable`, `getCollisionShape`, `getBlock`, and `getValue`; neither interaction descriptor is reachable.
+- Altered module/config/mixin/vanilla bytes, wrong version, plugin contribution, changed selector, added injector, added sensitive claim, incomplete bundle, and ambiguous module origin all deny.
+
+## Milestone 2 live verification scope
+
+The stock aggregate-Fabric witness runs in a dedicated GameTest harness that registers only the milestone-2 test and deliberately loads no test Mixin on sensitive pathfinding classes. This separation is required because the milestone-1 Rabbit worker probe itself targets `PathNavigation`; loading that probe would make the observer contribute the sensitive claim it is measuring. The test asserts both that the dedicated harness mod is loaded and that no active harness-owned Mixin config contributes a sensitive claim.
+
+With the exact aggregate Fabric API modules loaded, the unmodified production scanner reported `scanned=37`, `failed=0`, `deniedFamilies=0`. The test required active prepared claims, exact module/config/class/vanilla identity, no plugin, the complete audited claim bundles, and live near-miss denial. It observed a genuine Walk request increase both real counters, then dispatched a second exact Walk request and registered a real provider before installation; the terminal recheck discarded that captured result. Final live counters were `dispatched=2`, `installed=1`, `discarded=1`. A subsequent provider-present Walk produced a real synchronous path without adding an async dispatch. The run also exercised the worker provider-map bypass. No `SafetyGate` clearing or synthetic production decision was used.
+
+The original milestone-1 harness remains separate and green: all three registered tests passed with the intentional test-probe denial and ended at `dispatched=11`, `installed=8`, `discarded=3`. The full unit suite contains 166 passing tests, and production plus source JARs contain no GameTest/probe artifacts.
+
+## Verification scope
+
+Milestone 1 was exercised by a registered, sequential phase in a real Fabric GameTest JVM with both exact mods loaded. Startup verified both runtime tuples, including the prepared ServerCore plugin class name and loaded class-byte hash. The isolated exact decision produced real worker registration, dispatch, and install. Version-near-miss decisions for each mod denied both eligible evaluator families and produced synchronous paths with zero new async dispatches. All three registered GameTests passed; the run ended at `dispatched=11`, `installed=8`, `discarded=3`, and the Rabbit worker-marker probe remained zero. This witness proves the exact loaded tuple and near-miss behavior; it does not certify future versions.
+
+## Milestone 5 evidence details
+
+### Lithium `0.24.6+mc26.1.2` — audited tier
+
+Lithium decides whether PathWeaver does anything on a real performance modpack, so it is pinned to
+the exact artifact rather than trusted by name. The artifact verified here is byte-identical to the
+Modrinth release (`sha1 7631a4e81fcca6290bc32374a4338148bd2ba1ae`).
+
+- Configs: `lithium.mixins.json`, SHA-256 `f9674d7b9bb56ba70aedae56bb07c46ed82b94f554c8573a1a8420350827dd37`; `lithium-fabric.mixins.json`, SHA-256 `e1bfe4635f34f0924b85d607fbd2416896a6591176bd4849b19047dd27c40c29`
+- Plugin: `net.caffeinemc.mods.lithium.mixin.LithiumMixinPlugin`, SHA-256 `b97aed37b9ed2f2bd81868682ce8aac62808ec775fa3899afbca751ea204226a`. Unlike ServerCore's, this plugin is *not* inert — it selects mixins from `lithium.properties`. It is therefore pinned by hash and every exempted claim carries its plugin identity, so a pack with different Lithium options produces different claims and falls back to denial rather than reusing this audit.
+- Audited mixins: `ai.pathing.BlockStateBaseMixin` `98e0029073adbf8ff610e6e69af696fc28d914b17e8c0d0bd78a22a806fccd19`; `ai.pathing.WalkNodeEvaluatorMixin` `ac04c4283d7502861410749c5d77ab83e02639166504f948630dee15a6953c73`; `ai.pathing.PathNavigationRegionMixin` `cb06d8689a5a77e54e77d0443611d3c3b3929b3ef61d0b423a7caead44d93593`; `ai.pathing.PathfindingContextMixin` `2dbd5a9f785ee775b8070b3add8a878154eb2d514e3df0b8a7878e449c2e2fea`; `ai.pathing.PathfindingContextAccessor` `88bac968c7a2476d802617aab427a54138cfffa49160b09981ccc3c01e3105b1`; `util.block_tracking.BlockStateBaseMixin` `4471cdb6ee762517ee42b1f7f4e2fc78e477547940900f1c34c290d1c811fc75`; `util.chunk_access.PathNavigationRegionMixin` `4bd80e9ef6c9bdccd0fdb1544cf5f7efc18fab24a5dca546e36eb2a6f94d885d`; `entity.inactive_navigations.PathNavigationMixin` `0c14996f3832bd7e8f2c51a963fa260f7a4f95bb3fe6311098a33102340ef146`
+
+**Shape proof.** The load-bearing property is that nothing a worker executes writes shared state, and
+it is enforced structurally rather than asserted. Every `PUTFIELD`/`PUTSTATIC` in the audited classes
+must occur in a constructor, a static initializer, or one of the two eager cache initializers
+(`lithium$initializePathNodeTypeCache`, `lithium$initializeFlags`); the check fails on any other
+write. `BlockInfoInitializer.initializeBlockInfo()` drives both initializers across the whole
+`Block.BLOCK_STATE_REGISTRY` at startup on the main thread, and no other method may call them, so a
+worker cannot trigger a lazy write even before initialization. `ai.pathing.PathNavigationRegionMixin`
+is additionally required to do its writing from a constructor injection, because PathWeaver builds
+the region on the main thread at dispatch and that ordering is what makes those writes safe.
+`util.chunk_access.PathNavigationRegionMixin` contains no field write at all.
+
+`entity.inactive_navigations.PathNavigationMixin` is the exception and rests on a different proof.
+Its handlers genuinely mutate shared state — they add and remove navigations from a listener set on
+the level — so write-confinement would not save it. It is safe because a worker never runs it: the
+worker's entry point is `PathFinder.findPath`, which contains no call edge into `PathNavigation`.
+That is the same non-reachability proof the rabbit-pathfinding-fix exemption uses, re-checked here
+against the vanilla bytes actually loaded.
+
+**What this does not prove.** Lithium still adds live section and palette reads on the search path.
+A search running concurrently with a block change can observe a stale or torn view and return a
+worse path, and can meet a concurrent-resize exception. That failure is contained — it surfaces as a
+failed search that falls back to synchronous pathfinding — but path *quality* under live mutation
+was never measured. This is why Lithium sits behind an explicit opt-in and not in the default tier.
+
+**Live witness.** With Lithium loaded and `compatibilityTier=AUDITED`, the startup scan reports
+`scanned=39, failed=0, deniedFamilies=0` and a real vanilla zombie Walk request dispatches to a
+worker and installs (`dispatched=1, installed=1, discarded=0`). The same test proves the result is
+not vacuous by re-running the production decision over Lithium's own live configs with the audited
+evidence withheld and requiring that it denies Walk. At `compatibilityTier=STRICT` the same
+environment reports `deniedFamilies=2`.
+
+### Diagonal Blocks `26.1.0` — audited tier
+
+Shipped as a jar nested inside Diagonal Fences, Walls and Windows. The audited artifact is the
+nested `diagonalblocks-fabric-26.1.0.jar`, SHA-256
+`df59211601dc83718ec0189a56c9f5569a0654f56a58fbbd644ea462a51b74d6`.
+
+- Config: `diagonalblocks.common.mixins.json`, SHA-256 `8aeca65fac6618bb8d7c266c5b4194af876a963fabd77c55f86c9131abfe6ea8`. No mixin plugin.
+- Mixin: `fuzs.diagonalblocks.common.mixin.WalkNodeEvaluatorMixin`, SHA-256 `fb5324c681fac2f33145fc67560f2162059353ab5e010d29405af1119d063381`
+- The sibling `accessor.BlockBehaviorAccessor` targets `BlockBehaviour`, which is not a watched class, so it contributes no sensitive claim.
+
+**Shape proof.** The override performs no field write at all. It reads block state only through the
+`PathfindingContext` the search already owns, and one static field:
+`StarCollisionBlock.PROPERTY_BY_DIRECTION`, which is `static final`, built once in a class
+initializer via `Maps.immutableEnumMap`, and never written afterwards.
+
+The reason this needs a mechanical proof is what sits beside that map. `StarCollisionBlock` also
+holds `CORNER_SHAPES_CACHE` and `CORNER_SHAPES_BLOCK_CACHE`, plain unsynchronized fastutil maps
+mutated lazily on the collision-shape path. Reaching either from a worker would be a genuine data
+race. The verification therefore requires that the mixin's entire static-field-read surface is the
+immutable map and that it makes no call into `StarCollisionBlock` whatsoever, so a future version
+that routed the diagonal check through a shape cache would fail closed instead of inheriting this
+finding.
+
+**Live witness.** With Lithium and Diagonal Blocks both loaded at `compatibilityTier=AUDITED`, the
+startup scan reports `scanned=45, failed=0, deniedFamilies=0`, and a real vanilla zombie Walk
+request dispatches to a worker and installs. Each mod is separately checked for non-vacuity: the
+production decision is re-run over that mod's own live configs with the audited evidence withheld,
+and must deny Walk.
+
+**Harness note.** The `maven.modrinth:diagonal-fences` coordinate serves a *different* artifact from
+the release file — 128015 bytes with no `META-INF/jars` entry, against the 126183-byte release that
+actually contains the library. The harness fetches the release file directly and pins its SHA-1, so
+a substituted parent cannot stage a library the audit never examined.
+
+## Land path-type providers (generic, no per-mod entry)
+
+Mods that mark a block dangerous are not modifying pathfinding code; they are calling a public
+Fabric API, and any mod may do it. Auditing them individually does not scale, so they are handled
+by capability rather than by this table.
+
+`StaticPathTypeProvider` receives only a block state and a neighbour flag — no `BlockGetter`, no
+`BlockPos` — so it cannot read the world or vary by position, and its input domain (every state a
+block can have, times two) is finite. PathWeaver calls such a provider on the main thread once per
+input at registration and freezes the answers. Workers read the frozen table, so third-party
+provider code never executes off-thread. **This requires no audit, no artifact hash, and no entry
+here, and works for mods written after this release.**
+
+`DynamicPathTypeProvider` additionally receives the world and the position, so its answers cannot be
+precomputed. Such a registration still denies Walk for the remainder of the process.
+
+### Worked example: Farmer's Delight is denied, and does not have to be
+
+`farmersdelight 26.1-3.6.7+refabricated` (artifact SHA-256 `25adee63…c636`) registers a *dynamic*
+provider on its stove, so the rule above denies Walk for the whole process. Disassembling it shows
+the denial is conservative rather than necessary:
+
+```
+AbstractStoveBlock.<init> → invokedynamic getPathType()DynamicPathTypeProvider
+                            implMethod = AbstractStoveBlock.lambda$new$0
+lambda$new$0(BlockState, BlockGetter, BlockPos, boolean)
+    → state.getBlock() → (AbstractStoveBlock) → getBlockPathType(state, world, pos, null)
+getBlockPathType(BlockState, BlockGetter, BlockPos, Mob)
+    0: aload_1                    // the BlockState, and nothing else
+    1: getstatic LIT
+    4: getValue → booleanValue
+   13: ifeq 22 → PathType.FIRE : null
+```
+
+The world and position are *received and never loaded* — locals 2 and 3 are absent from the method
+body. The answer is a function of the `LIT` property alone, so it is precomputable exactly like a
+static provider. `AbstractStoveBlock` is also the only class in the jar that declares
+`getBlockPathType` (its one subclass, `StoveBlock`, does not override it) and the jar has no
+`META-INF/jars` entries, so no other implementation can be dispatched to.
+
+Generalising this is *not* the same problem as the static case. Certifying an arbitrary dynamic
+provider requires proving that the world and position never reach a dereference through an arbitrary
+call chain with virtual dispatch — a transitive escape analysis, not a signature check. Two shortcuts
+were considered and rejected as unsound: invoking the provider with `null` world and position (a
+provider that branches on `world == null` would answer differently under a real world), and checking
+only that the implementation method itself never loads those locals (Farmer's Delight fails that
+check, because it forwards them to a method that ignores them). No dynamic provider is certified.
+
+## Shipped-artifact verification, outside Loom
+
+Every gametest runs inside Loom's dev classpath. That has hidden a production-only failure before —
+`fabric-events-interaction-v0` hashes differently when nested inside Fabric API than when resolved
+standalone, so the audit passed in dev and denied in production. The released jar is therefore also
+booted on a plain dedicated server built from release artifacts only.
+
+Fabric API `0.153.0+26.1.2`, Cloth Config `26.1.154`, Lithium `0.24.6+mc26.1.2`, and
+`pathweaver-0.3.0+26.1.2` (SHA-256 `60ca580f…ae5b`), on JDK 25. 1024-mob maze load,
+`maxInFlight=256`.
+
+| Mods added | Tier | Scan result | Dispatched |
+|---|---|---|---|
+| Farmer's Delight | `AUDITED` | scanned=36, failed=0, denied=0 | **0** — dynamic provider closed the latch |
+| Farmer's Delight | `ALL` | scanned=36, failed=0, denied=0 | 11133 |
+| Farmer's Delight + FerriteCore | `AUDITED` | scanned=41, failed=0, **denied=2** | **0** — `WalkNodeEvaluator`, `SwimNodeEvaluator` |
+| Farmer's Delight + FerriteCore | `ALL` | scanned=41, failed=0, denied=0 (waived, logged `WARN`) | 11132 |
+
+The same runs also pin the mob-origin gate's tier coupling, which is otherwise easy to get silently
+wrong — a tier that reports "nothing is being checked" while most of a modded pack's mobs stay
+synchronous:
+
+| Tier | `moddedBypass` | Logged boundary |
+|---|---|---|
+| `AUDITED` | `false` | `mod-defined mobs are synchronous by the origin gate` |
+| `ALL` | `true` | `mod-defined mobs are allowed by compatibilityTier=ALL (unsafe)` |
+
+The two `AUDITED` rows are the two distinct ways the gate closes, and they close for different
+reasons — the provider latch and a mixin denial. The final row is the one that matters for `ALL`:
+the scan *did* find a real denial, `ALL` waived it, said so at `WARN`, and dispatched anyway. An
+`ALL` run against a pack with nothing to waive would not have tested that path.
+
+The benchmark harness refuses to report an async arm that dispatched nothing
+(`async arm dispatched no work; the measurement would be vacuous`) or one whose gate was closed at
+startup, so a silently-synchronous run cannot be mistaken for a win. Both `AUDITED` rows above were
+rejected by that check rather than reported as results.
+
+Residual assumption: a static provider that closes over mutable state and changes its answer after
+registration would leave the frozen table stale. Lithium already caches path types per block state
+eagerly at startup, so such a provider is already misbehaving on any pack running Lithium — but this
+is an assumption, not a proof.

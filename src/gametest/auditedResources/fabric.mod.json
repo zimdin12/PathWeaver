@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "pathweaver_gametest_audited",
+  "version": "1.0.0",
+  "name": "PathWeaver Audited Tier Game Test",
+  "environment": "server",
+  "entrypoints": {
+    "fabric-gametest": [
+      "dev.pathweaver.gametest.AuditedTierWalkRoutingGameTest"
+    ]
+  },
+  "depends": {
+    "fabric-gametest-api-v1": "*",
+    "pathweaver": "*",
+    "lithium": "*",
+    "diagonalblocks": "*"
+  }
+}

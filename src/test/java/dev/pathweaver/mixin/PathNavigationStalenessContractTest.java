@@ -7,10 +7,21 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LookupSwitchInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
+import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TableSwitchInsnNode;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -118,7 +129,7 @@ class PathNavigationStalenessContractTest {
                                                          String descriptor) {
                         if (sawDecision[0] && !sawTerminalReturn[0]
                                 && owner.equals("dev/pathweaver/config/PathWeaverConfig")
-                                && (field.equals("asyncEnabled") || field.equals("syncFallbackOnly"))) {
+                                && field.equals("enabled")) {
                             toggleReads.add(field);
                         }
                     }
@@ -139,6 +150,149 @@ class PathNavigationStalenessContractTest {
         assertTrue(sawTerminalReturn[0], "PRESERVE branch must terminate the injection");
         assertEquals(List.of(), toggleReads,
             "mid-flight config toggles must not turn PRESERVE into a sync fallthrough");
+    }
+
+    @Test void masterOffFalseEdgeReturnsAndEnabledDominatesElisionAndAsyncEligibility() throws Exception {
+        ClassNode type = new ClassNode(Opcodes.ASM9);
+        new ClassReader(classBytes(PathNavigationMixin.class)).accept(type, 0);
+        MethodNode method = type.methods.stream()
+            .filter(m -> m.name.equals("pathweaver$asyncCreatePath"))
+            .findFirst().orElseThrow();
+        AbstractInsnNode[] insns = method.instructions.toArray();
+        int enabled = -1;
+        int enabledReads = 0;
+        int elision = -1;
+        int safety = -1;
+        for (int i = 0; i < insns.length; i++) {
+            if (insns[i] instanceof FieldInsnNode field
+                    && field.owner.equals("dev/pathweaver/config/PathWeaverConfig")) {
+                if (field.name.equals("enabled")) {
+                    enabled = i;
+                    enabledReads++;
+                }
+                if (field.name.equals("repathElisionEnabled")) elision = i;
+            } else if (insns[i] instanceof MethodInsnNode call
+                    && call.owner.equals("dev/pathweaver/gate/SafetyGate")
+                    && call.name.equals("isAllowed")) {
+                safety = i;
+            }
+        }
+        assertTrue(enabled >= 0, "master Enabled must be read in the routing injection");
+        assertEquals(1, enabledReads,
+            "routing injection must have one unambiguous master Enabled decision");
+        assertTrue(elision >= 0, "repath elision must remain reachable while Enabled is ON");
+        assertTrue(safety >= 0, "async eligibility must remain reachable while Enabled is ON");
+
+        int branchIndex = nextOpcode(insns, enabled + 1);
+        assertTrue(insns[branchIndex] instanceof JumpInsnNode,
+            "Enabled read must immediately control a conditional branch");
+        JumpInsnNode branch = (JumpInsnNode) insns[branchIndex];
+        int falseEdge = switch (branch.getOpcode()) {
+            case Opcodes.IFEQ -> indexOf(insns, branch.label);
+            case Opcodes.IFNE -> branchIndex + 1;
+            default -> fail("Enabled must branch directly on its boolean value");
+        };
+        int falseInstruction = nextOpcode(insns, falseEdge);
+        assertEquals(Opcodes.RETURN, insns[falseInstruction].getOpcode(),
+            "Enabled=false must terminate before any PathWeaver intervention");
+
+        List<BitSet> dominators = dominators(insns);
+        assertTrue(dominators.get(falseInstruction).get(enabled),
+            "the Enabled read must dominate the master-OFF return");
+        assertTrue(dominators.get(elision).get(enabled),
+            "the Enabled read must dominate repath elision on every control-flow path");
+        assertTrue(dominators.get(safety).get(enabled),
+            "the Enabled read must dominate async eligibility/dispatch on every control-flow path");
+    }
+
+    private static int nextOpcode(AbstractInsnNode[] insns, int start) {
+        for (int i = start; i < insns.length; i++) {
+            if (insns[i].getOpcode() >= 0) return i;
+        }
+        throw new AssertionError("missing executable instruction after " + start);
+    }
+
+    private static int indexOf(AbstractInsnNode[] insns, AbstractInsnNode needle) {
+        for (int i = 0; i < insns.length; i++) if (insns[i] == needle) return i;
+        throw new AssertionError("instruction not found");
+    }
+
+    private static List<BitSet> dominators(AbstractInsnNode[] insns) {
+        int count = insns.length;
+        List<List<Integer>> successors = new ArrayList<>(count);
+        List<List<Integer>> predecessors = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            successors.add(new ArrayList<>());
+            predecessors.add(new ArrayList<>());
+        }
+        for (int i = 0; i < count; i++) {
+            AbstractInsnNode insn = insns[i];
+            int opcode = insn.getOpcode();
+            if (insn instanceof JumpInsnNode jump) {
+                addEdge(successors, predecessors, i, indexOf(insns, jump.label));
+                if (opcode != Opcodes.GOTO && i + 1 < count) addEdge(successors, predecessors, i, i + 1);
+            } else if (insn instanceof TableSwitchInsnNode table) {
+                addEdge(successors, predecessors, i, indexOf(insns, table.dflt));
+                for (LabelNode label : table.labels) addEdge(successors, predecessors, i, indexOf(insns, label));
+            } else if (insn instanceof LookupSwitchInsnNode lookup) {
+                addEdge(successors, predecessors, i, indexOf(insns, lookup.dflt));
+                for (LabelNode label : lookup.labels) addEdge(successors, predecessors, i, indexOf(insns, label));
+            } else if (opcode != Opcodes.RETURN && opcode != Opcodes.ARETURN
+                    && opcode != Opcodes.IRETURN && opcode != Opcodes.LRETURN
+                    && opcode != Opcodes.FRETURN && opcode != Opcodes.DRETURN
+                    && opcode != Opcodes.ATHROW && i + 1 < count) {
+                addEdge(successors, predecessors, i, i + 1);
+            }
+        }
+        BitSet reachable = new BitSet(count);
+        ArrayDeque<Integer> queue = new ArrayDeque<>();
+        reachable.set(0);
+        queue.add(0);
+        while (!queue.isEmpty()) {
+            for (int next : successors.get(queue.remove())) {
+                if (!reachable.get(next)) {
+                    reachable.set(next);
+                    queue.add(next);
+                }
+            }
+        }
+        List<BitSet> dom = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            BitSet set = new BitSet(count);
+            if (i == 0) set.set(0);
+            else if (reachable.get(i)) set.or(reachable);
+            dom.add(set);
+        }
+        boolean changed;
+        do {
+            changed = false;
+            for (int i = 1; i < count; i++) {
+                if (!reachable.get(i)) continue;
+                BitSet next = (BitSet) reachable.clone();
+                boolean first = true;
+                for (int predecessor : predecessors.get(i)) {
+                    if (!reachable.get(predecessor)) continue;
+                    if (first) {
+                        next = (BitSet) dom.get(predecessor).clone();
+                        first = false;
+                    } else {
+                        next.and(dom.get(predecessor));
+                    }
+                }
+                next.set(i);
+                if (!next.equals(dom.get(i))) {
+                    dom.set(i, next);
+                    changed = true;
+                }
+            }
+        } while (changed);
+        return dom;
+    }
+
+    private static void addEdge(List<List<Integer>> successors, List<List<Integer>> predecessors,
+                                int from, int to) {
+        successors.get(from).add(to);
+        predecessors.get(to).add(from);
     }
 
     private static byte[] classBytes(Class<?> type) throws IOException {

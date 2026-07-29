@@ -51,6 +51,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
     @Shadow protected NodeEvaluator nodeEvaluator;
     @Shadow @org.spongepowered.asm.mixin.Final private PathFinder pathFinder;
     @Shadow private BlockPos targetPos;
+    @Shadow public abstract void stop();
     @Shadow private int reachRange;
     @Shadow private float maxVisitedNodesMultiplier;
     @Shadow protected double speedModifier;
@@ -62,6 +63,10 @@ public abstract class PathNavigationMixin implements PWNavigation {
 
     // ---- per-in-flight capture (main thread only; the isRegistered guard ensures one search at a time) ----
     @Unique private int pathweaver$pendingReachRange;
+    /** The optimistic targetPos this navigation wrote at dispatch, or null when none is pending. */
+    @Unique private BlockPos pathweaver$optimisticTargetPos;
+    /** The targetPos to restore if the pending request never installs a path. */
+    @Unique private BlockPos pathweaver$targetPosBeforeDispatch;
     @Unique private int pathweaver$pendingDoneCallbacks;
     // Movement callers supply speed outside createPath. Capture it at those approved callers and
     // bind the exact double (including 0, negative values, and NaN) to the accepted registration.
@@ -246,6 +251,10 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // so a different accepted intent cannot later overwrite the path returned here.
         if (this.path != null && !this.path.isDone() && targets.contains(this.targetPos)) return;
 
+        // Master OFF stops every new PathWeaver intervention. Same-target work accepted before OFF
+        // returned above and drains through its existing registration; changed intent was balanced above.
+        if (!cfg.enabled) return;
+
         // Feature B remains opt-in. Recompute (including changed-block invalidation) always bypasses
         // tolerance reuse; ordinary target drift must satisfy endpoint, reach and navigation validity.
         if (cfg.repathElisionEnabled && cfg.repathToleranceBlocks > 0 && this.path != null) {
@@ -269,13 +278,25 @@ public abstract class PathNavigationMixin implements PWNavigation {
         }
 
         // Feature A: async dispatch.
-        if (!cfg.asyncEnabled || cfg.syncFallbackOnly) return;
         if (!rt.isRunning()) return;
         if (!(this.level instanceof ServerLevel)) return;                       // server-side only
         if (this.nodeEvaluator == null || !SafetyGate.isAllowed(this.nodeEvaluator.getClass())) return;
+        // ALL means all: the operator has asked for no compatibility checking whatsoever, so the
+        // land-provider gate is waived too. It is a correctness gate rather than a thread-safety
+        // one -- with it waived a mob can be routed over a block a mod marked dangerous -- but
+        // leaving it armed made "ignore every check" silently still refuse to run Walk, which is
+        // not what the setting says and not what an operator choosing it expects.
+        //
+        // Clearing the flag here waives the dispatch gate and the install-time re-check together,
+        // because both are driven from it.
+        final boolean requiresEmptyLandRegistry =
+            this.nodeEvaluator.getClass() == net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class
+                && !cfg.bypassesCompatibilityScan();
+        if (requiresEmptyLandRegistry
+                && !dev.pathweaver.gate.FabricLandPathRegistryLatch.allowsWalkDispatch()) return;
 
         final Mob theMob = this.mob;
-        if (!MobOriginGate.isAllowed(theMob.getClass(), cfg.allowModdedMobAsync)) return;
+        if (!MobOriginGate.isAllowed(theMob.getClass(), cfg.moddedMobAsyncAllowed())) return;
         final long tick = ((ServerLevel) this.level).getServer().getTickCount();
 
         // This entity's last async search failed and it's in cooldown -> run vanilla sync this tick.
@@ -330,10 +351,11 @@ public abstract class PathNavigationMixin implements PWNavigation {
             requestKey = rt.nextRequestKey(entityId);
             final RequestKey submittedKey = requestKey;
             if (!intentAdvanced) pathweaver$targetRevision++;
-            sink.register(requestKey, this, requestTarget);
+            sink.register(requestKey, this, requestTarget, requiresEmptyLandRegistry);
             registered = true;
             boolean accepted = rt.pool().submit(new PathRequest(submittedKey, tick, search,
-                result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz)));
+                result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz),
+                rt.installer()::enqueueDiscard));
 
             if (!accepted) {
                 sink.discard(requestKey); // pool saturated -> let vanilla run synchronously
@@ -346,7 +368,12 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // window (vanilla would have null targetPos until install, killing both).
             this.pathweaver$pendingReachRange = reachRange;
             this.pathweaver$pendingInstallSpeed = this.pathweaver$requestSpeed;
+            // Remember what to restore if this request never installs a path. Without this the
+            // navigation is left with targetPos naming the new target while path still holds the
+            // previous one, and vanilla's reuse short-circuit then hands back the stale path.
+            this.pathweaver$targetPosBeforeDispatch = this.targetPos;
             this.targetPos = targetsCopy.iterator().next();
+            this.pathweaver$optimisticTargetPos = this.targetPos;
 
             // Replay the exact vanilla per-evaluator callback contract on the MAIN thread. Walk has one
             // start/done pair; Swim has none. Set the balance bit before invoking untrusted mod code so
@@ -392,6 +419,32 @@ public abstract class PathNavigationMixin implements PWNavigation {
             this.reachRange = this.pathweaver$pendingReachRange;
             resetStuckTimeout();
         }
+        // A real path is now installed, so there is nothing optimistic left to undo.
+        this.pathweaver$optimisticTargetPos = null;
+        this.pathweaver$targetPosBeforeDispatch = null;
+    }
+
+    @Override
+    public void pathweaver$abortFailedInstall() {
+        // moveTo may have set a new or partial path before a foreign injection threw. Clear it
+        // rather than leave it paired with a restored older target; the next request recomputes.
+        try {
+            stop();
+        } catch (Throwable stopFailure) {
+            this.path = null;
+        }
+        pathweaver$rollbackOptimisticTarget();
+    }
+
+    @Override
+    public void pathweaver$rollbackOptimisticTarget() {
+        BlockPos optimistic = this.pathweaver$optimisticTargetPos;
+        if (optimistic != null && optimistic.equals(this.targetPos)) {
+            // Still ours: no newer request has claimed targetPos, so restoring is safe.
+            this.targetPos = this.pathweaver$targetPosBeforeDispatch;
+        }
+        this.pathweaver$optimisticTargetPos = null;
+        this.pathweaver$targetPosBeforeDispatch = null;
     }
 
     @Override

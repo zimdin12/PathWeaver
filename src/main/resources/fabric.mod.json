@@ -3,7 +3,7 @@
   "id": "pathweaver",
   "version": "${version}",
   "name": "PathWeaver",
-  "description": "Experimental fail-closed Walk/Swim A* offload with a prominent ModMenu toggle. Standard Fabric content-registry packs remain synchronous; no universal-speed or vanilla-equivalence claim.",
+  "description": "Experimental fail-closed Walk/Swim A* offload with one Enabled master. The current required aggregate Fabric API makes supported installs synchronous pending dependency redesign.",
   "authors": ["Zimdin"],
   "contact": {
     "homepage": "https://modrinth.com/mod/pathweaver",

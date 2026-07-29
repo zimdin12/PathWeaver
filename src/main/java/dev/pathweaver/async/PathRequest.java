@@ -12,5 +12,12 @@ import java.util.function.Consumer;
  * the live world. Identity fields let the main-thread installer match the result to its entity and
  * decide staleness.
  */
-public record PathRequest(RequestKey key, long dispatchTick,
-                          Callable<Path> search, Consumer<PathOutcome> onDone) {}
+public record PathRequest(RequestKey key, long dispatchTick, Callable<Path> search,
+                          Consumer<PathOutcome> onDone,
+                          Consumer<RequestKey> onDeliveryFailure) {
+    /** Convenience for tests/callers that do not own a main-thread terminal queue. */
+    public PathRequest(RequestKey key, long dispatchTick, Callable<Path> search,
+                       Consumer<PathOutcome> onDone) {
+        this(key, dispatchTick, search, onDone, ignored -> { });
+    }
+}

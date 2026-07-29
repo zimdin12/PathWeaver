@@ -1,99 +1,149 @@
 # PathWeaver
 
-**Experimental, fail-closed asynchronous mob pathfinding for Minecraft 26.1.2 (Fabric).**
+**Experimental server-side mod for Minecraft 26.1.2 (Fabric). Moves vanilla mob path searches off the server thread.**
 
-PathWeaver can move eligible Walk/Swim A* searches off the server thread. It does not move entity ticks or collision processing off-thread. Version 0.2.2 is a conservative quality and compatibility pass over the experimental engine; it is not a universal-speed, vanilla-equivalence, or thread-safety claim.
+**Read this first: PathWeaver refuses to run wherever another mod modifies pathfinding code and that mod has not been individually audited.** Stock Fabric API and Lithium have both been audited, so a typical performance pack can now use it — but plenty of packs will still find it inert. See [Will it actually do anything?](#will-it-actually-do-anything) before installing.
 
-## Toggle and disable instructions
+See the [version-exact compatibility matrix](COMPATIBILITY.md) for audited verdicts, artifact hashes, and the evidence boundary. Future or modified artifacts fail closed.
 
-With ModMenu installed, open **Mods → PathWeaver → Config**. The first option is **Enable experimental off-thread pathfinding**. Its tooltip reads: “Experimental off-thread pathfinding; disable if you see issues.” Every option has a plain-language tooltip. Save writes `config/pathweaver.json` and updates the live config; worker-thread and in-flight limits apply after restart.
+## What it does
 
-You can also edit `config/pathweaver.json`:
+Minecraft runs mob A* path searches on the server thread. PathWeaver runs eligible ones on a small worker pool instead, so a server that is falling behind because of pathfinding can keep up.
 
-```json
-{
-  "asyncEnabled": false,
-  "syncFallbackOnly": true
-}
+It only touches the exact vanilla `WalkNodeEvaluator` and `SwimNodeEvaluator` searches, and only for mobs whose class comes from vanilla. Everything else — flying mobs, amphibious mobs, evaluator subclasses, mod-defined mob classes — stays synchronous. It does not move entity ticking, collision, or AI goals off-thread.
+
+## Will it actually do anything?
+
+At startup PathWeaver scans every loaded mod for mixins into pathfinding code. If a mod modifies that code and has not been audited, PathWeaver disables itself for the affected movement family and everything runs vanilla-synchronous.
+
+Failing closed is better than running unaudited code on a worker thread and corrupting a world. The consequence is that PathWeaver only does something once the mods in your pack that touch pathfinding have each been individually audited. Two of the biggest have been:
+
+- **The Fabric API that PathWeaver itself requires.** It bundles `fabric-content-registries-v0`, which injects into a method the walk search calls for every block. That alone used to deny Walk on *every* stock install. It is now allowed while no mod has registered a land path-type provider — the condition that makes the injection inert — and denies permanently the moment one registers, including cancelling a search already in flight.
+- **Lithium**, which ships in most performance modpacks, and **Diagonal Blocks** (Diagonal Fences/Walls/Windows). Their pathfinding mixins are pinned by hash and verified at startup against a bytecode proof that nothing a worker executes writes shared state. Allowing them requires setting `compatibilityTier` to `AUDITED`; see below for the trade.
+
+Mods that just mark a block dangerous — "mobs should avoid my spikes" — are handled generically and need no audit at all, because their rule can be precomputed and frozen before any worker sees it. The exception is a rule that inspects the surrounding world (Farmer's Delight's lit stove is one); those still switch Walk back to synchronous.
+
+Still denied at the time of writing: Carpet, and any mod not in [the compatibility matrix](COMPATIBILITY.md).
+
+Check your server log for:
+
+```
+Foreign-mixin scan complete: scanned=…, failed=…, deniedFamilies=…
 ```
 
-- `asyncEnabled=false` is the normal off switch.
-- `syncFallbackOnly=true` is the lower panic switch and prevents all async dispatch.
-- `allowModdedMobAsync=true` is an advanced unsafe override. It bypasses only the vanilla-origin mob gate; all evaluator, Mixin-scanner, lifecycle, and fallback gates still apply.
-- Existing explicit values are preserved during upgrades; a persisted `asyncEnabled=false` stays false.
-- Malformed or unreadable persisted config fails closed to synchronous runtime defaults until a valid
-  config is saved; Cloth's enabled in-memory defaults are not mistaken for a successful load.
+`deniedFamilies=0` means PathWeaver is active. Any other value means it is partly or wholly inactive, and the preceding lines name each mod responsible.
 
-## Honest compatibility status
+## What we measured
 
-PathWeaver fails closed. Only exact vanilla `WalkNodeEvaluator` and `SwimNodeEvaluator` searches are candidates. By default, the concrete mob class must also come from the same runtime code source as vanilla `Mob`; mod-defined mob subclasses therefore stay synchronous even when they inherit Walk/Swim evaluators. Fly, Amphibious, evaluator subclasses, unknown ownership, scanner failures, and sensitive foreign mixins stay synchronous.
+**The short version: PathWeaver's benefit is fewer tick spikes, not a higher average TPS.**
 
-The standard Fabric content-registry module installs dynamic path-type provider hooks into sensitive pathfinding classes. Those providers have no worker-safety contract, so **PathWeaver remains synchronous in standard Fabric content-registry packs**, even when `asyncEnabled=true`. This is intentional: the toggle permits an attempt, but compatibility eligibility has final authority.
+Average tick rate is not what players notice — a server sitting at "20 TPS" still stutters when one tick in a hundred takes 80 ms. That is what PathWeaver reduces. It raises *throughput* only in the narrower case where path-searching alone already pushes the server past its 50 ms budget and spare CPU cores exist.
 
-A clean compatibility scan only means no known sensitive Mixin target was discovered. The default origin gate closes the direct and indirect mod-defined mob-override gap, but it does not prove the remaining live-input boundary safe. Mods may still Mixin into vanilla `Entity`, `LivingEntity`, or `Mob` methods, and workers still read live vanilla mob/world/block state without an immutable snapshot. Fabric content-registry hooks are already denied. Do not enable the advanced modded-mob override unless you deliberately accept additional unverified virtual-method execution.
+### Measured on the configuration you would actually get
 
-## What 0.2 changed
+This is the one benchmark that used **no harness intervention at all**: stock Fabric API, Lithium loaded, `compatibilityTier=AUDITED`, shipped limits (`maxInFlight=256`, `poolThreads=0`, repath reuse on). The gate opened on its own. The only difference between arms is the master switch. 1024 zombies in a walled maze, all retargeted every 6 ticks; **four pairs, interleaved and order-reversed, across two builds** (0.2.3 and the released 0.3.0).
 
-- Async interception is limited to four genuine navigation/recompute operations; direct and query-only `createPath` calls stay synchronous and immediate.
-- Every request is bound to a server epoch, process-unique request token, entity UUID/removal state, world/dimension, exact navigation/current-path identity, semantic target revision, movement, and maximum result age.
-- Supersession, navigation stop, recompute invalidation, shutdown, stale results, and exceptions terminally balance accepted registrations.
-- Worker outcomes are tagged `SUCCESS`, `NO_PATH`, or `FAILED`; an ordinary no-path does not enter exception cooldown.
-- Walk callback replay is exactly one start/done pair; Swim replays none. An accepted worker search is
-  held behind a main-thread start barrier, so callback effects happen-before worker reads.
-- Accepted deferred movement reports success to the requesting AI, and exact caller speed—including
-  `0`, negative, or `NaN`—is bound to installation and refreshed by same-target pending requests.
-- Recompute supersedes pre-change accepted work before vanilla's `canUpdatePath` guard and preserves
-  the accepted request's exact speed when a replacement is dispatched.
-- Mod-defined mob subclasses are synchronous by default through a cached, fail-closed code-origin gate.
-- Positive repath reuse requires a reached active path, exact reach agreement, a valid endpoint, and update-eligible navigation. Block-change recomputation always bypasses reuse and supersedes pending same-target work.
-- Repath tolerance remains `0` by default.
-- ModMenu now has an explicit entrypoint and persistent configuration screen.
+| | Synchronous (n=4) | With PathWeaver (n=4) |
+|---|---|---|
+| Tick interval, mean | 78–96 ms | **49–50 ms** |
+| Tick interval, p99 | 726–1096 ms | **338–390 ms** |
+| Effective tick rate | 10.4–12.7 TPS | **20.0 TPS** |
+| Main-thread cost per request | 421–516 µs | **164–222 µs** |
 
-## Remaining experimental boundary
+Mean tick time fell **about 40%** — median 40.1%, mean 41.2%, range 36.2–48.2% across the four pairs — with no overlap: every async run beat every synchronous run.
 
-Where compatibility permits dispatch, the current worker still receives a read-only view backed by live chunks plus live vanilla mob inputs. Install-time validation can reject obsolete results, but it cannot make those reads immutable. Mixins into vanilla entity methods can also extend that live call graph. Therefore PathWeaver makes no vanilla-equivalence or general thread-safety guarantee.
+**Read the spread, not the headline.** The async arm is strikingly stable (49–50 ms in all four runs, across two builds), while the *synchronous* baseline swings 78–96 ms depending on ambient machine load. A single pair therefore over- or under-states the gain by several points; an earlier revision of this table quoted 44.8% because it happened to be paired against the heaviest sync run. Quote the range.
 
-A private immutable snapshot evaluator/A* was designed and cost-measured. Even a simplified lower-bound surface capture consumed too much of the paired vanilla search budget; correct cave, detour, and provider coverage would add work. The private engine was rejected rather than forced through. The only credible future route is an upstream immutable-chunk snapshot and provider-purity API; PathWeaver does not implement or pursue that API in 0.2.2.
+**The caveat that matters: at the shipped in-flight limit, 13.6–20.6% of searches were discarded.** Under this much load roughly one search in six is thrown away and recomputed later. It still wins decisively, but that is the default doing real work at saturation, not a tuned value.
 
-## Defaults
+This is still a synthetic burst with all other mob AI stripped out. It shows what happens when pathfinding alone overloads the server; it is not a measurement of ordinary play.
 
-```json
-{
-  "asyncEnabled": true,
-  "allowModdedMobAsync": false,
-  "repathElisionEnabled": true,
-  "poolThreads": 0,
-  "maxInFlight": 256,
-  "syncFallbackOnly": false,
-  "repathToleranceBlocks": 0,
-  "stalenessMoveThreshold": 4.0,
-  "maxResultAgeTicks": 40
-}
-```
+### Earlier figures, measured with the gate forced open
 
-Invalid numeric values are clamped before runtime services consume them.
+The figures below predate the audited exemptions and were produced **with the compatibility gate manually cleared by a test harness**, on a 16-core / 32-thread desktop CPU with 8 worker threads. Measurements were reproduced by a second engineer using an audited derivative of the same corrected harness, with fresh worlds and reversed-order paired runs. That is a check on the runs and the analysis, not an independently written timer.
 
-## What the benchmark proved
+### Saturated burst — where it helps
 
-Four paired real Spark profiles in an isolated server with 160 pathfinding zombies showed measured server-thread A* offload:
+1024 zombies in a walled maze, **all retargeted simultaneously every 6 ticks** (~172 long-range searches per tick):
 
-- `WalkNodeEvaluator` inclusive samples: 2613 → 236 ms per run on average (-90.97%)
-- `WalkNodeEvaluator` self samples: 94 → 22 ms (-76.60%)
-- `PathfindingContext` inclusive samples: 499 → 76 ms (-84.77%)
-- `PathFinder` inclusive samples: 787 → 0 ms
+| | Synchronous | With PathWeaver |
+|---|---|---|
+| Tick interval, mean | 83–87 ms | 50.0 ms |
+| Tick interval, p95 | 738–766 ms | 135–139 ms |
+| Effective tick rate | 11.4–12.0 TPS | 20 TPS |
 
-It did **not** prove a net MSPT win. Average mean MSPT was 2.927 ms OFF and 3.012 ms ON, with noisy paired results. The supported claim is isolated server-thread pathfinding offload—not universal TPS/MSPT improvement. See [`MODRINTH-COPY-v0.2.md`](MODRINTH-COPY-v0.2.md) for profile links and release wording.
+Paired reductions of **40.0% and 42.8%**. This is genuine overload relief — but it is an extreme synthetic burst, not ordinary play.
+
+### Staggered schedule — no TPS gain, but the spikes go away
+
+Same 1024 mobs, but each retargeted once per 20 ticks so requests arrive at a steady ~51 per tick instead of all at once. This spreads the load more like a real server does, but it is still a synthetic schedule with all other mob AI stripped out — not a measurement of ordinary play:
+
+| | Synchronous | With PathWeaver |
+|---|---|---|
+| Effective tick rate | 20 TPS | 20 TPS — **no gain** |
+| Tick interval, p95 | 59–67 ms | **52.9 ms** |
+| Tick interval, p99 | 77–80 ms | **54.6 ms** |
+
+Throughput is unchanged, because the server was already keeping up on average. What changes is the tail: the worst 1% of ticks drop from 77–80 ms — comfortably over the 50 ms budget, which is what a player perceives as a hitch — to 54.6 ms, essentially at budget.
+
+If your complaint is "it says 20 TPS but it still stutters near the village," that tail is the thing you are feeling, and it is the thing this reduces.
+
+At 256 mobs, and at 1024 mobs with slower retargeting, the pattern repeated: identical throughput, smaller spikes. At 512 mobs results were unstable — three runs showed no difference, one showed a large one.
+
+### How to read these numbers
+
+- **The metric is wall-clock interval between ticks, not CPU time.** It includes the server's own pacing and catch-up.
+- **"50.0 ms" is the pacing ceiling, not CPU consumption.** The server sleeps to hold 20 TPS. We can show it stopped overrunning; we cannot show how much headroom it gained.
+- **Even when it helps, it is not smooth** — 5% of ticks still exceeded 135 ms in the burst test.
+- Main-thread cost of the `moveTo` call itself fell from ~430 µs to ~53 µs. That figure covers only the request call. Installing the finished path and running its callbacks also happen on the main thread and were **not** measured, so the end-to-end main-thread cost per request is unknown — do not read the ratio above as the total saving.
+- Fewer or contended cores will not behave like this test.
+
+The figures in this subsection used a cleared gate, a much larger in-flight limit than the default, and repath reuse disabled. The shipped-configuration measurement at the top of this section does not.
+
+## Who this will not help
+
+- **Anyone whose server is not already exceeding 50 ms per tick because of pathfinding.** Below that threshold PathWeaver cannot raise TPS — the server is already keeping up. Under a staggered schedule of 1024 pathfinding mobs we measured **no throughput gain at all**. On an unloaded server a single paired sample measured mean MSPT 2.927 ms without and 3.012 ms with. That difference is well inside our observed run-to-run variance and was not repeated, so treat it as "no measurable benefit", not as a proven cost.
+- **Anyone overloaded by something other than mob pathfinding** — chunk generation, redstone, entity ticking, block entities. PathWeaver moves A* and nothing else.
+- **Anyone on a small host.** The worker pool defaults to `cores / 4`. On a 2–4 vCPU server that is one worker, competing with the server thread for the same CPU. Our numbers came from 8 workers on 32 idle cores.
+- **Anyone running an unaudited mod that touches pathfinding.** The audited list is short and version-exact; anything outside it keeps the affected mobs synchronous.
+
+## Turning it off
+
+With ModMenu installed: **Mods → PathWeaver → Config**. The first option is the master switch; turning it off sends all new path requests through vanilla synchronous pathfinding and disables repath reuse. Work already accepted drains safely; later routing is vanilla-synchronous.
+
+You can also edit `config/pathweaver.json`. **The exact keys differ between versions — open your own file and edit what is there rather than copying an example from anywhere.** A malformed or unreadable config falls back to synchronous behaviour until a valid one is saved. Worker-thread and in-flight limits apply after a restart.
+
+`compatibilityTier` decides how much risk to accept from mods that modify pathfinding:
+
+- **`STRICT`** (default) only runs off-thread where a worker provably cannot observe the other mod's change at all.
+- **`AUDITED`** additionally allows mods whose bytecode has been checked to perform no shared-state writes on the search path. Right now that means Lithium, and it is what most performance packs need. The honest trade: these cannot corrupt your world from a worker, but they add live block reads, so a search running while the world changes can return a worse path. Path quality under live mutation has not been measured.
+- **`ALL`** ignores the scan completely. This runs unaudited third-party code on a worker thread, which is the exact thing the scan exists to prevent. Failures are not limited to bad paths. Keep backups.
+
+`allowModdedMobAsync` is an advanced, genuinely unsafe override. It bypasses only the vanilla-origin mob check; every other gate still applies. Do not enable it unless you accept running unaudited mod code on a worker thread.
+
+`compatibilityTier=ALL` implies `allowModdedMobAsync`, because the origin gate is a compatibility check like any other. Leaving it armed under "ignore every check" kept most of a heavily-modded pack's mobs synchronous while the log reported that nothing was being checked. The separate flag remains the way to reach that bypass from `STRICT` or `AUDITED`.
+
+## What is unproven
+
+- **Only the saturated-burst case has been measured at shipped defaults.** Realistic mob counts, mixed workloads and ordinary play remain unmeasured.
+- **No benefit measured at realistic mob counts or with mixed workloads.** The benchmark was almost entirely pathfinding, with all other mob AI stripped out.
+- **Path correctness is proven only in a static world.** Five Walk and Swim cases produced node-for-node identical paths to a synchronous oracle with the world held still, plus a 128-mob soak.
+- **Under live block changes we found no failures but did not check path quality.** Across 66,144 searches in three mod sets there was no crash, no search failure and no worker-pool failure. We did **not** compare the paths produced while blocks were changing, so stale or wrong paths during world mutation are simply not measured.
+- **Repath reuse has never shown a measurable benefit** in any run. It appears harmless; treat it as unproven, not as a speed-up.
+- **Mob behaviour under load.** Async paths install at least one tick later than synchronous ones. Nothing we ran checked whether mobs behave the same when a thousand of them are served asynchronously.
+
+## Known limitations
+
+- Workers read live chunk and mob state through `PathNavigationRegion`, which is a read-only **view backed by live chunks, not an immutable snapshot**. A block change mid-search can be observed by a worker. Our stress testing found no failure from this; that is not a proof that none exists. A private snapshot evaluator was designed, cost-measured and rejected as too expensive; the only real fix is an upstream immutable-chunk API that does not exist.
+- **The compatibility scan is a conservative best-effort list, not a complete picture of what a worker touches.** It checks a fixed set of pathfinding classes. It cannot see mods that mixin into vanilla `Entity`, `LivingEntity` or `Mob` methods a worker reaches, nor into the chunk, section and palette delegates that back the world reads. A clean scan means no *known* sensitive target was hit — not that the search is provably isolated.
+- Chunk unloading was not meaningfully exercised in testing.
+- Server-side. Vanilla clients connect normally.
+
+**Keep backups.**
 
 ## Requirements
 
-- Minecraft 26.1.x
-- Fabric Loader 0.19+
-- Fabric API
-- Cloth Config
-- Java 25
-- ModMenu is optional but recommended for the in-game toggle
-
-Server-side; vanilla clients can connect. Keep backups and disable async if you do not accept the experimental boundary.
+Minecraft 26.1.x, Fabric Loader 0.19+, Fabric API, Cloth Config, Java 25. ModMenu optional but recommended for the toggle.
 
 ## Building and testing
 
@@ -101,6 +151,6 @@ Server-side; vanilla clients can connect. Keep backups and disable async if you 
 ./gradlew clean test build
 ```
 
-When reporting issues, include Minecraft/Fabric/PathWeaver versions, the config, complete mod list and log, async state, reproduction steps, and a real Spark profile for performance claims.
+When reporting an issue, include your Minecraft/Fabric/PathWeaver versions, your config, the full mod list, the log (including the scan line above), and reproduction steps. For anything performance-related, include a real profiler capture — and note whether your server was actually exceeding its tick budget beforehand.
 
 Source and issues: <https://github.com/Zimdin12/PathWeaver>

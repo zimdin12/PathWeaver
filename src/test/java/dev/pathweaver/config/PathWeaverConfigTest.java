@@ -29,43 +29,40 @@ class PathWeaverConfigTest {
         c.poolThreads = 3;
         assertEquals(3, c.resolvedPoolThreads());
     }
-    @Test void defaultsEnableAsyncWithConservativeFallbacks() {
+    @Test void defaultsEnableMasterWithConservativeFallbacks() {
         PathWeaverConfig c = new PathWeaverConfig();
-        assertTrue(c.asyncEnabled);
+        assertEquals(2, c.configVersion);
+        assertTrue(c.enabled);
         assertTrue(c.repathElisionEnabled);
-        assertFalse(c.syncFallbackOnly);
         assertFalse(c.allowModdedMobAsync);
         assertEquals(0, c.repathToleranceBlocks);
         assertEquals(40, c.maxResultAgeTicks);
     }
     @Test void failedLoadSignalOverridesClothDefaultWithSynchronousFailClosedRuntime() {
         PathWeaverConfig clothDefault = new PathWeaverConfig();
-        assertTrue(clothDefault.asyncEnabled);
+        assertTrue(clothDefault.enabled);
 
         PathWeaverConfig.publishLoaded(clothDefault, true);
 
-        assertFalse(PathWeaverConfig.get().asyncEnabled);
-        assertTrue(PathWeaverConfig.get().syncFallbackOnly);
+        assertFalse(PathWeaverConfig.get().enabled);
     }
 
     @Test void configRegistrationFailureInstallsSynchronousFailClosedDefaults() {
         PathWeaverConfig previous = PathWeaverConfig.get();
         try {
             PathWeaverConfig.installFailClosedDefaults();
-            assertFalse(PathWeaverConfig.get().asyncEnabled);
-            assertTrue(PathWeaverConfig.get().syncFallbackOnly);
+            assertFalse(PathWeaverConfig.get().enabled);
         } finally {
             PathWeaverConfig.set(previous);
         }
     }
-    @Test void persistedFalseOverridesDefaultOnInitializer() {
+    @Test void persistedV2FalseOverridesDefaultOnInitializer() {
         PathWeaverConfig c = new Gson().fromJson(
-            "{\"asyncEnabled\":false,\"syncFallbackOnly\":false}", PathWeaverConfig.class);
+            "{\"configVersion\":2,\"enabled\":false}", PathWeaverConfig.class);
 
         c.validatePostLoad();
 
-        assertFalse(c.asyncEnabled);
-        assertFalse(c.syncFallbackOnly);
+        assertFalse(c.enabled);
     }
     @Test void invalidLowAndNonFiniteValuesAreClampedPostLoad() {
         PathWeaverConfig c = new PathWeaverConfig();
@@ -109,6 +106,35 @@ class PathWeaverConfigTest {
         assertSame(c, PathWeaverConfig.get());
         assertEquals(0, c.poolThreads);
         assertEquals(1, c.maxInFlight);
+    }
+    @Test void moddedMobAsyncFollowsTheTierAndTheFlagIndependently() {
+        PathWeaverConfig c = new PathWeaverConfig();
+        // The default must keep mod-defined mobs synchronous; this is the gate's whole purpose.
+        assertSame(CompatibilityTier.STRICT, c.compatibilityTier);
+        assertFalse(c.allowModdedMobAsync);
+        assertFalse(c.moddedMobAsyncAllowed(), "default must not dispatch mod-defined mobs");
+
+        c.compatibilityTier = CompatibilityTier.AUDITED;
+        assertFalse(c.moddedMobAsyncAllowed(),
+            "AUDITED rests on per-artifact proofs and grants nothing about mob subclasses");
+
+        // ALL means all: the operator asked for no checking, and the origin gate is a check.
+        c.compatibilityTier = CompatibilityTier.ALL;
+        assertTrue(c.moddedMobAsyncAllowed(), "ALL must not silently keep modded mobs synchronous");
+
+        // The dedicated flag stays reachable from the stricter tiers.
+        c.compatibilityTier = CompatibilityTier.STRICT;
+        c.allowModdedMobAsync = true;
+        assertTrue(c.moddedMobAsyncAllowed());
+    }
+    @Test void moddedMobBypassNeverNamesTheTierEnumInItsSignature() throws Exception {
+        // The only caller is a mixin applied during early transformation. Returning the enum, or
+        // taking it as a parameter, would force it -- and the Cloth GUI interface it implements --
+        // to resolve at that moment. Keep the accessor primitive.
+        assertSame(boolean.class,
+            PathWeaverConfig.class.getMethod("moddedMobAsyncAllowed").getReturnType());
+        assertEquals(0,
+            PathWeaverConfig.class.getMethod("moddedMobAsyncAllowed").getParameterCount());
     }
     @Test void saveListenerNormalizesAndPublishesTheSavedObject() {
         PathWeaverConfig previous = PathWeaverConfig.get();

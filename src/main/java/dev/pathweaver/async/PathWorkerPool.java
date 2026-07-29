@@ -81,6 +81,15 @@ public class PathWorkerPool {
                     req.onDone().accept(outcome);
                 } catch (Throwable callbackFailure) {
                     logCompletionFailure(generation, callbackFailure);
+                    // The completion consumer normally hands the outcome to the main-thread
+                    // installer. If it threw, queue an exact-key discard through a separate,
+                    // deliberately tiny fallback. Never touch the sink/navigation here: this is a
+                    // worker thread, and rollback plus mob callbacks are main-thread-owned.
+                    try {
+                        req.onDeliveryFailure().accept(req.key());
+                    } catch (Throwable fallbackFailure) {
+                        logCompletionFailure(generation, fallbackFailure);
+                    }
                 }
             });
             return true;

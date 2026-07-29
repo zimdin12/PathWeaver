@@ -170,6 +170,51 @@ class PathNavigationRoutingContractTest {
         assertEquals(4, wrapperCount, "all navigation routing wrappers must be exercised");
     }
 
+    @Test void dispatchInterceptorNeverNamesTheCompatibilityTierEnum() throws Exception {
+        // This mixin is applied to a vanilla class during early transformation. Naming the tier enum
+        // in its bytecode forces that enum -- and through it the Cloth GUI interface it implements
+        // for its settings label -- to resolve at that moment, which stalls server startup. Both
+        // tier-derived decisions must therefore be read through primitive accessors on the config.
+        // Enforced against the bytes rather than trusted to a comment, because the comment did not
+        // stop it happening the first time.
+        Set<String> offendingReferences = new HashSet<>();
+        new ClassReader(classBytes(PathNavigationMixin.class)).accept(new ClassVisitor(Opcodes.ASM9) {
+            @Override public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                                       String signature, String[] exceptions) {
+                return new MethodVisitor(Opcodes.ASM9) {
+                    @Override public void visitFieldInsn(int opcode, String owner, String field,
+                                                         String fieldDescriptor) {
+                        if (fieldDescriptor.contains("CompatibilityTier")
+                                || owner.contains("CompatibilityTier")) {
+                            offendingReferences.add(name + " -> field " + owner + "." + field);
+                        }
+                    }
+                    @Override public void visitMethodInsn(int opcode, String owner, String method,
+                                                          String methodDescriptor, boolean isInterface) {
+                        if (owner.contains("CompatibilityTier")
+                                || methodDescriptor.contains("CompatibilityTier")) {
+                            offendingReferences.add(name + " -> call " + owner + "." + method);
+                        }
+                    }
+                    @Override public void visitTypeInsn(int opcode, String type) {
+                        if (type.contains("CompatibilityTier")) {
+                            offendingReferences.add(name + " -> type " + type);
+                        }
+                    }
+                };
+            }
+        }, 0);
+        assertEquals(Set.of(), offendingReferences,
+            "read tier-derived decisions through a primitive config accessor instead");
+
+        // And the accessors it does use must stay primitive, or the reference moves rather than goes.
+        for (String accessor : List.of("bypassesCompatibilityScan", "moddedMobAsyncAllowed")) {
+            assertEquals(boolean.class,
+                dev.pathweaver.config.PathWeaverConfig.class.getMethod(accessor).getReturnType(),
+                accessor);
+        }
+    }
+
     private static void assertInjection(String name, int require, int expect, Class<?>... parameters)
             throws NoSuchMethodException {
         Inject inject = PathNavigationMixin.class.getDeclaredMethod(name, parameters)
@@ -289,6 +334,9 @@ class PathNavigationRoutingContractTest {
     }
 
     private static final class TestNavigationMixin extends PathNavigationMixin {
+        boolean stopped;
+        @Override public void stop() { stopped = true; this.path = null; }
+
         @Override protected boolean canUpdatePath() { return true; }
         @Override public boolean moveTo(Path path, double speed) { return false; }
     }

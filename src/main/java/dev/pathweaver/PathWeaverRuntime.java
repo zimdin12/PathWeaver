@@ -65,11 +65,15 @@ public final class PathWeaverRuntime {
             epoch, c.resolvedPoolThreads(), c.maxInFlight);
         PathWeaver.LOG.info("Mob-origin CodeSource probe: Mob={}, Zombie={}, moddedBypass={}.",
             MobOriginGate.isAllowed(Mob.class, false), MobOriginGate.isAllowed(Zombie.class, false),
-            c.allowModdedMobAsync);
-        if (c.asyncEnabled && !c.syncFallbackOnly) {
+            c.moddedMobAsyncAllowed());
+        if (c.enabled) {
             PathWeaver.LOG.warn("Experimental async boundary: mod-defined mobs are {} by the origin gate; "
                     + "vanilla-class Mixins and live mob/world/block reads remain unsnapshotted.",
-                c.allowModdedMobAsync ? "explicitly allowed (unsafe override)" : "synchronous");
+                c.moddedMobAsyncAllowed()
+                    ? (c.allowModdedMobAsync
+                        ? "explicitly allowed (unsafe override)"
+                        : "allowed by compatibilityTier=ALL (unsafe)")
+                    : "synchronous");
         }
     }
 

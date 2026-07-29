@@ -15,6 +15,9 @@ import net.minecraft.world.InteractionResult;
 public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Gui.Excluded
     @ConfigEntry.Category("general")
+    public static final int CURRENT_CONFIG_VERSION = 2;
+    @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
     public static final int MAX_POOL_THREADS = 64;
     @ConfigEntry.Gui.Excluded
     @ConfigEntry.Category("general")
@@ -31,11 +34,28 @@ public class PathWeaverConfig implements ConfigData {
 
     @ConfigEntry.Gui.Tooltip
     @ConfigEntry.Category("general")
-    public boolean asyncEnabled = true;
+    public boolean enabled = true;
+
+    @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
+    public int configVersion = CURRENT_CONFIG_VERSION;
 
     @ConfigEntry.Gui.Tooltip
     @ConfigEntry.Category("general")
     public boolean allowModdedMobAsync = false;
+
+    /**
+     * How much risk to accept from mods that modify pathfinding. See {@link CompatibilityTier}.
+     *
+     * <p>Defaults to {@link CompatibilityTier#STRICT}, which only runs off-thread where a worker
+     * provably cannot observe the foreign change. Raising it is how a server owner trades a
+     * possible wrong path for tick headroom on a pack the strict rule would otherwise disable.
+     */
+    @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Category("general")
+    @ConfigEntry.Gui.RequiresRestart
+    @ConfigEntry.Gui.EnumHandler(option = ConfigEntry.Gui.EnumHandler.EnumDisplayOption.BUTTON)
+    public CompatibilityTier compatibilityTier = CompatibilityTier.STRICT;
 
     @ConfigEntry.Gui.Tooltip
     @ConfigEntry.Category("general")
@@ -51,9 +71,6 @@ public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Category("performance")
     public int maxInFlight = 256;
 
-    @ConfigEntry.Gui.Tooltip
-    @ConfigEntry.Category("general")
-    public boolean syncFallbackOnly = false;         // panic switch: never dispatch async
 
     @ConfigEntry.Gui.Tooltip
     @ConfigEntry.Category("repath")
@@ -80,8 +97,7 @@ public class PathWeaverConfig implements ConfigData {
     /** Keep pathfinding synchronous if persisted configuration cannot be registered or loaded. */
     public static void installFailClosedDefaults() {
         PathWeaverConfig fallback = new PathWeaverConfig();
-        fallback.asyncEnabled = false;
-        fallback.syncFallbackOnly = true;
+        fallback.enabled = false;
         set(fallback);
     }
 
@@ -89,6 +105,35 @@ public class PathWeaverConfig implements ConfigData {
     public static void publishLoaded(PathWeaverConfig loaded, boolean loadFailed) {
         if (loadFailed) installFailClosedDefaults();
         else set(loaded);
+    }
+
+    /**
+     * True when the operator asked for no compatibility checking at all.
+     *
+     * <p>Exposed as a primitive on purpose. The dispatch interceptor is a mixin applied to a vanilla
+     * class during early transformation; naming {@link CompatibilityTier} in its bytecode forces
+     * that enum -- and, through it, the Cloth GUI interface it implements for its settings label --
+     * to resolve at that moment, which stalls server startup. Reading the tier behind a boolean
+     * keeps that resolution on the ordinary configuration path.
+     */
+    public boolean bypassesCompatibilityScan() {
+        return compatibilityTier.bypassesScan();
+    }
+
+    /**
+     * True when a mob defined by a mod may path off-thread.
+     *
+     * <p>{@link CompatibilityTier#ALL} implies this. The origin gate is a compatibility check like
+     * any other — it refuses mod-defined mob classes because their navigation overrides have not
+     * been inspected — so leaving it armed under "ignore every check" kept most of a heavily-modded
+     * pack's mobs synchronous while reporting that nothing was being checked. The dedicated flag is
+     * retained so the bypass is still reachable from the stricter tiers.
+     *
+     * <p>Primitive for the same reason as {@link #bypassesCompatibilityScan()}: the caller is a
+     * mixin applied during early transformation and must not name the tier enum.
+     */
+    public boolean moddedMobAsyncAllowed() {
+        return allowModdedMobAsync || compatibilityTier.bypassesScan();
     }
 
     public static InteractionResult onSave(
@@ -103,6 +148,7 @@ public class PathWeaverConfig implements ConfigData {
      */
     @Override
     public void validatePostLoad() {
+        configVersion = CURRENT_CONFIG_VERSION;
         poolThreads = Math.clamp(poolThreads, 0, MAX_POOL_THREADS);
         maxInFlight = Math.clamp(maxInFlight, 1, MAX_IN_FLIGHT);
         repathToleranceBlocks = Math.clamp(

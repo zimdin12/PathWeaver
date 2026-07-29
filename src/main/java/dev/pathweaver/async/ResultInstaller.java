@@ -16,20 +16,32 @@ public class ResultInstaller {
     }
 
     private record Result(RequestKey key, long dispatchTick, PathOutcome outcome,
-                          double x, double y, double z) { }
+                          double x, double y, double z, boolean discardOnly) { }
 
     private final ConcurrentLinkedQueue<Result> queue = new ConcurrentLinkedQueue<>();
 
     /** Called from a worker thread. */
     public void enqueue(RequestKey key, long dispatchTick, PathOutcome outcome,
                         double x, double y, double z) {
-        queue.add(new Result(key, dispatchTick, outcome, x, y, z));
+        queue.add(new Result(key, dispatchTick, outcome, x, y, z, false));
+    }
+
+    /**
+     * Called from a worker when its normal completion consumer threw. The exact-key discard is
+     * queued rather than executed here so navigation state and callbacks remain main-thread-owned.
+     */
+    public void enqueueDiscard(RequestKey key) {
+        queue.add(new Result(key, 0L, null, 0.0, 0.0, 0.0, true));
     }
 
     /** Called on the main thread; delivers each queued result exactly once. */
     public void drain(InstallSink sink) {
         Result result;
         while ((result = queue.poll()) != null) {
+            if (result.discardOnly()) {
+                sink.discard(result.key());
+                continue;
+            }
             switch (result.outcome().status()) {
                 case NO_PATH -> sink.noPath(result.key());
                 case FAILED -> sink.failed(result.key(), result.outcome().failure());
