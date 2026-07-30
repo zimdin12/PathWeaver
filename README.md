@@ -87,7 +87,7 @@ Mean reduction **41%**, which lands on the same number as the isolated environme
 
 Take from this that the *shape* of the win holds at pack scale — large p99 reduction, no overlap between arms — while the *size* of it is less predictable than the isolated benchmark suggests.
 
-### Do not raise `maxInFlight` to fix discards
+### `maxInFlight`: leave it alone unless you know which side you want
 
 An earlier revision of this file said `maxInFlight` was "the knob that matters when discards climb", which implied raising it. **That was wrong, and measurably so.** Sweeping it on the same 371-mod pack, same load, with the shipped default repeated last so drift could not flatter the larger values:
 
@@ -100,11 +100,13 @@ An earlier revision of this file said `maxInFlight` was "the knob that matters w
 
 These count what the capture observed, not what was terminally thrown away: the harness halts at the end of the window, so the 4096 row says *nothing landed while we were watching*, not that every search was ultimately discarded.
 
-The limit is not a buffer that catches overflow — it is an admission bound, and widening it converts refusals into latency. Workers are a fixed pool, so a deeper queue means each result lands later; a result that arrives after its mob has already asked again is superseded and dropped. In this workload every mob repaths every 6 ticks, so once the queue exceeds a few ticks of work, essentially nothing survives to be installed.
+The limit is not a buffer that catches overflow — it is an admission bound, and widening it converts refusals into latency. Workers are a fixed pool, so a deeper queue means each result lands later; a result that arrives after its mob has already asked again is superseded. In this workload every mob repaths every 6 ticks, so once the queue exceeds a few ticks of work, little survives to be installed.
+
+**But do not conclude from that that lower is better.** Sweeping the limit against load (512/1024/1536 mobs) and against worker count (4/8/16) gives the same answer every time: **256 has the better p99, by 8–30%, while 64 leaves almost no work unused (1% against 13–16%). Mean tick time is indistinguishable between them.** A refused request does not disappear — it runs synchronously on the tick, which is where spikes come from — so the larger bound buys tail latency with worker CPU. Since this mod exists to cut spikes rather than raise averages, **the shipped 256 is the right side of that trade and stays.** Below about 64 it stops paying entirely: at 1024 mobs, `maxInFlight=32` was worse on both, 62.7 ms mean and a worse p99 than either larger limit. Full tables in [COMPATIBILITY.md](COMPATIBILITY.md).
 
 Note what that failure looks like from outside: **no errors, and still 20 TPS.** The pool burns CPU on searches nothing consumes while the server looks healthy. Because that is invisible, PathWeaver now samples its own install ratio once a minute and logs a warning naming `maxInFlight` and `poolThreads` if under a quarter of completed searches are being used.
 
-If discards are high, **lower** `maxInFlight` or **raise** `poolThreads`.
+So: lower `maxInFlight` only if worker CPU is scarce and you would rather spend tick time than cores. Raising it above 256 is the one clearly bad move — 1024 and 4096 wasted almost everything.
 
 **On reading tick time and tick rate together.** Effective tick rate is derived from mean tick interval (`mean > 50 ms ? 1000/mean : 20`), not measured separately, so "tick time halved" and "tick rate doubled" are one fact stated twice rather than two independent results. The `20.0` is a clamp: any mean at or under the 50 ms budget reports exactly 20.0, and a server with headroom sleeps to hold that rate, so this metric cannot show how much spare capacity the async arm actually had. The independent signals in these tables are **p99** and **main-thread cost per request**.
 

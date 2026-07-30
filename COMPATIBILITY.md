@@ -300,27 +300,60 @@ this workload: it walked its bound down to the floor because roughly 45% of comp
 and 49.4 ms for a fixed 64 — because it starved the pool chasing a ratio that could not be reached.
 It is not shipped. Doing it properly needs the discard counter split by cause first.
 
-### `maxInFlight`: the shipped default is too high
+### `maxInFlight`: a real trade, and the shipped default is the right side of it
 
-Confirmed in a second pass with the default interleaved first and last, so drift cannot manufacture
-the effect:
+An earlier revision of this section claimed the shipped 256 was too high and that 64 beat it on every
+axis. **That was wrong.** It rested on two sessions of a single workload — 1024 mobs, 8 worker
+threads — where ambient machine load happened to favour the lower limit on mean tick time, and it
+never looked at p99 across loads. Sweeping the limit against load and against worker count says
+something different and consistent.
 
-| `maxInFlight` | Runs | Mean | Unused | Dispatched |
+Three loads, auto worker threads:
+
+| Mobs | Setting | Mean | p99 | TPS | Unused |
+|---|---|---|---|---|---|
+| 512 | synchronous | 50.4 ms | 483 ms | 19.8 | — |
+| 512 | `maxInFlight=32` | 50.0 ms | 271 ms | 20.0 | 1.0% |
+| 512 | `maxInFlight=64` | 50.0 ms | 261 ms | 20.0 | 1.1% |
+| 512 | `maxInFlight=256` | 50.0 ms | **184 ms** | 20.0 | 1.6% |
+| 1024 | synchronous | 82.5 ms | 777 ms | 12.1 | — |
+| 1024 | `maxInFlight=32` | 62.7 ms | 554 ms | 16.0 | 0.8% |
+| 1024 | `maxInFlight=64` | 49.7 ms | 427 ms | 20.0 | 1.0% |
+| 1024 | `maxInFlight=256` | 50.1 ms | **373 ms** | 20.0 | 16.0% |
+| 1536 | synchronous | 128.3 ms | 1793 ms | 7.8 | — |
+| 1536 | `maxInFlight=32` | 81.1 ms | 731 ms | 12.3 | 1.2% |
+| 1536 | `maxInFlight=64` | 78.3 ms | 682 ms | 12.8 | 0.9% |
+| 1536 | `maxInFlight=256` | 78.4 ms | **634 ms** | 12.8 | 13.1% |
+
+And at three worker counts, 1024 mobs:
+
+| Threads | `maxInFlight` | Mean | p99 | Unused |
 |---|---|---|---|---|
-| 64 | 2 | **49.4 ms** | **0.9%** | 65197 / 61511 |
-| 128 | 1 | 49.7 ms | 4.0% | 64933 |
-| 256 *(shipped)* | 2 | 53.7 ms | 29.5% | 51520 / 48803 |
+| 4 | 64 / 256 | 50.0 / 50.1 ms | 412 / **340** ms | 1.0 / 16.0% |
+| 8 | 64 / 256 | 49.7 / 50.1 ms | 427 / **373** ms | 1.0 / 16.0% |
+| 16 | 64 / 256 | 54.2 / 54.0 ms | 443 / **384** ms | 1.0 / 15.2% |
 
-Lowering it is better on every axis at once: about 8% lower mean tick time, roughly thirty times less
-wasted work, and **more** searches completed rather than fewer. That last part is the counter-intuitive
-bit and the reason the limit is not a buffer — a smaller admission bound means each accepted search
-finishes sooner, so it is still wanted when it lands, and the mob can ask again sooner.
+**The same shape at every load and every worker count.** Mean tick time is indistinguishable — the
+drift control moved 7.8% between the first and last identical arm, so nothing smaller than that is
+resolvable. What separates the limits is a genuine trade:
 
-Together with the pack-scale sweep, where 1024 and 4096 wasted 90.7% and effectively everything, the
-relationship is monotonic across two orders of magnitude: **lower is better on this workload down to
-at least 64.** The shipped default of 256 is left unchanged in this release because changing it is a
-behaviour change that would need its own review pass; it is documented here so an operator can lower
-it deliberately.
+- **256 gives consistently better p99**, by 8% to 30% depending on load.
+- **64 leaves almost no work unused**, 1% against 13–16%.
+
+Both directions of that are explained by the same mechanism. A request refused at admission does not
+disappear; it runs synchronously on the main thread. A smaller bound fills more often, so more
+searches fall back onto the tick — which is exactly where the spikes come from. A larger bound
+absorbs more of them, and pays for it by starting work that is sometimes no longer wanted when it
+lands. The wasted searches are the price of the tail latency, spent on worker threads rather than on
+the tick.
+
+Since the entire point of this mod is spike reduction rather than average throughput, **p99 is the
+metric that decides, and the shipped default of 256 is on the right side of the trade.** It stays.
+
+Below about 64 the trade stops paying: at 1024 mobs `maxInFlight=32` gives up both, at 62.7 ms mean
+and a worse p99 than either larger limit, because so much is being refused onto the main thread.
+
+Lower it only if worker CPU is itself scarce and you would rather spend tick time than cores.
 
 ## Shipped-artifact verification, outside Loom
 

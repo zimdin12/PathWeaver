@@ -100,14 +100,19 @@ On a busy pack the workers compete with everything else, so more results arrive 
 shape of the win holds; the size is less predictable than the isolated benchmark suggests. If you see
 heavy discarding, `maxInFlight` is the knob.
 
-**Do not raise `maxInFlight` to fix results going unused.** It is an admission bound, not a buffer.
+**`maxInFlight` is an admission bound, not a buffer — and the default is already where it should be.**
 Sweeping it on that pack, measured as dispatches not installed within the capture window: 13.5% at
 the shipped 256, **90.7% at 1024, and nothing at all installed during the window at 4096** -- because
 workers are a fixed pool, so a deeper queue only makes each result land later, and a result that
 arrives after its mob has asked again is superseded. That failure shows no errors and still
 reports 20 TPS, so 0.3.0 now samples its own install ratio once a minute and warns if under a quarter
-of completed searches are being used. If you see heavy discarding, **lower** `maxInFlight` or **raise**
-`poolThreads`.
+of completed searches are being used.
+
+Swept against load (512/1024/1536 mobs) and worker count (4/8/16), the picture is consistent: 256 has
+the better p99 by 8–30%, while 64 leaves almost no work unused, and mean tick time is the same either
+way. A refused request runs on the tick instead, so the larger bound trades some wasted worker CPU
+for a shorter tail — the right trade for a mod whose purpose is cutting spikes. **Leave it at 256**
+unless worker CPU is scarce. Raising it is the clearly bad move.
 
 This is a synthetic burst with all other mob AI stripped out. It shows what happens when pathfinding
 alone overloads a server. It is not a measurement of ordinary play, and PathWeaver's benefit is
