@@ -284,6 +284,22 @@ since dispatch, and a moving mob always has. The setting exists to reject result
 describe where the mob is; set to zero it rejects everything. Nothing in the config validation stops
 this, because zero is a legal distance.
 
+### What `discarded` in the stats line actually counts
+
+Worth stating because it is easy to misread, and I misread it: the `discarded` counter is **not**
+dispatched-minus-installed. `PathNavigation.stop()` cancels any in-flight request for that mob and
+counts a discard, and vanilla AI calls `stop()` constantly — which is why a pack-scale run reported
+`dispatched=80663, installed=70477, discarded=83974`, with more discards than dispatches.
+
+So `discarded` mixes two unrelated things: a result that came back too late to be wanted, and a
+request whose mob simply stopped navigating. Only the first says anything about admission. An
+adaptive controller driven on `installed / (installed + discarded)` was built and measured against
+this workload: it walked its bound down to the floor because roughly 45% of completions were
+`stop()`-cancellations at *every* bound, so no window ever looked healthy. It removed the wasted work
+(29.5% to 0.9% at the same ceiling) but cost mean tick time — 58.1 ms against 53.7 ms for a fixed 256
+and 49.4 ms for a fixed 64 — because it starved the pool chasing a ratio that could not be reached.
+It is not shipped. Doing it properly needs the discard counter split by cause first.
+
 ### `maxInFlight`: the shipped default is too high
 
 Confirmed in a second pass with the default interleaved first and last, so drift cannot manufacture
