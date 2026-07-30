@@ -7,10 +7,12 @@ _Not yet published. The audits below are version-exact; see COMPATIBILITY.md._
 ### Added
 
 - Add `compatibilityTier` (`STRICT` / `AUDITED` / `ALL`), replacing the blunt
-  `overrideCompatibilityScan` boolean. `STRICT` is the default and only runs off-thread where a
-  worker provably cannot observe another mod's change. `AUDITED` additionally honours mods proven by
-  bytecode analysis to perform no shared-state writes on the search path. `ALL` ignores the scan
-  entirely. **`AUDITED` is the shipped default**, because `STRICT` admits only structural proofs and
+  `overrideCompatibilityScan` boolean. `STRICT` only runs off-thread where a worker provably cannot
+  observe another mod's change. `AUDITED` additionally honours exemptions resting on bounded evidence
+  rather than proof, and the four mechanisms behind it are not equally strong: a field-write-opcode
+  check for Lithium and Diagonal Blocks, a direct-call inventory over six pinned classes for Fabric's
+  interaction module, a purity assumption for generic block-danger providers, and one artifact's
+  bytecode for Farmer's Delight. `ALL` ignores the scan entirely. **`AUDITED` is the shipped default**, because `STRICT` admits only structural proofs and
   the Fabric interaction exemption is a bounded call-sample, so `STRICT` denies any pack containing
   Fabric API and would ship a mod that does nothing on install. Configs carrying the retired boolean
   migrate to `ALL` when it was on and to the shipped default otherwise — that boolean selected the

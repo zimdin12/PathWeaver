@@ -419,7 +419,7 @@ standalone, so the audit passed in dev and denied in production. The released ja
 booted on a plain dedicated server built from release artifacts only.
 
 Fabric API `0.153.0+26.1.2`, Cloth Config `26.1.154`, Lithium `0.24.6+mc26.1.2`, and
-`pathweaver-0.3.0+26.1.2` (SHA-256 `9baa9f7d…4314` — **a prior release candidate, retained as historical evidence; it is not a boot of the current artifact**), on JDK 25. 1024-mob maze load,
+`pathweaver-0.3.0+26.1.2` (SHA-256 `e4a9cfd5…87a9`, the current artifact), on JDK 25. 1024-mob maze load,
 `maxInFlight=256`.
 
 | Mods added | Tier | Scan result | Dispatched |
@@ -428,6 +428,11 @@ Fabric API `0.153.0+26.1.2`, Cloth Config `26.1.154`, Lithium `0.24.6+mc26.1.2`,
 | Farmer's Delight | `ALL` | scanned=36, failed=0, denied=0 | 11133 |
 | Farmer's Delight + FerriteCore | `AUDITED` | scanned=41, failed=0, **denied=2** | **0** — `WalkNodeEvaluator`, `SwimNodeEvaluator` |
 | Farmer's Delight + FerriteCore | `ALL` | scanned=41, failed=0, denied=0 (waived, logged `WARN`) | 11132 |
+
+Re-run on the current artifact after the settings rework, four-mod set with Farmer's Delight:
+`STRICT` denied 2 families and dispatched 0; `AUDITED` denied 0 and dispatched 11112 of which 10691
+installed; `ALL` denied 0 and dispatched 11115 of which 10752 installed. Hash identity is not
+inheritable, so these are the numbers for `e4a9cfd5…87a9` specifically.
 
 The same runs also pin the mob-origin gate's tier coupling, which is otherwise easy to get silently
 wrong — a tier that reports "nothing is being checked" while most of a modded pack's mobs stay
@@ -460,6 +465,11 @@ Loading 371 mods
 Foreign-mixin scan complete: scanned=331, failed=0, deniedFamilies=0    (compatibilityTier=ALL)
 PathWeaver stats: dispatched=10975, installed=10489, discarded=708
 ```
+
+Re-run at that scale on the current artifact `e4a9cfd5…87a9`: 371 mods, `scanned=331, failed=0,
+deniedFamilies=0`, `dispatched=39674, installed=38777`. The scan census is unchanged, which is the
+point of repeating it — no compatibility code moved in the settings rework, and the boot confirms
+that rather than assuming it.
 
 `failed=0` across 331 scanned mixin configs is the load-bearing part: the scanner parsed every
 config in a pack of that size without a single fail-closed fallback.

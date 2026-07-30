@@ -1,7 +1,7 @@
 # PathWeaver 0.3.0 — Modrinth release notes (draft, not uploaded)
 
 **Version number:** `0.3.0+26.1.2` · **Type:** `alpha` · **Loader:** fabric · **Game version:** 26.1.2
-**Jar:** `pathweaver-0.3.0+26.1.2.jar` · SHA-256 `ac018ed45c4c58acbd754ebdca5aad1247228a8968e19c75efbb4daca9fc11f8`
+**Jar:** `pathweaver-0.3.0+26.1.2.jar` · SHA-256 `e4a9cfd57c6f7385402c50bac7da6293260fa0df3c183b92d0a62fde7d7e87a9`
 **Dependencies:** fabric-api (required), cloth-config (required), modmenu (optional)
 
 ---
@@ -138,10 +138,11 @@ copy — see COMPATIBILITY.md for the residual assumptions, stated plainly.
 - [x] 217 unit tests, 0 failures, 7 skipped
 - [x] Three game-test harnesses green — default 3/3; `fabricAggregateHarness` 2/2 `deniedFamilies=0`;
       `auditedTierHarness` 2/2 `deniedFamilies=0`
-- [x] Release jar booted on a dedicated server **outside** Loom's dev classpath, with Farmer's
-      Delight and FerriteCore loaded, at every tier
-- [x] Release jar booted at **modpack scale** — 371 mods, 331 mixin configs scanned, 0 failures —
-      with a paired A/B and the audited-tier denial list read from the live scan
+- [x] **This** jar booted on a dedicated server **outside** Loom's dev classpath at every tier:
+      `STRICT` denied 2 and dispatched 0; `AUDITED` dispatched 11112; `ALL` dispatched 11115
+- [x] **This** jar booted at **modpack scale** — 371 mods, 331 mixin configs scanned, 0 failures,
+      39674 dispatched. The paired A/B and the audited-tier denial list are retained evidence from a
+      prior candidate; the compatibility code is unchanged, but those numbers were not re-measured
 - [x] Both accelerated families load-tested: Walk (1024 zombies) and Swim (1024 cod, 95204 searches)
 - [x] Farmer's Delight audit verified both ways outside Loom — `AUDITED` dispatches, `STRICT` refuses
 - [x] Clean build from `master` reproduces the jar hash byte-for-byte
