@@ -24,33 +24,33 @@ The tier is read once, when the startup scan computes this evidence, and is froz
 
 ### ServerCore `1.5.19+26.1.2`
 
-- Configs: `servercore.common.mixins.json`, SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`; `servercore.fabric.mixins.json`, SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`
-- Mixin: `me.wesley1808.servercore.mixin.optimizations.misc.PathFinderMixin`, SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`
-- Plugin: `me.wesley1808.servercore.mixin.ServerCoreMixinPlugin`, SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`
-- Vanilla `PathFinder`, SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`
+- Configs: `servercore.common.mixins.json`, SHA-256 `39a5120066542578e74e3775a880d14f04bee935e2d6764132cdf3f7d7af82a7`; `servercore.fabric.mixins.json`, SHA-256 `93b73019559e3c40245fc684d3d4e1b06049362ae3eaa5db53b179807a014a9f`
+- Mixin: `me.wesley1808.servercore.mixin.optimizations.misc.PathFinderMixin`, SHA-256 `ff0e986419f4685469063772c85e477810dfe425bf33a1ad1a62ed65ac6aefa7`
+- Plugin: `me.wesley1808.servercore.mixin.ServerCoreMixinPlugin`, SHA-256 `0e6ddc8d3c66c7e5826831845e0da41f6594b758a128d207419083b081e33cf6`
+- Vanilla `PathFinder`, SHA-256 `095d620eaac37aa71af017858682e89689039a3b999cf2a5fcfce3f1c3973b2c`
 - Shape proof: exactly three `@Redirect` sites on the exact public `findPath` descriptor; the first two return null sentinels, and the third allocates a local `Object2ObjectOpenHashMap`, iterates the request-local target set, and calls only `NodeEvaluator.getTarget` plus collection/value accessors. Its only field read is the per-search `nodeEvaluator`; no field write exists.
 - Plugin proof: `getMixins()` returns null and `acceptTargets`, `preApply`, and `postApply` are inert. The prepared runtime claim proves the configured PathFinder mixin was actually selected.
 
 ### rabbit-pathfinding-fix `1.3.0`
 
-- Config: `rabbit-pathfinding-fix.mixins.json`, SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`
-- Mixin: `net.litetex.rpf.mixin.EntityNavigationMixin`, SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`
-- Vanilla `PathNavigation`, SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`
-- Pinned worker `PathFinder`, SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`
+- Config: `rabbit-pathfinding-fix.mixins.json`, SHA-256 `4adce45f270e2890686cd403392fdb81f1450024ff6814df04e51c57ec49fde6`
+- Mixin: `net.litetex.rpf.mixin.EntityNavigationMixin`, SHA-256 `bb31e6819c0d00216c9f2841849beff0ce5234f298d804876a91f7e5b225926b`
+- Vanilla `PathNavigation`, SHA-256 `ecfbf40003f91522f8cb99da84ff4ab9e4891e9511808412421fc640be7b339e`
+- Pinned worker `PathFinder`, SHA-256 `095d620eaac37aa71af017858682e89689039a3b999cf2a5fcfce3f1c3973b2c`
 - Shape proof: exactly two injections, into `doStuckDetection(Vec3)` at the pinned `Path.getNextNodePos()` invocation and into `resetStuckTimeout()` at `TAIL`. The pinned worker pool invokes one submitted `Callable`; its exact generated search closure invokes the pinned `PathFinder.findPath` descriptor and contains no `PathNavigation` call. A test-only live injection into both Rabbit-modified methods observed zero entries while `PathWeaverThread.isWorker()` across the exact dispatch/install witness.
 
 ## Milestone 2 evidence details
 
 ### Fabric content registries `11.2.1+76b0b6bb4c`
 
-- Module SHA-256 `d1c8a0a2753850ec422f9c03824a0475a24f1d27bbbf1227d9f9d952406bebd1`; config SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`.
-- Exact `LandPathTypeRegistry` SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`; exact hooks prove both registration routes mutate `PATH_TYPES` and the lookup route reads it.
+- Module SHA-256 `d1c8a0a2753850ec422f9c03824a0475a24f1d27bbbf1227d9f9d952406bebd1`; config SHA-256 `0e9df73ad0f08696f4bf99024307b8b72151d13c7626f23e456d115b9eb65f9e`.
+- Exact `LandPathTypeRegistry` SHA-256 `292f7f5c80e2a7afe220e050940e83448e38262d1d517a3b89eb50f5ad138a9c`; exact hooks prove both registration routes mutate `PATH_TYPES` and the lookup route reads it.
 - Ordering contract: registration publishes a monotonic atomic latch before `PATH_TYPES.put`; dispatch reads that latch; workers cancel the provider lookup before its live `IdentityHashMap` read; main-thread installation rechecks the latch only for exact Walk requests captured under the sealed-empty assumption.
 - Explicit interleaving tests pin all outcomes: dispatch after publication denies; registration between dispatch and install discards that exact result; install before registration linearizes the empty-registry result before Fabric's later non-retroactive mutation. There is no production reset.
 
 ### Fabric events interaction `5.2.2+07b380be4c`
 
-- Module SHA-256 `dc4a15c9250c6d0e5839e5b696792b06869c65f1ab7e71627986d8f9ed247d60`; config SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`; mixin SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`.
+- Module SHA-256 `dc4a15c9250c6d0e5839e5b696792b06869c65f1ab7e71627986d8f9ed247d60`; config SHA-256 `9a8445db121fce8e80c928290b8623f2f6e126459fddcb259b2016ae777f9759`; mixin SHA-256 `c35a9d60b12e32f2b1540b0116f6459bf515e8d1901dc18be5ebff9fd5bf72e7`.
 - The exact mixin has only the two pinned cancellable `HEAD` injections on `useItemOn` and `useWithoutItem`. The MC 26.1.2 worker `BlockState` invocation inventory is pinned to `is`, `getFluidState`, `isAir`, `isPathfindable`, `getCollisionShape`, `getBlock`, and `getValue`; neither interaction descriptor is reachable.
 - Altered module/config/mixin/vanilla bytes, wrong version, plugin contribution, changed selector, added injector, added sensitive claim, incomplete bundle, and ambiguous module origin all deny.
 
@@ -74,9 +74,9 @@ Lithium decides whether PathWeaver does anything on a real performance modpack, 
 the exact artifact rather than trusted by name. The artifact verified here is byte-identical to the
 Modrinth release (`sha1 7631a4e81fcca6290bc32374a4338148bd2ba1ae`).
 
-- Configs: `lithium.mixins.json`, SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`; `lithium-fabric.mixins.json`, SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`
-- Plugin: `net.caffeinemc.mods.lithium.mixin.LithiumMixinPlugin`, SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`. Unlike ServerCore's, this plugin is *not* inert — it selects mixins from `lithium.properties`. It is therefore pinned by hash and every exempted claim carries its plugin identity, so a pack with different Lithium options produces different claims and falls back to denial rather than reusing this audit.
-- Audited mixins: `ai.pathing.BlockStateBaseMixin` `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`; `ai.pathing.WalkNodeEvaluatorMixin` `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`; `ai.pathing.PathNavigationRegionMixin` `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`; `ai.pathing.PathfindingContextMixin` `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`; `ai.pathing.PathfindingContextAccessor` `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`; `util.block_tracking.BlockStateBaseMixin` `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`; `util.chunk_access.PathNavigationRegionMixin` `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`; `entity.inactive_navigations.PathNavigationMixin` `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`
+- Configs: `lithium.mixins.json`, SHA-256 `f9674d7b9bb56ba70aedae56bb07c46ed82b94f554c8573a1a8420350827dd37`; `lithium-fabric.mixins.json`, SHA-256 `e1bfe4635f34f0924b85d607fbd2416896a6591176bd4849b19047dd27c40c29`
+- Plugin: `net.caffeinemc.mods.lithium.mixin.LithiumMixinPlugin`, SHA-256 `b97aed37b9ed2f2bd81868682ce8aac62808ec775fa3899afbca751ea204226a`. Unlike ServerCore's, this plugin is *not* inert — it selects mixins from `lithium.properties`. It is therefore pinned by hash and every exempted claim carries its plugin identity, so a pack with different Lithium options produces different claims and falls back to denial rather than reusing this audit.
+- Audited mixins: `ai.pathing.BlockStateBaseMixin` `98e0029073adbf8ff610e6e69af696fc28d914b17e8c0d0bd78a22a806fccd19`; `ai.pathing.WalkNodeEvaluatorMixin` `ac04c4283d7502861410749c5d77ab83e02639166504f948630dee15a6953c73`; `ai.pathing.PathNavigationRegionMixin` `cb06d8689a5a77e54e77d0443611d3c3b3929b3ef61d0b423a7caead44d93593`; `ai.pathing.PathfindingContextMixin` `2dbd5a9f785ee775b8070b3add8a878154eb2d514e3df0b8a7878e449c2e2fea`; `ai.pathing.PathfindingContextAccessor` `88bac968c7a2476d802617aab427a54138cfffa49160b09981ccc3c01e3105b1`; `util.block_tracking.BlockStateBaseMixin` `4471cdb6ee762517ee42b1f7f4e2fc78e477547940900f1c34c290d1c811fc75`; `util.chunk_access.PathNavigationRegionMixin` `4bd80e9ef6c9bdccd0fdb1544cf5f7efc18fab24a5dca546e36eb2a6f94d885d`; `entity.inactive_navigations.PathNavigationMixin` `0c14996f3832bd7e8f2c51a963fa260f7a4f95bb3fe6311098a33102340ef146`
 
 **Shape proof.** The load-bearing property is that nothing a worker executes writes shared state, and
 it is enforced structurally rather than asserted. Every `PUTFIELD`/`PUTSTATIC` in the audited classes
@@ -116,8 +116,8 @@ Shipped as a jar nested inside Diagonal Fences, Walls and Windows. The audited a
 nested `diagonalblocks-fabric-26.1.0.jar`, SHA-256
 `df59211601dc83718ec0189a56c9f5569a0654f56a58fbbd644ea462a51b74d6`.
 
-- Config: `diagonalblocks.common.mixins.json`, SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`. No mixin plugin.
-- Mixin: `fuzs.diagonalblocks.common.mixin.WalkNodeEvaluatorMixin`, SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`
+- Config: `diagonalblocks.common.mixins.json`, SHA-256 `8aeca65fac6618bb8d7c266c5b4194af876a963fabd77c55f86c9131abfe6ea8`. No mixin plugin.
+- Mixin: `fuzs.diagonalblocks.common.mixin.WalkNodeEvaluatorMixin`, SHA-256 `fb5324c681fac2f33145fc67560f2162059353ab5e010d29405af1119d063381`
 - The sibling `accessor.BlockBehaviorAccessor` targets `BlockBehaviour`, which is not a watched class, so it contributes no sensitive claim.
 
 **Shape proof.** The override performs no field write at all. It reads block state only through the
@@ -188,7 +188,7 @@ precomputed. Such a registration still denies Walk for the remainder of the proc
 
 ### Audited exception: Farmer's Delight's stove
 
-`farmersdelight 26.1-3.6.7+refabricated` (artifact SHA-256 `9baa9f7d…4314`) registers a *dynamic*
+`farmersdelight 26.1-3.6.7+refabricated` (artifact SHA-256 `25adee63…c636`) registers a *dynamic*
 provider on its stove, so the rule above would deny Walk for the whole process. Farmer's Delight is
 common enough that this alone switched PathWeaver off on a large number of packs — and the denial is
 conservative rather than necessary:
