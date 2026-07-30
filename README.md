@@ -69,7 +69,26 @@ The four-mod environment isolates the effect but says nothing about a pack where
 
 Mean reduction **41%**, which lands on the same number as the isolated environment. But the spread is much wider, and the reason is visible in the discard rate: **13.4% in the first pair and 38.0% in the second**. On a busy pack the workers contend with everything else the pack is doing, so more results arrive too late to use and get recomputed. The second pair could not reach 20 TPS at all.
 
-Take from this that the *shape* of the win holds at pack scale — large p99 reduction, no overlap between arms — while the *size* of it is less predictable than the isolated benchmark suggests, and `maxInFlight` is the knob that matters when discards climb.
+Take from this that the *shape* of the win holds at pack scale — large p99 reduction, no overlap between arms — while the *size* of it is less predictable than the isolated benchmark suggests.
+
+### Do not raise `maxInFlight` to fix discards
+
+An earlier revision of this file said `maxInFlight` was "the knob that matters when discards climb", which implied raising it. **That was wrong, and measurably so.** Sweeping it on the same 371-mod pack, same load, with the shipped default repeated last so drift could not flatter the larger values:
+
+| `maxInFlight` | Installed | Discarded |
+|---|---|---|
+| 256 | 45781 | **13.5%** |
+| 1024 | 6165 | **90.7%** |
+| 4096 | **0** | **100%** |
+| 256 (repeat) | 25715 | 34.7% |
+
+The limit is not a buffer that catches overflow — it is an admission bound, and widening it converts refusals into latency. Workers are a fixed pool, so a deeper queue means each result lands later; a result that arrives after its mob has already asked again is superseded and dropped. In this workload every mob repaths every 6 ticks, so once the queue exceeds a few ticks of work, essentially nothing survives to be installed.
+
+Note what that failure looks like from outside: **no errors, and still 20 TPS.** The pool burns CPU on searches nothing consumes while the server looks healthy. Because that is invisible, PathWeaver now samples its own install ratio once a minute and logs a warning naming `maxInFlight` and `poolThreads` if under a quarter of completed searches are being used.
+
+If discards are high, **lower** `maxInFlight` or **raise** `poolThreads`.
+
+**On reading tick time and tick rate together.** Effective tick rate is derived from mean tick interval (`mean > 50 ms ? 1000/mean : 20`), not measured separately, so "tick time halved" and "tick rate doubled" are one fact stated twice rather than two independent results. The `20.0` is a clamp: any mean at or under the 50 ms budget reports exactly 20.0, and a server with headroom sleeps to hold that rate, so this metric cannot show how much spare capacity the async arm actually had. The independent signals in these tables are **p99** and **main-thread cost per request**.
 
 ### Earlier figures, measured with the gate forced open
 

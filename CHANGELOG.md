@@ -31,6 +31,14 @@ _Not yet published. The audits below are version-exact; see COMPATIBILITY.md._
 
 ### Fixed
 
+- Warn when almost no search result is being used. Sweeping `maxInFlight` on a 371-mod pack showed it
+  is an admission bound rather than a buffer: widening it converts refusals into latency, and a result
+  that lands after its mob has asked again is superseded and dropped. At 1024 mobs repathing every 6
+  ticks, 13.5% of searches were discarded at the shipped 256, 90.7% at 1024, and effectively all of
+  them at 4096 -- with no errors logged and the server still at 20 TPS, so the pool burned CPU on work
+  nothing consumed while looking healthy. The install ratio is now sampled once a minute and a warning
+  names `maxInFlight` and `poolThreads` when under a quarter of completed searches are used. The
+  README previously advised raising `maxInFlight` when discards climb, which was backwards; corrected.
 - Make `compatibilityTier=ALL` waive the mob-origin gate as well. The origin gate refuses mob classes
   defined by a mod because their navigation overrides have not been inspected — a compatibility check
   like any other — so leaving it armed under "ignore every check" kept most of a heavily-modded

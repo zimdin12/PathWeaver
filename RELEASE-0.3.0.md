@@ -1,7 +1,7 @@
 # PathWeaver 0.3.0 — Modrinth release notes (draft, not uploaded)
 
 **Version number:** `0.3.0+26.1.2` · **Type:** `alpha` · **Loader:** fabric · **Game version:** 26.1.2
-**Jar:** `pathweaver-0.3.0+26.1.2.jar` · SHA-256 `60ca580ff16073ea5bbc6996141024ce3589d9617760c7eb9d4c9a360302ae5b`
+**Jar:** `pathweaver-0.3.0+26.1.2.jar` · SHA-256 `2f9876a0af59d64b66d84c60b8579316e365e0329aaecad1e6138760c77d7cfe`
 **Dependencies:** fabric-api (required), cloth-config (required), modmenu (optional)
 
 ---
@@ -73,6 +73,8 @@ that is the default doing real work at saturation.
 
 ### And on an actual modpack
 
+**On reading these two metrics together:** effective tick rate is derived from mean tick interval (`mean > 50 ms ? 1000/mean : 20`), not measured separately, so "tick time halved" and "tick rate doubled" are the same fact stated twice. The `20.0` is a clamp: any mean at or under the 50 ms budget reports exactly 20.0, and a server with headroom sleeps to hold that rate, so this metric cannot show how much spare capacity the async arm actually had. The independent signals are p99 and main-thread cost per request.
+
 The four-mod environment isolates the effect. The same jar, same load, on a **371-mod server-side
 derivative of a real pack** at `ALL`: mean 99.4 -> 49.9 ms and 90.9 -> 61.5 ms (mean **41%**, the same
 figure), p99 893 -> 353 ms and 815 -> 449 ms. The scanner parsed **331 mixin configs with zero
@@ -82,6 +84,14 @@ The spread is wider though, and the discard rate says why: **13.4% in one pair, 
 On a busy pack the workers compete with everything else, so more results arrive too late to use. The
 shape of the win holds; the size is less predictable than the isolated benchmark suggests. If you see
 heavy discarding, `maxInFlight` is the knob.
+
+**Do not raise `maxInFlight` to fix discarding.** It is an admission bound, not a buffer. Sweeping it
+on that pack: 13.5% discarded at the shipped 256, **90.7% at 1024, and effectively 100% at 4096** --
+because workers are a fixed pool, so a deeper queue only makes each result land later, and a result
+that arrives after its mob has asked again is thrown away. That failure shows no errors and still
+reports 20 TPS, so 0.3.0 now samples its own install ratio once a minute and warns if under a quarter
+of completed searches are being used. If you see heavy discarding, **lower** `maxInFlight` or **raise**
+`poolThreads`.
 
 This is a synthetic burst with all other mob AI stripped out. It shows what happens when pathfinding
 alone overloads a server. It is not a measurement of ordinary play, and PathWeaver's benefit is

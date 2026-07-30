@@ -197,7 +197,7 @@ standalone, so the audit passed in dev and denied in production. The released ja
 booted on a plain dedicated server built from release artifacts only.
 
 Fabric API `0.153.0+26.1.2`, Cloth Config `26.1.154`, Lithium `0.24.6+mc26.1.2`, and
-`pathweaver-0.3.0+26.1.2` (SHA-256 `60ca580f…ae5b`), on JDK 25. 1024-mob maze load,
+`pathweaver-0.3.0+26.1.2` (SHA-256 `2f9876a0…7cfe`), on JDK 25. 1024-mob maze load,
 `maxInFlight=256`.
 
 | Mods added | Tier | Scan result | Dispatched |

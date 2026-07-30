@@ -12,6 +12,64 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PathWeaverRuntimeTest {
+    /**
+     * A pathological {@code maxInFlight} produces no error and no TPS drop, so nothing surfaced it.
+     * Measured on a 371-mod pack: 13.5% of searches discarded at 256, 90.7% at 1024, ~all at 4096.
+     */
+    @Test void warnsOnceWhenAlmostNoSearchResultIsUsed() {
+        PathWeaverRuntime runtime = PathWeaverRuntime.get();
+        runtime.resetWasteReportingForTests();
+        try {
+            int interval = PathWeaverRuntime.WASTE_SAMPLE_INTERVAL_TICKS;
+
+            // A window that has not elapsed yet must not be judged, however bad it looks.
+            for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE * 2; i++) runtime.markDispatched();
+            runtime.reportIfMostResultsAreWasted(interval - 1);
+            assertFalse(runtime.wasteReported(), "sampled before the window elapsed");
+
+            runtime.reportIfMostResultsAreWasted(interval);
+            assertTrue(runtime.wasteReported(),
+                "1000 dispatched and 0 installed in a full window is the footgun this exists for");
+
+            // Once per server session; a wasted pool must not spam the log every minute.
+            runtime.resetWasteReportingForTests();
+            for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE * 2; i++) runtime.markDispatched();
+            runtime.reportIfMostResultsAreWasted(interval);
+            assertTrue(runtime.wasteReported());
+            long dispatchedAtWarning = PathWeaverRuntime.WASTE_MIN_SAMPLE * 2;
+            for (int i = 0; i < dispatchedAtWarning; i++) runtime.markDispatched();
+            runtime.reportIfMostResultsAreWasted(interval * 2L);
+            assertTrue(runtime.wasteReported(), "the flag latches until the next server session");
+        } finally {
+            runtime.resetWasteReportingForTests();
+        }
+    }
+
+    @Test void staysQuietWhenResultsAreBeingUsedOrTheSampleIsTooSmall() {
+        PathWeaverRuntime runtime = PathWeaverRuntime.get();
+        runtime.resetWasteReportingForTests();
+        try {
+            int interval = PathWeaverRuntime.WASTE_SAMPLE_INTERVAL_TICKS;
+
+            // Too few searches to conclude anything: a couple of superseded repaths is normal.
+            for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE - 1; i++) runtime.markDispatched();
+            runtime.reportIfMostResultsAreWasted(interval);
+            assertFalse(runtime.wasteReported(), "a quiet window must not accuse the configuration");
+
+            // A healthy ratio must stay silent even at high volume. The shipped default measured
+            // 13.5% discarded, i.e. ~86% installed, and must never trip this.
+            runtime.resetWasteReportingForTests();
+            for (int i = 0; i < 1000; i++) {
+                runtime.markDispatched();
+                if (i % 10 != 0) runtime.markInstalled();       // 90% installed
+            }
+            runtime.reportIfMostResultsAreWasted(interval);
+            assertFalse(runtime.wasteReported(), "90% installed is healthy, not a footgun");
+        } finally {
+            runtime.resetWasteReportingForTests();
+        }
+    }
+
     private static final class FakeNavigation implements PWNavigation {
         @Override public void pathweaver$rollbackOptimisticTarget() { }
         @Override public void pathweaver$abortFailedInstall() { }

@@ -60,6 +60,7 @@ public final class PathWeaverRuntime {
         dispatched.set(0);
         installed.set(0);
         discarded.set(0);
+        resetWasteReportingForTests();
         running = true;
         PathWeaver.LOG.info("PathWeaver runtime started: epoch={}, {} worker thread(s), maxInFlight={}.",
             epoch, c.resolvedPoolThreads(), c.maxInFlight);
@@ -91,5 +92,68 @@ public final class PathWeaverRuntime {
     public void onEndTick(MinecraftServer server) {
         entitySink.setTick(server.getTickCount());
         installer.drain(entitySink);
+        reportIfMostResultsAreWasted(server.getTickCount());
     }
+
+    /** Ticks between install-ratio samples. One minute: long enough that a burst cannot trip it. */
+    static final int WASTE_SAMPLE_INTERVAL_TICKS = 1200;
+    /** Below this install ratio the pool is doing work nothing consumes. */
+    static final double WASTE_RATIO_THRESHOLD = 0.25;
+    /** Ignore quiet windows; a handful of superseded searches says nothing about the configuration. */
+    static final long WASTE_MIN_SAMPLE = 500L;
+
+    private long lastWasteCheckTick;
+    private long lastWasteDispatched;
+    private long lastWasteInstalled;
+    private boolean wasteReported;
+
+    /**
+     * Warn once when almost every completed search is being thrown away.
+     *
+     * <p>This is a configuration footgun rather than a failure, which is why nothing else catches it:
+     * {@code maxInFlight} accepts up to {@value dev.pathweaver.config.PathWeaverConfig#MAX_IN_FLIGHT},
+     * and setting it high feels like it should help. It does the opposite. Workers are a fixed pool, so
+     * a deeper allowance only lengthens the queue, and a result that arrives after the mob has already
+     * asked again is superseded and dropped. Measured on a 371-mod pack with 1024 mobs repathing every
+     * 6 ticks: 13.5% of searches discarded at 256, 90.7% at 1024, and effectively everything at 4096 --
+     * with no errors logged and the server still reporting 20 TPS, so the mod looks like it is working
+     * while achieving nothing.
+     */
+    void reportIfMostResultsAreWasted(long tick) {
+        if (wasteReported) return;
+        if (tick - lastWasteCheckTick < WASTE_SAMPLE_INTERVAL_TICKS) return;
+        lastWasteCheckTick = tick;
+        long dispatchedNow = dispatched.get();
+        long installedNow = installed.get();
+        long windowDispatched = dispatchedNow - lastWasteDispatched;
+        long windowInstalled = installedNow - lastWasteInstalled;
+        lastWasteDispatched = dispatchedNow;
+        lastWasteInstalled = installedNow;
+        if (windowDispatched < WASTE_MIN_SAMPLE) return;
+        if (windowInstalled >= windowDispatched * WASTE_RATIO_THRESHOLD) return;
+        wasteReported = true;
+        PathWeaver.LOG.warn("Only {} of {} async path searches were used in the last {} ticks. "
+                + "Results are completing after the mob has already asked again, so the work is "
+                + "wasted. maxInFlight={} is likely too high for {} worker thread(s): a deeper queue "
+                + "adds latency rather than throughput. Try lowering maxInFlight (256 is the shipped "
+                + "default) or raising poolThreads.",
+            windowInstalled, windowDispatched, WASTE_SAMPLE_INTERVAL_TICKS,
+            PathWeaverConfig.get().maxInFlight, PathWeaverConfig.get().resolvedPoolThreads());
+    }
+
+    /**
+     * Re-arm the warning and start a fresh sampling window from the counters as they stand.
+     *
+     * <p>Snapshotting rather than zeroing matters: the counters are on a process singleton, so a
+     * window that assumed it started at zero would attribute everything already counted to itself.
+     */
+    void resetWasteReportingForTests() {
+        lastWasteCheckTick = 0L;
+        lastWasteDispatched = dispatched.get();
+        lastWasteInstalled = installed.get();
+        wasteReported = false;
+    }
+
+    /** Test seam. */
+    boolean wasteReported() { return wasteReported; }
 }
