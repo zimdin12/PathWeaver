@@ -1,7 +1,7 @@
 # PathWeaver 0.3.0 — Modrinth release notes (draft, not uploaded)
 
 **Version number:** `0.3.0+26.1.2` · **Type:** `alpha` · **Loader:** fabric · **Game version:** 26.1.2
-**Jar:** `pathweaver-0.3.0+26.1.2.jar` · SHA-256 `7d30e3a88dcb70aeeceb67f7e71de168c1f52df00948dd1f64ce0640df4e7724`
+**Jar:** `pathweaver-0.3.0+26.1.2.jar` · SHA-256 `cf513173e042f8d04b86a67870162a10094960736cfbb49b4081e0ff2949f83e`
 **Dependencies:** fabric-api (required), cloth-config (required), modmenu (optional)
 
 ---
@@ -47,7 +47,9 @@ logs a loud warning naming what it waived.
   that registration is the world-independent kind, PathWeaver asks it for every answer it can give,
   once, on the main thread, and freezes the result. Workers read the frozen table, so the mod's code
   never runs off-thread. This needs no audit and no per-mod entry, and works for mods written after
-  this release.
+  this release. It rests on such a rule being a pure function of block state — the signature shows
+  the provider is not handed the world, not that its answer is stable — so it is honoured at
+  `AUDITED` rather than at the `STRICT` default.
 - `compatibilityTier=ALL` now also covers mob classes added by mods. Previously "ignore every check"
   still kept most of a heavily-modded pack's mobs synchronous while reporting nothing was checked.
 - The tier appears in the ModMenu settings screen with proper labels.
@@ -72,9 +74,10 @@ beat every synchronous run.
 gain. An earlier version of this table said 44.8% because it happened to be paired against the
 heaviest sync run.
 
-**The caveat that matters:** at the shipped in-flight limit, 13.6–20.6% of searches were discarded
-under this load — roughly one in six thrown away and recomputed later. It still wins decisively, but
-that is the default doing real work at saturation.
+**The caveat that matters:** at the shipped in-flight limit, 13.6–20.6% of dispatched searches were
+not installed within the capture window — roughly one in six not making it back before it is wanted.
+The harness stops at the end of the window, so read that as work unused in time rather than as
+proven-discarded. It still wins decisively, but that is the default doing real work at saturation.
 
 ### And on an actual modpack
 
@@ -85,7 +88,7 @@ derivative of a real pack** at `ALL`: mean 99.4 -> 49.9 ms and 90.9 -> 61.5 ms (
 figure), p99 893 -> 353 ms and 815 -> 449 ms. The scanner parsed **331 mixin configs with zero
 failures**.
 
-The spread is wider though, and the discard rate says why: **13.4% in one pair, 38.0% in the other**.
+The spread is wider though, and the share of work that went unused says why: **13.4% of dispatches not installed within the capture window in one pair, 38.0% in the other**.
 On a busy pack the workers compete with everything else, so more results arrive too late to use. The
 shape of the win holds; the size is less predictable than the isolated benchmark suggests. If you see
 heavy discarding, `maxInFlight` is the knob.

@@ -117,11 +117,16 @@ public final class FabricLandPathRegistryLatch {
         }
 
         boolean allowsWalk() {
+            return allowsWalk(ActiveCompatibilityPolicy.allowsAudited());
+        }
+
+        /** Test seam: the same decision against a chosen tier, without touching process state. */
+        boolean allowsWalk(boolean auditedAllowed) {
             if (!hooksVerified || providerRegistrationObserved.get()) return false;
             // An audited dynamic provider was frozen like a static one, but the audit is evidence
             // rather than proven inertness, so it only counts above the strict tier. Read here
             // rather than at registration: this runs at dispatch, where config is loaded.
-            if (certifiedProviderObserved.get() && !ActiveCompatibilityPolicy.allowsAudited()) {
+            if (certifiedProviderObserved.get() && !auditedAllowed) {
                 return false;
             }
             // The audit proved a property of bytes read from a jar. Another mod transforming that

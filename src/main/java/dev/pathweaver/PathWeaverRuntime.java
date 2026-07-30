@@ -119,16 +119,19 @@ public final class PathWeaverRuntime {
     private boolean wasteReported;
 
     /**
-     * Warn once when almost every completed search is being thrown away.
+     * Warn once when almost no completed search is being used.
      *
      * <p>This is a configuration footgun rather than a failure, which is why nothing else catches it:
      * {@code maxInFlight} accepts up to {@value dev.pathweaver.config.PathWeaverConfig#MAX_IN_FLIGHT},
      * and setting it high feels like it should help. It does the opposite. Workers are a fixed pool, so
      * a deeper allowance only lengthens the queue, and a result that arrives after the mob has already
-     * asked again is superseded and dropped. Measured on a 371-mod pack with 1024 mobs repathing every
-     * 6 ticks: 13.5% of searches discarded at 256, 90.7% at 1024, and effectively everything at 4096 --
-     * with no errors logged and the server still reporting 20 TPS, so the mod looks like it is working
-     * while achieving nothing.
+     * asked again is superseded. Measured on a 371-mod pack with 1024 mobs repathing every 6 ticks,
+     * as a share of dispatches not installed within the capture window: 13.5% at 256, 90.7% at 1024,
+     * and nothing at all installed while observing at 4096 -- with no errors logged and the server
+     * still reporting 20 TPS, so the mod looks like it is working while achieving nothing.
+     *
+     * <p>A heuristic, not a diagnosis: it samples counters over a window and does not follow
+     * individual requests, so a dispatch counted here may be installed in the next window.
      */
     void reportIfMostResultsAreWasted(long tick) {
         if (wasteReported) return;
@@ -140,8 +143,13 @@ public final class PathWeaverRuntime {
         long windowInstalled = installedNow - lastWasteInstalled;
         lastWasteDispatched = dispatchedNow;
         lastWasteInstalled = installedNow;
-        if (windowDispatched < WASTE_MIN_SAMPLE) return;
-        if (windowInstalled >= windowDispatched * WASTE_RATIO_THRESHOLD) {
+        // Any window that is not itself bad breaks the run, including one too quiet to judge.
+        // Otherwise a burst, a quiet window that absorbs its late installs, and an unrelated burst
+        // much later would count as two consecutive bad windows and warn on windows that were not
+        // consecutive at all.
+        boolean windowIsBad = windowDispatched >= WASTE_MIN_SAMPLE
+            && windowInstalled < windowDispatched * WASTE_RATIO_THRESHOLD;
+        if (!windowIsBad) {
             consecutiveWastedWindows = 0;
             return;
         }

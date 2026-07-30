@@ -76,6 +76,21 @@ class PathWeaverRuntimeTest {
             for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE * 2; i++) runtime.markDispatched();
             runtime.reportIfMostResultsAreWasted(interval * 3L);       // bad again, but only one
             assertFalse(runtime.wasteReported(), "a good window must reset the streak");
+
+            // A *quiet* window must break the run too. This is the straddle the sampler exists to
+            // tolerate: a burst dispatches in window one, window two is too quiet to judge and
+            // absorbs the late installs, and an unrelated burst arrives later. Those three are not
+            // two consecutive bad windows, and treating them as such is exactly the false positive
+            // the two-window rule was added to prevent.
+            runtime.resetWasteReportingForTests();
+            for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE * 2; i++) runtime.markDispatched();
+            runtime.reportIfMostResultsAreWasted(interval);            // bad
+            for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE - 1; i++) runtime.markInstalled();
+            runtime.reportIfMostResultsAreWasted(interval * 2L);       // too quiet to judge
+            for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE * 2; i++) runtime.markDispatched();
+            runtime.reportIfMostResultsAreWasted(interval * 3L);       // bad, but not consecutive
+            assertFalse(runtime.wasteReported(),
+                "a window too quiet to judge must break the run, not preserve it");
         } finally {
             runtime.resetWasteReportingForTests();
         }

@@ -32,7 +32,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Exact negative-reachability proof for Fabric Events Interaction on MC 26.1.2. */
+/**
+ * Bounded negative-reachability evidence for Fabric Events Interaction on MC 26.1.2.
+ *
+ * <p>Not a proof: the check inventories direct {@code BlockStateBase} calls from six pinned
+ * worker-side classes. It does not traverse the whole worker call graph, and it does not build a
+ * reverse callsite inventory for the two injected methods. Exact hashes keep that sample stable
+ * against drift rather than making it exhaustive, which is why the exemption requires
+ * {@code compatibilityTier=AUDITED}. See {@link #inspectRuntime}.
+ */
 final class FabricInteractionCompatibility {
     static final String MOD_ID = "fabric-events-interaction-v0";
     static final String MOD_VERSION = "5.2.2+07b380be4c";

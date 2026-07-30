@@ -13,50 +13,33 @@ class FabricLandPathRegistryLatchTest {
      * dispatch, because registration happens before PathWeaver's config is loaded.
      */
     @Test void certifiedProviderIsHonouredOnlyAboveTheStrictTier() {
-        try {
-            var state = FabricLandPathRegistryLatch.isolatedState();
-            state.publishHooksVerified(true);
-            ActiveCompatibilityPolicy.resetForTests();
-            ActiveCompatibilityPolicy.publish(false, false);          // STRICT
-            assertTrue(state.allowsWalk(), "nothing registered yet");
+        var state = FabricLandPathRegistryLatch.isolatedState();
+        state.publishHooksVerified(true);
+        assertTrue(state.allowsWalk(false), "nothing registered yet");
 
-            state.certifiedProviderRegistered();
-            assertFalse(state.allowsWalk(), "a frozen table is evidence, not proof, so STRICT denies");
-
-            ActiveCompatibilityPolicy.resetForTests();
-            ActiveCompatibilityPolicy.publish(true, false);           // AUDITED
-            assertTrue(state.allowsWalk());
-        } finally {
-            ActiveCompatibilityPolicy.resetForTests();
-        }
+        state.certifiedProviderRegistered();
+        assertFalse(state.allowsWalk(false),
+            "a frozen table is evidence, not proof, so STRICT denies");
+        assertTrue(state.allowsWalk(true), "AUDITED may honour it");
     }
 
     @Test void certificationNeverReopensALatchAPlainRegistrationClosed() {
-        try {
-            var state = FabricLandPathRegistryLatch.isolatedState();
-            state.publishHooksVerified(true);
-            state.certifiedProviderRegistered();
-            state.beforeProviderMutation();
-            for (boolean audited : new boolean[] {false, true}) {
-                ActiveCompatibilityPolicy.resetForTests();
-                ActiveCompatibilityPolicy.publish(audited, false);
-                assertFalse(state.allowsWalk(), "allowsAudited=" + audited);
-            }
-        } finally {
-            ActiveCompatibilityPolicy.resetForTests();
+        var state = FabricLandPathRegistryLatch.isolatedState();
+        state.publishHooksVerified(true);
+        state.certifiedProviderRegistered();
+        state.beforeProviderMutation();
+        for (boolean audited : new boolean[] {false, true}) {
+            assertFalse(state.allowsWalk(audited), "allowsAudited=" + audited);
         }
     }
 
     @Test void anUnpublishedPolicyDeniesCertifiedProviders() {
-        try {
-            ActiveCompatibilityPolicy.resetForTests();
-            var state = FabricLandPathRegistryLatch.isolatedState();
-            state.publishHooksVerified(true);
-            state.certifiedProviderRegistered();
-            assertFalse(state.allowsWalk(), "an aborted or absent scan must not admit evidence");
-        } finally {
-            ActiveCompatibilityPolicy.resetForTests();
-        }
+        // An unpublished policy answers false, which is the same input STRICT supplies.
+        var state = FabricLandPathRegistryLatch.isolatedState();
+        state.publishHooksVerified(true);
+        state.certifiedProviderRegistered();
+        assertFalse(state.allowsWalk(ActiveCompatibilityPolicy.isolatedState().allowsAudited()),
+            "an aborted or absent scan must not admit evidence");
     }
 
     @Test void unverifiedHooksFailClosedEvenWhenRegistryAppearsEmpty() {

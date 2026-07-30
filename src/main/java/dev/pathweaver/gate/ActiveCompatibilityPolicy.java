@@ -16,6 +16,13 @@ package dev.pathweaver.gate;
  * is now enforced rather than merely advertised. Saving still persists to disk and still takes
  * effect — on the next launch.
  *
+ * <p>Publication is package-private and there is no reset. Both matter. An earlier revision exposed
+ * a public first-writer setter, which any loaded mod could call with the widest answer before the
+ * scan ran; because the first write wins, the scan's own {@code STRICT} publication would then be
+ * ignored and the same scan would clear its denials down the {@code ALL} path. A test-only reset was
+ * also compiled into the shipped jar, which contradicted the process-lifetime guarantee this class
+ * exists to provide. Tests use {@link #isolatedState()} instead, which cannot touch the singleton.
+ *
  * <p>Stored as booleans rather than as a {@code CompatibilityTier}. The dispatch interceptor is a
  * mixin applied to a vanilla class during early transformation, and naming the enum from there
  * forces it, and the Cloth GUI interface it implements, to resolve at that moment.
@@ -23,44 +30,64 @@ package dev.pathweaver.gate;
  * <p>Before publication both answers are false, so an aborted or absent scan denies.
  */
 public final class ActiveCompatibilityPolicy {
-    private static volatile boolean published;
-    private static volatile boolean allowsAudited;
-    private static volatile boolean bypassesScan;
+    private static final State PROCESS = new State();
 
     private ActiveCompatibilityPolicy() {}
 
     /**
      * Freeze the tier for the remainder of the process. Called by the scan that consumes it.
      *
-     * <p>Idempotent by first write: a second call is ignored, so nothing later in startup can widen
-     * what the scan already decided against.
+     * <p>Package-private on purpose: the only caller is {@link ForeignMixinScanner}, and widening
+     * this to public would let anything on the classpath decide the safety tier before the scan has
+     * read the configured one.
      */
-    public static synchronized void publish(boolean tierAllowsAudited, boolean tierBypassesScan) {
-        if (published) return;
-        allowsAudited = tierAllowsAudited;
-        bypassesScan = tierBypassesScan;
-        published = true;
+    static void publish(boolean tierAllowsAudited, boolean tierBypassesScan) {
+        PROCESS.publish(tierAllowsAudited, tierBypassesScan);
     }
 
     /** True when audited exemptions may be honoured. False until the scan publishes. */
     public static boolean allowsAudited() {
-        return published && allowsAudited;
+        return PROCESS.allowsAudited();
     }
 
     /** True when the operator asked for no compatibility checking at all. */
     public static boolean bypassesScan() {
-        return published && bypassesScan;
+        return PROCESS.bypassesScan();
     }
 
     /** True once the scan has frozen a tier. */
     public static boolean published() {
-        return published;
+        return PROCESS.published();
     }
 
-    /** Test seam: unfreeze so a test can publish a different tier. Never called in production. */
-    static synchronized void resetForTests() {
-        published = false;
-        allowsAudited = false;
-        bypassesScan = false;
+    /** Fresh state for pure tests; it cannot mutate or replace the production singleton. */
+    static State isolatedState() {
+        return new State();
+    }
+
+    static final class State {
+        private volatile boolean published;
+        private volatile boolean allowsAudited;
+        private volatile boolean bypassesScan;
+
+        /** Idempotent by first write, so nothing later in startup can widen the frozen answer. */
+        synchronized void publish(boolean tierAllowsAudited, boolean tierBypassesScan) {
+            if (published) return;
+            allowsAudited = tierAllowsAudited;
+            bypassesScan = tierBypassesScan;
+            published = true;
+        }
+
+        boolean allowsAudited() {
+            return published && allowsAudited;
+        }
+
+        boolean bypassesScan() {
+            return published && bypassesScan;
+        }
+
+        boolean published() {
+            return published;
+        }
     }
 }
