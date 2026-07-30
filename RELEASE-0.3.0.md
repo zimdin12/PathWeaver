@@ -1,7 +1,7 @@
 # PathWeaver 0.3.0 — Modrinth release notes (draft, not uploaded)
 
 **Version number:** `0.3.0+26.1.2` · **Type:** `alpha` · **Loader:** fabric · **Game version:** 26.1.2
-**Jar:** `pathweaver-0.3.0+26.1.2.jar` · SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`
+**Jar:** `pathweaver-0.3.0+26.1.2.jar` · SHA-256 `ac018ed45c4c58acbd754ebdca5aad1247228a8968e19c75efbb4daca9fc11f8`
 **Dependencies:** fabric-api (required), cloth-config (required), modmenu (optional)
 
 ---
@@ -18,16 +18,19 @@ honestly rather than by ignoring it.
 ## New setting: Compatibility tier
 
 Replaces the old `overrideCompatibilityScan` checkbox. Existing configs migrate automatically — if
-you had it on you get `ALL`, otherwise `STRICT`.
+you had it on you get `Everything`, otherwise you get the shipped default, `Audited`. That boolean
+selected the scanner behaviour of its day rather than a tier that existed, so mapping "off" to
+`Strict` would read as faithful and would in fact take a working install inert on upgrade.
 
-**`STRICT`** (default) — only runs off-thread where a worker *provably* cannot see the other mod's
-change. Every exemption rests on a structural proof checked against exact artifact bytes; an
-unexpected build of an audited mod denies rather than assuming.
+**`STRICT`** — only runs off-thread where a worker *provably* cannot see the other mod's change.
+Every exemption rests on a structural proof checked against exact artifact bytes; an unexpected build
+of an audited mod denies rather than assuming.
 
-**Expect `STRICT` to be inert.** Fabric API's own interaction module is cleared by a bounded audit
-rather than a structural proof, so it is not admitted here — which means a stock Fabric install
-denies at the default. That is deliberate: the alternative is calling a six-class sample an
-exhaustive proof. **Most servers will want `AUDITED`.**
+**`STRICT` is not the default, and would be inert if you chose it.** Fabric API's own interaction
+module is cleared by a bounded audit rather than a structural proof, so it is not admitted here —
+which means a stock Fabric install denies under `STRICT`. Calling a six-class sample an exhaustive
+proof was the alternative, and it was rejected. **`AUDITED` ships as the default** for exactly that
+reason.
 
 **`AUDITED`** — additionally trusts mods cleared by bounded evidence rather than by proof.
 **Lithium is the one that matters** — it ships in most performance packs, and at `STRICT` its
@@ -132,7 +135,7 @@ copy — see COMPATIBILITY.md for the residual assumptions, stated plainly.
 
 ## Pre-publish checklist
 
-- [x] 216 unit tests, 0 failures, 7 skipped
+- [x] 217 unit tests, 0 failures, 7 skipped
 - [x] Three game-test harnesses green — default 3/3; `fabricAggregateHarness` 2/2 `deniedFamilies=0`;
       `auditedTierHarness` 2/2 `deniedFamilies=0`
 - [x] Release jar booted on a dedicated server **outside** Loom's dev classpath, with Farmer's
@@ -144,11 +147,9 @@ copy — see COMPATIBILITY.md for the residual assumptions, stated plainly.
 - [x] Clean build from `master` reproduces the jar hash byte-for-byte
 - [x] Tagged `v0.3.0` on `master`
 - [x] Benchmark claims reconciled with measurements
-- [x] **Independent review — APPROVED** by mc-senior-dev after four read-only passes. Approval
-      attaches **only** to commit/tag `5854b606b5d24b60cc2290a65a0c487660cc2bc1` and jar SHA-256
-      `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`. **Moving either requires a
-      new exact-tree check before publishing.** The four passes found: a critical live-tier
-      incoherence (start `ALL`, save `STRICT`, keep dispatching), a public policy setter reachable
-      before the scan, package-private not being a boundary on Fabric's shared classloader, and a
-      documentation rewrite that clobbered the pinned artifact hashes.
+- [ ] **Independent review — NOT APPROVED for this tree.** The earlier approval attached only to
+      commit `5854b606…2bc1` and jar `9baa9f7d…4314`, and is **void**: the tree has changed. The
+      current tree returned REVISE, and the findings that produced this revision were the per-worker
+      cap contradicting the p99 evidence, warning text that overstated what the counters prove, and
+      release notes still certifying the void tree. Re-review pending.
 - [ ] Upload to Modrinth (project `ZQJOU3vB`, `POST /v2/version`) — awaiting go-ahead

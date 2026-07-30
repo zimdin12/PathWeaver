@@ -43,7 +43,7 @@ Average tick rate is not what players notice — a server sitting at "20 TPS" st
 
 ### Measured on the configuration you would actually get
 
-This is the one benchmark that used **no harness intervention at all**: stock Fabric API, Lithium loaded, `compatibilityTier=AUDITED`, shipped limits (`maxInFlight=256`, `poolThreads=0`, repath reuse on). The gate opened on its own. The only difference between arms is the master switch. 1024 zombies in a walled maze, all retargeted every 6 ticks; **four pairs, interleaved and order-reversed, across two builds** (0.2.3 and the released 0.3.0).
+This is the one benchmark that used **no harness intervention at all**: stock Fabric API, Lithium loaded, `compatibilityTier=AUDITED`, shipped limits (`maxInFlight=256`, `poolThreads=0`; path reuse off, which is the shipped default). The gate opened on its own. The only difference between arms is the master switch. 1024 zombies in a walled maze, all retargeted every 6 ticks; **four pairs, interleaved and order-reversed, across two builds** (0.2.3 and the released 0.3.0).
 
 | | Synchronous (n=4) | With PathWeaver (n=4) |
 |---|---|---|

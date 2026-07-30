@@ -10,8 +10,12 @@ _Not yet published. The audits below are version-exact; see COMPATIBILITY.md._
   `overrideCompatibilityScan` boolean. `STRICT` is the default and only runs off-thread where a
   worker provably cannot observe another mod's change. `AUDITED` additionally honours mods proven by
   bytecode analysis to perform no shared-state writes on the search path. `ALL` ignores the scan
-  entirely. Configs carrying the retired boolean migrate to `ALL` when it was on and `STRICT`
-  otherwise; an explicit tier always wins, and an unreadable tier fails closed.
+  entirely. **`AUDITED` is the shipped default**, because `STRICT` admits only structural proofs and
+  the Fabric interaction exemption is a bounded call-sample, so `STRICT` denies any pack containing
+  Fabric API and would ship a mod that does nothing on install. Configs carrying the retired boolean
+  migrate to `ALL` when it was on and to the shipped default otherwise — that boolean selected the
+  then-current scanner rather than a tier that existed, so mapping it to `STRICT` would take working
+  installs inert on upgrade. An explicit tier always wins, and an unreadable tier fails closed.
 - Audit Farmer's Delight `26.1-3.6.7+refabricated` so its stove no longer switches PathWeaver off.
   It registers a *dynamic* land path-type provider, which normally denies Walk for the whole process
   because such a provider receives the world. This one never loads it: the provider forwards to a

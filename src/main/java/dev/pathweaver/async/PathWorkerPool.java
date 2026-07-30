@@ -21,13 +21,14 @@ public class PathWorkerPool {
     private static final long FAIL_LOG_INTERVAL_MS = 60_000L;
 
     /**
-     * Queue depth per worker thread that measurement showed still lands in time.
+     * Queue depth per worker at which measurement stopped showing wasted work, used only to warn.
      *
-     * <p>A limit is only meaningful relative to how many threads are draining it. Every benchmark
-     * behind the shipped default ran on a 32-core machine, which the automatic rule gives eight
-     * workers, so 256 in flight was 32 per worker. A four-core server gets a single worker and the
-     * same number becomes 256 deep on one thread. Measured at one worker: 256 left 48-54% of finished
-     * searches unused, while 32 left 0.7%.
+     * <p>A limit means something different depending on how many threads drain it: the shipped 256
+     * was 32 per worker on the eight-worker machine every benchmark ran on, and is 256 deep on the
+     * single worker a four-core server gets. Enforcing that ratio was tried and reverted -- at two
+     * workers it turns 256 into 64, which measured 31% worse p99 and 11% worse mean, because a
+     * refused request does not vanish, it runs on the tick. Saving worker work is not worth losing
+     * the metric this mod exists to improve, so this only drives a warning.
      */
     public static final int DEPTH_PER_WORKER = 32;
 
@@ -35,9 +36,7 @@ public class PathWorkerPool {
         final ThreadPoolExecutor exec;
         final AtomicInteger inFlight = new AtomicInteger();
         final int threads;
-        /** What the operator configured; kept for diagnostics. */
-        final int configuredMaxInFlight;
-        /** What is actually enforced: the configured ceiling, capped to what the pool can drain. */
+        /** Enforced exactly as configured; nothing silently narrows it. */
         final int maxInFlight;
         final AtomicLong failCount = new AtomicLong();
         final AtomicLong completionFailCount = new AtomicLong();
@@ -45,8 +44,7 @@ public class PathWorkerPool {
 
         Generation(int threads, int maxInFlight) {
             this.threads = threads;
-            this.configuredMaxInFlight = maxInFlight;
-            this.maxInFlight = Math.max(1, Math.min(maxInFlight, threads * DEPTH_PER_WORKER));
+            this.maxInFlight = maxInFlight;
             this.exec = new ThreadPoolExecutor(threads, threads, 30, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(),
                 r -> {
@@ -156,16 +154,10 @@ public class PathWorkerPool {
         return generation == null ? 0 : generation.inFlight.get();
     }
 
-    /** The bound actually enforced, after capping the configured ceiling to the pool's width. */
-    public int effectiveMaxInFlight() {
+    /** The bound in force, which is what the operator configured. */
+    public int maxInFlight() {
         Generation generation = current;
         return generation == null ? 0 : generation.maxInFlight;
-    }
-
-    /** What the operator configured, before the per-worker cap. */
-    public int configuredMaxInFlight() {
-        Generation generation = current;
-        return generation == null ? 0 : generation.configuredMaxInFlight;
     }
 
     public int threads() {

@@ -62,9 +62,8 @@ public final class PathWeaverRuntime {
         discarded.set(0);
         resetWasteReportingForTests();
         running = true;
-        PathWeaver.LOG.info("PathWeaver runtime started: epoch={}, {} worker thread(s), "
-                + "maxInFlight={} (configured {}).",
-            epoch, pool.threads(), pool.effectiveMaxInFlight(), pool.configuredMaxInFlight());
+        PathWeaver.LOG.info("PathWeaver runtime started: epoch={}, {} worker thread(s), maxInFlight={}.",
+            epoch, pool.threads(), pool.maxInFlight());
         warnAboutSelfDefeatingSettings(c);
         PathWeaver.LOG.info("Mob-origin CodeSource probe: Mob={}, Zombie={}, moddedBypass={}.",
             MobOriginGate.isAllowed(Mob.class, false), MobOriginGate.isAllowed(Zombie.class, false),
@@ -111,33 +110,39 @@ public final class PathWeaverRuntime {
         if (c.stalenessMoveThreshold < MIN_USEFUL_STALENESS_BLOCKS) {
             PathWeaver.LOG.warn("stalenessMoveThreshold={} discards a finished search when its mob has "
                     + "moved that far, and a moving mob covers more than a block while one runs. "
-                    + "Measured at 0, {}% of finished searches were unusable. The value is being "
-                    + "honoured as configured; raise it to about {} to get any benefit.",
+                    + "Measured at 0, {}% of dispatched searches were never installed within the "
+                    + "capture window. The value is enforced as configured; raise it to about {} to "
+                    + "get any benefit.",
                 c.stalenessMoveThreshold, 91.8, MIN_USEFUL_STALENESS_BLOCKS * 4);
         }
         int threads = c.resolvedPoolThreads();
+        // Warn rather than cap. Enforcing a per-worker ratio was tried and reverted: at two workers
+        // it turned the shipped 256 into 64, which measured 31% worse p99 -- the metric this mod
+        // exists to improve -- to save worker work that was never the constraint.
+        int depth = c.maxInFlight / Math.max(1, threads);
+        if (depth > dev.pathweaver.async.PathWorkerPool.DEPTH_PER_WORKER) {
+            PathWeaver.LOG.warn("maxInFlight={} across {} worker thread(s) is about {} queued per "
+                    + "worker. Measured up to about {} per worker still landed in time; deeper than "
+                    + "that, a growing share of finished searches arrives after its mob has asked "
+                    + "again. The value is enforced exactly as configured -- lower maxInFlight or "
+                    + "raise poolThreads if the log below reports little of the work being used.",
+                c.maxInFlight, threads, depth,
+                dev.pathweaver.async.PathWorkerPool.DEPTH_PER_WORKER);
+        }
         if (c.poolThreads > 0 && c.poolThreads > Runtime.getRuntime().availableProcessors()) {
             PathWeaver.LOG.warn("poolThreads={} exceeds the {} processors this machine reports. The "
                     + "extra threads cannot run in parallel and compete with the server thread for "
                     + "the same cores. 0 picks a size automatically.",
                 c.poolThreads, Runtime.getRuntime().availableProcessors());
         }
-        int effective = Math.max(1,
-            Math.min(c.maxInFlight, threads * dev.pathweaver.async.PathWorkerPool.DEPTH_PER_WORKER));
-        if (effective < c.maxInFlight) {
-            PathWeaver.LOG.info("maxInFlight={} is capped to {} for {} worker thread(s): a limit is "
-                    + "only meaningful against the number of threads draining it, and measurement "
-                    + "showed about {} in flight per worker still lands in time.",
-                c.maxInFlight, effective, threads,
-                dev.pathweaver.async.PathWorkerPool.DEPTH_PER_WORKER);
-        }
         if (c.maxInFlight > MAX_USEFUL_IN_FLIGHT) {
             PathWeaver.LOG.warn("maxInFlight={} is above the measured useful range. It is an admission "
                     + "bound rather than a buffer: a deeper queue makes each result land later, and a "
                     + "result that arrives after its mob has asked again is superseded. Measured on a "
-                    + "371-mod pack, {} left 90.7% of finished searches unused and {} left effectively "
-                    + "all of them. The value is being honoured as configured; {} is the shipped "
-                    + "default.", c.maxInFlight, 1024, 4096, MAX_USEFUL_IN_FLIGHT);
+                    + "371-mod pack, {} left 90.7% of dispatched searches uninstalled within the "
+                    + "capture window and {} left effectively all of them. The value is enforced as "
+                    + "configured; {} is the shipped default.",
+                c.maxInFlight, 1024, 4096, MAX_USEFUL_IN_FLIGHT);
         }
     }
 
@@ -216,7 +221,7 @@ public final class PathWeaverRuntime {
                 + "for {} worker thread(s): a deeper queue adds latency rather than throughput. "
                 + "Consider lowering maxInFlight (256 is the shipped default) or raising poolThreads.",
             windowInstalled, windowDispatched, WASTE_SAMPLE_INTERVAL_TICKS,
-            consecutiveWastedWindows, pool.effectiveMaxInFlight(), pool.threads());
+            consecutiveWastedWindows, pool.maxInFlight(), pool.threads());
     }
 
     /**

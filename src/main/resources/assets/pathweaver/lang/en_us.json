@@ -10,7 +10,7 @@
   "text.autoconfig.pathweaver.option.compatibilityTier.ALL": "Everything (unsafe)",
   "text.autoconfig.pathweaver.option.allowModdedMobAsync": "Also speed up mobs added by mods",
   "text.autoconfig.pathweaver.option.poolThreads": "Worker threads (0 = automatic)",
-  "text.autoconfig.pathweaver.option.maxInFlight": "Maximum searches running at once",
+  "text.autoconfig.pathweaver.option.maxInFlight": "Maximum searches queued or running at once",
   "text.autoconfig.pathweaver.option.repathToleranceBlocks": "Reuse a valid path if the target moved less than (blocks)",
   "text.autoconfig.pathweaver.option.stalenessMoveThreshold": "Discard results after the mob moves (blocks)",
   "text.autoconfig.pathweaver.option.maxResultAgeTicks": "Discard results older than (ticks)",
