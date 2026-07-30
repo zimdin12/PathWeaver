@@ -1,7 +1,7 @@
 # PathWeaver 0.3.0 — Modrinth release notes (draft, not uploaded)
 
 **Version number:** `0.3.0+26.1.2` · **Type:** `alpha` · **Loader:** fabric · **Game version:** 26.1.2
-**Jar:** `pathweaver-0.3.0+26.1.2.jar` · SHA-256 `2f9876a0af59d64b66d84c60b8579316e365e0329aaecad1e6138760c77d7cfe`
+**Jar:** `pathweaver-0.3.0+26.1.2.jar` · SHA-256 `2c098aa2ed77c8d79563ffc70e77c540a361e421916da9fc09bf733d718ab882`
 **Dependencies:** fabric-api (required), cloth-config (required), modmenu (optional)
 
 ---
@@ -117,8 +117,10 @@ copy — see COMPATIBILITY.md for the residual assumptions, stated plainly.
       Delight and FerriteCore loaded, at every tier
 - [x] Release jar booted at **modpack scale** — 371 mods, 331 mixin configs scanned, 0 failures —
       with a paired A/B and the audited-tier denial list read from the live scan
+- [x] Both accelerated families load-tested: Walk (1024 zombies) and Swim (1024 cod, 95204 searches)
+- [x] Farmer's Delight audit verified both ways outside Loom — `AUDITED` dispatches, `STRICT` refuses
 - [x] Clean build from `master` reproduces the jar hash byte-for-byte
 - [x] Tagged `v0.3.0`; `master` at `71cb2b6`
 - [x] Benchmark claims reconciled with measurements
-- [ ] **Independent review — NOT DONE.** Every change here is self-reviewed.
+- [ ] **Independent review — IN PROGRESS** with mc-senior-dev, read-only, verdict pending.
 - [ ] Upload to Modrinth (project `ZQJOU3vB`, `POST /v2/version`) — awaiting go-ahead
