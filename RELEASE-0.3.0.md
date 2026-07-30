@@ -1,7 +1,7 @@
 # PathWeaver 0.3.0 — Modrinth release notes (draft, not uploaded)
 
 **Version number:** `0.3.0+26.1.2` · **Type:** `alpha` · **Loader:** fabric · **Game version:** 26.1.2
-**Jar:** `pathweaver-0.3.0+26.1.2.jar` · SHA-256 `cf513173e042f8d04b86a67870162a10094960736cfbb49b4081e0ff2949f83e`
+**Jar:** `pathweaver-0.3.0+26.1.2.jar` · SHA-256 `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`
 **Dependencies:** fabric-api (required), cloth-config (required), modmenu (optional)
 
 ---
@@ -29,11 +29,14 @@ rather than a structural proof, so it is not admitted here — which means a sto
 denies at the default. That is deliberate: the alternative is calling a six-class sample an
 exhaustive proof. **Most servers will want `AUDITED`.**
 
-**`AUDITED`** — additionally trusts mods whose bytecode has been read and shown to write nothing on
-the search path. **Lithium is the one that matters** — it ships in most performance packs, and at
-`STRICT` its presence alone kept PathWeaver off. Diagonal Blocks is also audited. The honest trade:
-these cannot corrupt your world from a worker, because they write nothing a worker reaches; they can
-still return a slightly stale path if the world changes mid-search.
+**`AUDITED`** — additionally trusts mods that pass a bounded bytecode check for writes on the search
+path. **Lithium is the one that matters** — it ships in most performance packs, and at `STRICT` its
+presence alone kept PathWeaver off. Diagonal Blocks, Farmer's Delight and Fabric API's own
+interaction module are also cleared here. The honest trade: no worker-side write was *found*, by a
+check that looks at field-write opcodes and does not model array stores, mutations inside methods
+those classes call, or effects reached through helpers — so this lowers the risk of corruption from a
+worker rather than ruling it out. These mods also add live reads, so a search can return a slightly
+stale path if the world changes mid-search.
 
 **`ALL`** — ignores every check and runs off-thread regardless. This runs unaudited third-party code
 on a worker thread, which is exactly what the scan exists to prevent. Failure modes are not limited

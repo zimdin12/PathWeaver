@@ -379,6 +379,44 @@ public final class ForeignMixinScanner {
      */
     private static volatile boolean scanCompleted;
 
+    // ---- frozen compatibility tier -------------------------------------------------------------
+    //
+    // Owned here rather than by the facade that reads it, because package-private is not a safety
+    // boundary on Fabric. Runtime package access is package name plus classloader, and mods share
+    // the target classloader, so a mod shipping a class in dev.pathweaver.gate could call a
+    // package-private mutator directly. Publication happening before this scan runs would win under
+    // first-write-wins and make the scan's own STRICT publication a no-op, so mutation is private to
+    // the class that computes the value. Only reads are exposed.
+    private static volatile boolean tierFrozen;
+    private static volatile boolean tierAllowsAudited;
+    private static volatile boolean tierBypassesScan;
+
+    /**
+     * Freeze the tier for the process. Private on purpose: the compiler enforces that the only
+     * caller is the scan below, whatever else shares the package at runtime.
+     */
+    private static synchronized void freezeActiveTier(boolean allowsAudited, boolean bypassesScan) {
+        if (tierFrozen) return;
+        tierAllowsAudited = allowsAudited;
+        tierBypassesScan = bypassesScan;
+        tierFrozen = true;                 // published last; readers gate on it
+    }
+
+    /** True when audited exemptions may be honoured. False until the scan freezes a tier. */
+    public static boolean frozenTierAllowsAudited() {
+        return tierFrozen && tierAllowsAudited;
+    }
+
+    /** True when the operator asked for no compatibility checking at all. */
+    public static boolean frozenTierBypassesScan() {
+        return tierFrozen && tierBypassesScan;
+    }
+
+    /** True once the scan has frozen a tier. */
+    public static boolean tierFrozen() {
+        return tierFrozen;
+    }
+
     public static boolean scanCompleted() {
         return scanCompleted;
     }
@@ -640,7 +678,7 @@ public final class ForeignMixinScanner {
             // Freeze it here, where the evidence that depends on it is computed. Everything else
             // reads the frozen answer, so a later settings save cannot leave startup denials waived
             // while per-request checks tighten.
-            ActiveCompatibilityPolicy.publish(tier.allowsAudited(), tier.bypassesScan());
+            freezeActiveTier(tier.allowsAudited(), tier.bypassesScan());
             for (String id : List.of(AuditedMixinCompatibility.SERVERCORE_ID,
                                      AuditedMixinCompatibility.RABBIT_ID,
                                      FabricInteractionCompatibility.MOD_ID,

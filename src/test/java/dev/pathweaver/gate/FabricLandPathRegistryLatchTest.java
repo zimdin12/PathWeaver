@@ -38,7 +38,7 @@ class FabricLandPathRegistryLatchTest {
         var state = FabricLandPathRegistryLatch.isolatedState();
         state.publishHooksVerified(true);
         state.certifiedProviderRegistered();
-        assertFalse(state.allowsWalk(ActiveCompatibilityPolicy.isolatedState().allowsAudited()),
+        assertFalse(state.allowsWalk(ActiveCompatibilityPolicy.allowsAudited()),
             "an aborted or absent scan must not admit evidence");
     }
 

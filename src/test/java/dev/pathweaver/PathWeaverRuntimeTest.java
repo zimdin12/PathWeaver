@@ -14,7 +14,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class PathWeaverRuntimeTest {
     /**
      * A pathological {@code maxInFlight} produces no error and no TPS drop, so nothing surfaced it.
-     * Measured on a 371-mod pack: 13.5% of searches discarded at 256, 90.7% at 1024, ~all at 4096.
+     * Measured on a 371-mod pack, as a share of dispatches not installed within the capture window:
+     * 13.5% at 256, 90.7% at 1024, and nothing installed at all while observing at 4096.
      */
     @Test void warnsOnceWhenAlmostNoSearchResultIsUsed() {
         PathWeaverRuntime runtime = PathWeaverRuntime.get();
@@ -57,7 +58,7 @@ class PathWeaverRuntimeTest {
             assertFalse(runtime.wasteReported(), "a quiet window must not accuse the configuration");
 
             // A healthy ratio must stay silent even at high volume. The shipped default measured
-            // 13.5% discarded, i.e. ~86% installed, and must never trip this.
+            // ~86% installed within the capture window and must never trip this.
             runtime.resetWasteReportingForTests();
             for (int i = 0; i < 1000; i++) {
                 runtime.markDispatched();
