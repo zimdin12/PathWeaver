@@ -4,7 +4,7 @@
 
 **Read this first: PathWeaver refuses to run wherever another mod modifies pathfinding code and that mod has not been individually audited.**
 
-**Most installs will need `compatibilityTier=AUDITED` to do anything at all.** The default, `STRICT`, admits only structural proofs, and the exemption covering Fabric API's own interaction module is a bounded audit rather than a proof — so on a stock Fabric install `STRICT` denies and PathWeaver is inert. `AUDITED` additionally covers Fabric API, Lithium, Diagonal Blocks and Farmer's Delight, which is what a typical performance pack needs. This is a deliberate honesty choice, not an oversight: see [Will it actually do anything?](#will-it-actually-do-anything).
+**The default is `AUDITED`, and that is a deliberate admission about the evidence.** The stricter setting, `STRICT`, admits only structural proofs — and the exemption covering Fabric API's own interaction module is a bounded call-sample rather than a proof, so `STRICT` denies any pack containing Fabric API, which this mod requires. Shipping `STRICT` as the default would ship a mod that does nothing on install. `AUDITED` is the weaker evidence standard and the one that describes what can actually be demonstrated today; the settings screen says so in those words. See [Will it actually do anything?](#will-it-actually-do-anything).
 
 See the [version-exact compatibility matrix](COMPATIBILITY.md) for audited verdicts, artifact hashes, and the evidence boundary. Future or modified artifacts fail closed.
 

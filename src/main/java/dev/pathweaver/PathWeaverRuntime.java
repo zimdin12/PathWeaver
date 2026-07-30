@@ -64,6 +64,7 @@ public final class PathWeaverRuntime {
         running = true;
         PathWeaver.LOG.info("PathWeaver runtime started: epoch={}, {} worker thread(s), maxInFlight={}.",
             epoch, c.resolvedPoolThreads(), c.maxInFlight);
+        warnAboutSelfDefeatingSettings(c);
         PathWeaver.LOG.info("Mob-origin CodeSource probe: Mob={}, Zombie={}, moddedBypass={}.",
             MobOriginGate.isAllowed(Mob.class, false), MobOriginGate.isAllowed(Zombie.class, false),
             c.moddedMobAsyncAllowed());
@@ -86,6 +87,41 @@ public final class PathWeaverRuntime {
         installer.clear();
         PathWeaver.LOG.info("PathWeaver stats: dispatched={}, installed={}, discarded={} (async pathfinding).",
             dispatched.get(), installed.get(), discarded.get());
+    }
+
+    /**
+     * Below this, a result is rejected because its mob moved at all, so nothing is ever installed.
+     * A mob under way covers more than a block while a search runs.
+     */
+    static final double MIN_USEFUL_STALENESS_BLOCKS = 1.0;
+    /** Above this, measurement showed most finished searches arriving too late to be wanted. */
+    static final int MAX_USEFUL_IN_FLIGHT = 256;
+
+    /**
+     * Warn when a setting is configured to a value measured to defeat the mod.
+     *
+     * <p>Both of these are legal numbers that produce no error and no TPS drop, so nothing else
+     * surfaces them: the pool keeps working and the results keep being thrown away. They are reported
+     * rather than clamped, because a config that silently does something other than what it says has
+     * caused more trouble in this project than a config that does what you asked and tells you it is
+     * a bad idea.
+     */
+    static void warnAboutSelfDefeatingSettings(PathWeaverConfig c) {
+        if (c.stalenessMoveThreshold < MIN_USEFUL_STALENESS_BLOCKS) {
+            PathWeaver.LOG.warn("stalenessMoveThreshold={} discards a finished search when its mob has "
+                    + "moved that far, and a moving mob covers more than a block while one runs. "
+                    + "Measured at 0, {}% of finished searches were unusable. The value is being "
+                    + "honoured as configured; raise it to about {} to get any benefit.",
+                c.stalenessMoveThreshold, 91.8, MIN_USEFUL_STALENESS_BLOCKS * 4);
+        }
+        if (c.maxInFlight > MAX_USEFUL_IN_FLIGHT) {
+            PathWeaver.LOG.warn("maxInFlight={} is above the measured useful range. It is an admission "
+                    + "bound rather than a buffer: a deeper queue makes each result land later, and a "
+                    + "result that arrives after its mob has asked again is superseded. Measured on a "
+                    + "371-mod pack, {} left 90.7% of finished searches unused and {} left effectively "
+                    + "all of them. The value is being honoured as configured; {} is the shipped "
+                    + "default.", c.maxInFlight, 1024, 4096, MAX_USEFUL_IN_FLIGHT);
+        }
     }
 
     /** Main thread, end of each server tick: stamp the tick then install ready paths. */

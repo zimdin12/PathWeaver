@@ -143,10 +143,17 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
     /**
      * Carry the retired {@code overrideCompatibilityScan} boolean onto the tier it became.
      *
-     * <p>That flag was an all-or-nothing bypass, so {@code true} maps to {@link CompatibilityTier#ALL}
-     * and nothing else — mapping it to the middle tier would silently tighten a setting the operator
-     * had deliberately loosened, and mapping it the other way would silently loosen one. An explicit
-     * {@code compatibilityTier} always wins, so a config carrying both is not re-migrated.
+     * <p>{@code true} was an explicit all-or-nothing bypass and maps to {@link CompatibilityTier#ALL},
+     * because mapping a deliberate loosening onto a stricter tier would silently override a choice
+     * the operator made.
+     *
+     * <p>{@code false} maps to the shipped default rather than to {@link CompatibilityTier#STRICT}.
+     * It was the old default, so it records "I accepted whatever the scan does" rather than a choice
+     * between three tiers that did not exist yet. Pinning it to {@code STRICT} would read as faithful
+     * and would in fact change behaviour for every such user, because {@code STRICT} now denies any
+     * pack containing Fabric API — their working install would go inert on upgrade without them
+     * touching anything. An explicit {@code compatibilityTier} always wins, so a config carrying both
+     * is not re-migrated.
      */
     private static void migrateCompatibilityTier(JsonObject raw) {
         if (!raw.has("overrideCompatibilityScan")) return;
@@ -154,7 +161,7 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
         raw.remove("overrideCompatibilityScan");
         if (raw.has("compatibilityTier")) return;
         raw.addProperty("compatibilityTier",
-            (override ? CompatibilityTier.ALL : CompatibilityTier.STRICT).name());
+            (override ? CompatibilityTier.ALL : new PathWeaverConfig().compatibilityTier).name());
     }
 
     private static void strictOptionalEnum(JsonObject raw, String key) {

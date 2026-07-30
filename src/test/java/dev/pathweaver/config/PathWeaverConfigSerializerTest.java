@@ -124,9 +124,14 @@ class PathWeaverConfigSerializerTest {
             CompatibilityTier.ALL);
     }
 
-    @Test void retiredOverrideFalseBecomesTheStrictDefault() throws Exception {
+    /**
+     * The retired flag off recorded "I accepted whatever the scan does", not a choice between three
+     * tiers that did not exist. Pinning it to STRICT would read as faithful and would in fact take a
+     * working install inert on upgrade, because STRICT now denies any pack containing Fabric API.
+     */
+    @Test void retiredOverrideFalseBecomesTheShippedDefault() throws Exception {
         assertTier("{\"configVersion\":2,\"enabled\":true,\"overrideCompatibilityScan\":false}",
-            CompatibilityTier.STRICT);
+            new PathWeaverConfig().compatibilityTier);
     }
 
     /** An operator who already chose a tier must not have it rewritten by a stale legacy key. */
@@ -135,8 +140,11 @@ class PathWeaverConfigSerializerTest {
             + "\"compatibilityTier\":\"AUDITED\"}", CompatibilityTier.AUDITED);
     }
 
-    @Test void absentTierDefaultsToStrictRatherThanInheritingRisk() throws Exception {
-        assertTier("{\"configVersion\":2,\"enabled\":true}", CompatibilityTier.STRICT);
+    @Test void absentTierTakesTheShippedDefaultAndNothingWider() throws Exception {
+        CompatibilityTier shipped = new PathWeaverConfig().compatibilityTier;
+        assertTier("{\"configVersion\":2,\"enabled\":true}", shipped);
+        assertNotSame(CompatibilityTier.ALL, shipped,
+            "a missing tier must never inherit the tier that disables every check");
     }
 
     /** An unreadable tier must fail closed, not silently fall back to a permissive value. */

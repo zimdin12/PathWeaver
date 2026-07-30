@@ -89,8 +89,10 @@ class ModMenuIntegrationContractTest {
         JsonObject lang = JsonParser.parseString(Files.readString(
             RESOURCES.resolve(Path.of("assets", "pathweaver", "lang", "en_us.json"))))
             .getAsJsonObject();
-        assertEquals("Stops new off-thread searches and repath reuse; accepted searches finish, then routing is vanilla-sync.",
-            lang.get("text.autoconfig.pathweaver.option.enabled.@Tooltip").getAsString());
+        // The master switch must keep saying what OFF actually does -- it drains rather than
+        // cancelling -- however the wording is later revised.
+        String drain = lang.get("text.autoconfig.pathweaver.option.enabled.@Tooltip[1]").getAsString();
+        assertTrue(drain.contains("already accepted finish"), drain);
     }
 
     @Test
@@ -159,11 +161,23 @@ class ModMenuIntegrationContractTest {
             assertNotNull(category, field.getName());
             assertEquals(expectedCategories.get(field.getName()), category.value(), field.getName());
             assertTrue(lang.has("text.autoconfig.pathweaver.option." + field.getName()), field.getName());
-            String tooltipKey = "text.autoconfig.pathweaver.option." + field.getName() + ".@Tooltip";
-            assertTrue(lang.has(tooltipKey), tooltipKey);
-            String tooltip = lang.get(tooltipKey).getAsString();
-            assertFalse(tooltip.isBlank(), tooltipKey);
-            assertTrue(tooltip.length() <= 120, tooltipKey);
+            // Tooltips are multi-line. A single long string is what Cloth renders as one unbroken
+            // run of text, so the per-line limit is what keeps a setting explainable without
+            // becoming unreadable in game; the count on the annotation must match the keys present.
+            int lines = field.getAnnotation(ConfigEntry.Gui.Tooltip.class).count();
+            assertTrue(lines >= 1, field.getName() + " must declare at least one tooltip line");
+            String base = "text.autoconfig.pathweaver.option." + field.getName() + ".@Tooltip";
+            assertFalse(lang.has(base),
+                base + " must not exist alongside indexed lines; Cloth would ignore one of them");
+            for (int i = 0; i < lines; i++) {
+                String key = base + "[" + i + "]";
+                assertTrue(lang.has(key), key);
+                String line = lang.get(key).getAsString();
+                assertFalse(line.isBlank(), key);
+                assertTrue(line.length() <= 120, key + " is " + line.length() + " chars");
+            }
+            assertFalse(lang.has(base + "[" + lines + "]"),
+                field.getName() + " has more tooltip lines than the annotation declares");
         }
         assertTrue(lang.has("text.autoconfig.pathweaver.category.general"));
         assertTrue(lang.has("text.autoconfig.pathweaver.category.performance"));

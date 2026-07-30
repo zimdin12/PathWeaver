@@ -32,7 +32,7 @@ public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Category("general")
     public static final double MAX_STALENESS_MOVE_THRESHOLD = 1024.0;
 
-    @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Gui.Tooltip(count = 2)
     @ConfigEntry.Category("general")
     public boolean enabled = true;
 
@@ -40,47 +40,52 @@ public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Category("general")
     public int configVersion = CURRENT_CONFIG_VERSION;
 
-    @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Gui.Tooltip(count = 4)
     @ConfigEntry.Category("general")
     public boolean allowModdedMobAsync = false;
 
     /**
      * How much risk to accept from mods that modify pathfinding. See {@link CompatibilityTier}.
      *
-     * <p>Defaults to {@link CompatibilityTier#STRICT}, which only runs off-thread where a worker
-     * provably cannot observe the foreign change. Raising it is how a server owner trades a
-     * possible wrong path for tick headroom on a pack the strict rule would otherwise disable.
+     * <p>Defaults to {@link CompatibilityTier#AUDITED} rather than {@link CompatibilityTier#STRICT}.
+     * {@code STRICT} admits only structural proofs, and the exemption covering Fabric API's own
+     * interaction module is a bounded call-sample rather than a proof — so on any pack containing
+     * Fabric API, which PathWeaver itself requires, {@code STRICT} denies everything and the mod does
+     * nothing at all. Shipping that as the default means shipping a mod that appears broken on
+     * install. {@code AUDITED} is the weaker evidence standard, and it is the one that describes what
+     * this mod can actually demonstrate today; it is stated plainly in the settings screen and the
+     * README rather than hidden behind a reassuring word.
      */
-    @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Gui.Tooltip(count = 5)
     @ConfigEntry.Category("general")
     @ConfigEntry.Gui.RequiresRestart
-    @ConfigEntry.Gui.EnumHandler(option = ConfigEntry.Gui.EnumHandler.EnumDisplayOption.BUTTON)
-    public CompatibilityTier compatibilityTier = CompatibilityTier.STRICT;
+    @ConfigEntry.Gui.EnumHandler(option = ConfigEntry.Gui.EnumHandler.EnumDisplayOption.DROPDOWN)
+    public CompatibilityTier compatibilityTier = CompatibilityTier.AUDITED;
 
-    @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Gui.Tooltip(count = 2)
     @ConfigEntry.Category("general")
     public boolean repathElisionEnabled = true;
 
-    @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Gui.Tooltip(count = 2)
     @ConfigEntry.Gui.RequiresRestart
     @ConfigEntry.Category("performance")
     public int poolThreads = 0;          // 0 = auto (cores/4)
 
-    @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Gui.Tooltip(count = 4)
     @ConfigEntry.Gui.RequiresRestart
     @ConfigEntry.Category("performance")
     public int maxInFlight = 256;
 
 
-    @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Gui.Tooltip(count = 2)
     @ConfigEntry.Category("repath")
     public int repathToleranceBlocks = 0;
 
-    @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Gui.Tooltip(count = 3)
     @ConfigEntry.Category("repath")
     public double stalenessMoveThreshold = 4.0;      // blocks moved since dispatch -> discard
 
-    @ConfigEntry.Gui.Tooltip
+    @ConfigEntry.Gui.Tooltip(count = 2)
     @ConfigEntry.Category("repath")
     public int maxResultAgeTicks = 40;
 
