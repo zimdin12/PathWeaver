@@ -284,6 +284,36 @@ since dispatch, and a moving mob always has. The setting exists to reject result
 describe where the mob is; set to zero it rejects everything. Nothing in the config validation stops
 this, because zero is a legal distance.
 
+### `allowModdedMobAsync`, measured rather than assumed
+
+This was the last exposed setting still resting on a smoke test. Measured with a mob class defined by
+another mod — `aquariusplayz.animalgarden.lion.mob.ModMob` from Animal Garden, 512 of them, same maze
+workload, tier `AUDITED` so the flag is isolated rather than implied by `ALL`:
+
+| Setting | Dispatched | Result |
+|---|---|---|
+| `allowModdedMobAsync=false` | **0** | the origin gate refuses the class outright; the benchmark aborted its own async arm as vacuous |
+| `allowModdedMobAsync=true` | 31890 | dispatches normally, 27478 installed |
+| vanilla control (`minecraft:zombie`, flag off) | 28161 | 27902 installed |
+
+Exactly the documented behaviour: with the flag off a mod-defined mob class is **entirely**
+synchronous — not partly, not occasionally — and with it on it behaves like a vanilla-class mob. The
+gate keys on where the class came from, so no amount of load changes that answer.
+
+### Verified on the client as well as the server
+
+Every other measurement here is from a dedicated server. The client runs an integrated server and
+loads a different, larger set of mixin configs, and a past release had a client-only over-denial bug,
+so the scan is checked there too via the Fabric client game test:
+
+| Tier | Client scan |
+|---|---|
+| `STRICT` | `scanned=64, failed=0, deniedFamilies=2` — denied, naming the interaction module |
+| `AUDITED` | `scanned=64, failed=0, deniedFamilies=0` — gate open |
+
+`failed=0` across 64 configs is the part that matters: the client-only configs parse without a single
+fail-closed fallback, and the tier behaves the same way it does on a server.
+
 ### What `discarded` in the stats line actually counts
 
 Worth stating because it is easy to misread, and I misread it: the `discarded` counter is **not**
