@@ -28,17 +28,17 @@ class PathWeaverRuntimeTest {
             assertFalse(runtime.wasteReported(), "sampled before the window elapsed");
 
             runtime.reportIfMostResultsAreWasted(interval);
+            assertFalse(runtime.wasteReported(),
+                "one bad window may just be a burst straddling the sampling boundary");
+
+            for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE * 2; i++) runtime.markDispatched();
+            runtime.reportIfMostResultsAreWasted(interval * 2L);
             assertTrue(runtime.wasteReported(),
-                "1000 dispatched and 0 installed in a full window is the footgun this exists for");
+                "two consecutive wasted windows is the footgun this exists for");
 
             // Once per server session; a wasted pool must not spam the log every minute.
-            runtime.resetWasteReportingForTests();
             for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE * 2; i++) runtime.markDispatched();
-            runtime.reportIfMostResultsAreWasted(interval);
-            assertTrue(runtime.wasteReported());
-            long dispatchedAtWarning = PathWeaverRuntime.WASTE_MIN_SAMPLE * 2;
-            for (int i = 0; i < dispatchedAtWarning; i++) runtime.markDispatched();
-            runtime.reportIfMostResultsAreWasted(interval * 2L);
+            runtime.reportIfMostResultsAreWasted(interval * 3L);
             assertTrue(runtime.wasteReported(), "the flag latches until the next server session");
         } finally {
             runtime.resetWasteReportingForTests();
@@ -65,6 +65,17 @@ class PathWeaverRuntimeTest {
             }
             runtime.reportIfMostResultsAreWasted(interval);
             assertFalse(runtime.wasteReported(), "90% installed is healthy, not a footgun");
+
+            // A healthy window must reset the streak: one bad window either side of a good one is
+            // not two consecutive bad windows.
+            runtime.resetWasteReportingForTests();
+            for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE * 2; i++) runtime.markDispatched();
+            runtime.reportIfMostResultsAreWasted(interval);            // bad
+            for (int i = 0; i < 1000; i++) { runtime.markDispatched(); runtime.markInstalled(); }
+            runtime.reportIfMostResultsAreWasted(interval * 2L);       // good -> streak resets
+            for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE * 2; i++) runtime.markDispatched();
+            runtime.reportIfMostResultsAreWasted(interval * 3L);       // bad again, but only one
+            assertFalse(runtime.wasteReported(), "a good window must reset the streak");
         } finally {
             runtime.resetWasteReportingForTests();
         }

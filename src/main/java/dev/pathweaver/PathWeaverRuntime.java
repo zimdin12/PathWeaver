@@ -102,6 +102,17 @@ public final class PathWeaverRuntime {
     /** Ignore quiet windows; a handful of superseded searches says nothing about the configuration. */
     static final long WASTE_MIN_SAMPLE = 500L;
 
+    /**
+     * Consecutive bad windows required before warning.
+     *
+     * <p>Two, not one: dispatches and their installs can straddle a sampling boundary, so a single
+     * large burst just before a sample lands its work in the next window and makes this one look
+     * almost entirely wasted. A configuration that is actually wrong stays wrong for the next minute
+     * too.
+     */
+    static final int WASTE_CONSECUTIVE_WINDOWS = 2;
+
+    private int consecutiveWastedWindows;
     private long lastWasteCheckTick;
     private long lastWasteDispatched;
     private long lastWasteInstalled;
@@ -130,15 +141,22 @@ public final class PathWeaverRuntime {
         lastWasteDispatched = dispatchedNow;
         lastWasteInstalled = installedNow;
         if (windowDispatched < WASTE_MIN_SAMPLE) return;
-        if (windowInstalled >= windowDispatched * WASTE_RATIO_THRESHOLD) return;
+        if (windowInstalled >= windowDispatched * WASTE_RATIO_THRESHOLD) {
+            consecutiveWastedWindows = 0;
+            return;
+        }
+        if (++consecutiveWastedWindows < WASTE_CONSECUTIVE_WINDOWS) return;
         wasteReported = true;
-        PathWeaver.LOG.warn("Only {} of {} async path searches were used in the last {} ticks. "
-                + "Results are completing after the mob has already asked again, so the work is "
-                + "wasted. maxInFlight={} is likely too high for {} worker thread(s): a deeper queue "
-                + "adds latency rather than throughput. Try lowering maxInFlight (256 is the shipped "
-                + "default) or raising poolThreads.",
+        // Deliberately phrased as a likely cause rather than a diagnosis: this samples counters, it
+        // does not attribute individual results, so it is a heuristic.
+        PathWeaver.LOG.warn("Only {} of {} async path searches were installed in the last {} ticks, "
+                + "for {} consecutive sampling windows. Results are most likely completing after the "
+                + "mob has already asked again, which wastes the work. maxInFlight={} may be too high "
+                + "for {} worker thread(s): a deeper queue adds latency rather than throughput. "
+                + "Consider lowering maxInFlight (256 is the shipped default) or raising poolThreads.",
             windowInstalled, windowDispatched, WASTE_SAMPLE_INTERVAL_TICKS,
-            PathWeaverConfig.get().maxInFlight, PathWeaverConfig.get().resolvedPoolThreads());
+            consecutiveWastedWindows, PathWeaverConfig.get().maxInFlight,
+            PathWeaverConfig.get().resolvedPoolThreads());
     }
 
     /**
@@ -149,6 +167,7 @@ public final class PathWeaverRuntime {
      */
     void resetWasteReportingForTests() {
         lastWasteCheckTick = 0L;
+        consecutiveWastedWindows = 0;
         lastWasteDispatched = dispatched.get();
         lastWasteInstalled = installed.get();
         wasteReported = false;

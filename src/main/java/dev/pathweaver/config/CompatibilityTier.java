@@ -29,8 +29,10 @@ public enum CompatibilityTier implements SelectionListEntry.Translatable {
      *
      * <p>The honest trade: these cannot corrupt the world from a worker, because they write
      * nothing a worker reaches. They can still return a worse or stale path when the world changes
-     * mid-search, and can hit a concurrent-modification exception, which is contained as a failed
-     * search that falls back to synchronous pathfinding. Lithium is the mod that matters here — it
+     * mid-search, and can hit a concurrent-modification exception. That is contained: the affected
+     * search is discarded rather than installed, and that mob is forced synchronous for a short
+     * cooldown, so the fallback is on later requests rather than a synchronous retry of this one.
+     * Lithium is the mod that matters here — it
      * ships in most performance packs, and at {@link #STRICT} its presence alone keeps PathWeaver
      * switched off.
      *

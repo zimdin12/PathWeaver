@@ -383,6 +383,25 @@ public final class ForeignMixinScanner {
         return scanCompleted;
     }
 
+    /**
+     * True when some active foreign mixin config claims this class as a target.
+     *
+     * <p>Exists for audits that verify bytecode read from a mod's own jar. Those bytes are the
+     * artifact, not what the JVM ends up running: another mod can transform the same class before it
+     * is loaded, and a hash of the original file cannot see that. Fail-closed twice over — an
+     * unfinished scan and an unparsed target both answer true.
+     */
+    public static boolean anyActiveClaimTargets(String className) {
+        if (!scanCompleted) return true;
+        String wanted = normalizeTargetName(className);
+        for (ActiveConfig config : lastScanReport.configs()) {
+            for (String target : config.targets()) {
+                if (wanted.equals(normalizeTargetName(target))) return true;
+            }
+        }
+        return false;
+    }
+
     public static ScanReport lastScanReport() {
         return lastScanReport;
     }
@@ -618,6 +637,10 @@ public final class ForeignMixinScanner {
         try {
             FabricLoader loader = FabricLoader.getInstance();
             CompatibilityTier tier = PathWeaverConfig.get().compatibilityTier;
+            // Freeze it here, where the evidence that depends on it is computed. Everything else
+            // reads the frozen answer, so a later settings save cannot leave startup denials waived
+            // while per-request checks tighten.
+            ActiveCompatibilityPolicy.publish(tier.allowsAudited(), tier.bypassesScan());
             for (String id : List.of(AuditedMixinCompatibility.SERVERCORE_ID,
                                      AuditedMixinCompatibility.RABBIT_ID,
                                      FabricInteractionCompatibility.MOD_ID,
@@ -627,7 +650,8 @@ public final class ForeignMixinScanner {
                 if (module.isEmpty()) continue;
                 AuditedExemptionEvidence moduleEvidence;
                 if (id.equals(FabricInteractionCompatibility.MOD_ID)) {
-                    moduleEvidence = FabricInteractionCompatibility.inspectRuntime(loader, module.get());
+                    moduleEvidence = FabricInteractionCompatibility.inspectRuntime(
+                        loader, module.get(), tier);
                 } else if (id.equals(DiagonalBlocksCompatibility.MOD_ID)) {
                     moduleEvidence = DiagonalBlocksCompatibility.inspectRuntime(
                         loader, module.get(), tier);
@@ -667,7 +691,7 @@ public final class ForeignMixinScanner {
         for (String failure : decision.diagnostics()) {
             PathWeaver.LOG.warn("Foreign-mixin scan failure (fail-closed): {}", failure);
         }
-        if (PathWeaverConfig.get().compatibilityTier.bypassesScan()
+        if (ActiveCompatibilityPolicy.bypassesScan()
                 && !SafetyGate.deniedBySafety.isEmpty()) {
             Set<Class<?>> overridden = Set.copyOf(SafetyGate.deniedBySafety);
             SafetyGate.replaceDenials(Set.of());

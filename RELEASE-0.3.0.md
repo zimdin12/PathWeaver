@@ -1,7 +1,7 @@
 # PathWeaver 0.3.0 — Modrinth release notes (draft, not uploaded)
 
 **Version number:** `0.3.0+26.1.2` · **Type:** `alpha` · **Loader:** fabric · **Game version:** 26.1.2
-**Jar:** `pathweaver-0.3.0+26.1.2.jar` · SHA-256 `2c098aa2ed77c8d79563ffc70e77c540a361e421916da9fc09bf733d718ab882`
+**Jar:** `pathweaver-0.3.0+26.1.2.jar` · SHA-256 `7d30e3a88dcb70aeeceb67f7e71de168c1f52df00948dd1f64ce0640df4e7724`
 **Dependencies:** fabric-api (required), cloth-config (required), modmenu (optional)
 
 ---
@@ -23,6 +23,11 @@ you had it on you get `ALL`, otherwise `STRICT`.
 **`STRICT`** (default) — only runs off-thread where a worker *provably* cannot see the other mod's
 change. Every exemption rests on a structural proof checked against exact artifact bytes; an
 unexpected build of an audited mod denies rather than assuming.
+
+**Expect `STRICT` to be inert.** Fabric API's own interaction module is cleared by a bounded audit
+rather than a structural proof, so it is not admitted here — which means a stock Fabric install
+denies at the default. That is deliberate: the alternative is calling a six-class sample an
+exhaustive proof. **Most servers will want `AUDITED`.**
 
 **`AUDITED`** — additionally trusts mods whose bytecode has been read and shown to write nothing on
 the search path. **Lithium is the one that matters** — it ships in most performance packs, and at
@@ -85,10 +90,11 @@ On a busy pack the workers compete with everything else, so more results arrive 
 shape of the win holds; the size is less predictable than the isolated benchmark suggests. If you see
 heavy discarding, `maxInFlight` is the knob.
 
-**Do not raise `maxInFlight` to fix discarding.** It is an admission bound, not a buffer. Sweeping it
-on that pack: 13.5% discarded at the shipped 256, **90.7% at 1024, and effectively 100% at 4096** --
-because workers are a fixed pool, so a deeper queue only makes each result land later, and a result
-that arrives after its mob has asked again is thrown away. That failure shows no errors and still
+**Do not raise `maxInFlight` to fix results going unused.** It is an admission bound, not a buffer.
+Sweeping it on that pack, measured as dispatches not installed within the capture window: 13.5% at
+the shipped 256, **90.7% at 1024, and nothing at all installed during the window at 4096** -- because
+workers are a fixed pool, so a deeper queue only makes each result land later, and a result that
+arrives after its mob has asked again is superseded. That failure shows no errors and still
 reports 20 TPS, so 0.3.0 now samples its own install ratio once a minute and warns if under a quarter
 of completed searches are being used. If you see heavy discarding, **lower** `maxInFlight` or **raise**
 `poolThreads`.
@@ -99,9 +105,10 @@ alone overloads a server. It is not a measurement of ordinary play, and PathWeav
 
 ## What it still does not do
 
-Only the exact vanilla `WalkNodeEvaluator` and `SwimNodeEvaluator` searches, and only for mobs whose
-class comes from vanilla. Flying mobs, amphibious mobs, evaluator subclasses and mod-defined mob
-classes stay synchronous. It does not move entity ticking, collision, or AI goals off-thread.
+Only the exact vanilla `WalkNodeEvaluator` and `SwimNodeEvaluator` searches. Flying mobs, amphibious
+mobs and evaluator subclasses always stay synchronous. Mob classes added by mods stay synchronous
+unless you opt in with `allowModdedMobAsync`, or choose `ALL`, which implies it. It does not move
+entity ticking, collision, or AI goals off-thread.
 
 Still labelled **alpha**. A worker reads live chunk and mob state through a read-only view, not a
 copy — see COMPATIBILITY.md for the residual assumptions, stated plainly.
@@ -110,7 +117,7 @@ copy — see COMPATIBILITY.md for the residual assumptions, stated plainly.
 
 ## Pre-publish checklist
 
-- [x] 197 unit tests, 0 failures
+- [x] 216 unit tests, 0 failures, 7 skipped
 - [x] Three game-test harnesses green — default 3/3; `fabricAggregateHarness` 2/2 `deniedFamilies=0`;
       `auditedTierHarness` 2/2 `deniedFamilies=0`
 - [x] Release jar booted on a dedicated server **outside** Loom's dev classpath, with Farmer's
@@ -120,7 +127,7 @@ copy — see COMPATIBILITY.md for the residual assumptions, stated plainly.
 - [x] Both accelerated families load-tested: Walk (1024 zombies) and Swim (1024 cod, 95204 searches)
 - [x] Farmer's Delight audit verified both ways outside Loom — `AUDITED` dispatches, `STRICT` refuses
 - [x] Clean build from `master` reproduces the jar hash byte-for-byte
-- [x] Tagged `v0.3.0`; `master` at `71cb2b6`
+- [x] Tagged `v0.3.0` on `master`
 - [x] Benchmark claims reconciled with measurements
 - [ ] **Independent review — IN PROGRESS** with mc-senior-dev, read-only, verdict pending.
 - [ ] Upload to Modrinth (project `ZQJOU3vB`, `POST /v2/version`) — awaiting go-ahead

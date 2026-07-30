@@ -31,12 +31,23 @@ public final class FabricLandPathRegistryLatch {
      * tier there saw the fail-closed default and denied every time, regardless of the real setting.
      * So the fact is published here and the policy is applied at dispatch, where config is loaded.
      */
+    public static void certifiedProviderRegistered() {
+        PROCESS.certifiedProviderRegistered();
+    }
+
+    /**
+     * Certified via the exact Farmer's Delight audit rather than the generic static rule.
+     *
+     * <p>Tracked separately because it carries one extra dispatch-time obligation: the audit read the
+     * mod's jar, so it is only valid while no foreign mixin has transformed the audited class.
+     */
     public static void auditedDynamicProviderRegistered() {
+        PROCESS.certifiedProviderRegistered();
         PROCESS.auditedDynamicProviderRegistered();
     }
 
-    public static boolean auditedDynamicProviderObserved() {
-        return PROCESS.auditedDynamicProviderObserved();
+    public static boolean certifiedProviderObserved() {
+        return PROCESS.certifiedProviderObserved();
     }
 
     /** Called only when the worker-side HEAD hook bypasses the live provider map. */
@@ -72,6 +83,7 @@ public final class FabricLandPathRegistryLatch {
 
     static final class State {
         private final AtomicBoolean providerRegistrationObserved = new AtomicBoolean();
+        private final AtomicBoolean certifiedProviderObserved = new AtomicBoolean();
         private final AtomicBoolean auditedDynamicProviderObserved = new AtomicBoolean();
         private final AtomicLong workerProviderLookupBypasses = new AtomicLong();
         private volatile boolean hooksVerified;
@@ -80,12 +92,16 @@ public final class FabricLandPathRegistryLatch {
             providerRegistrationObserved.set(true);
         }
 
+        void certifiedProviderRegistered() {
+            certifiedProviderObserved.set(true);
+        }
+
         void auditedDynamicProviderRegistered() {
             auditedDynamicProviderObserved.set(true);
         }
 
-        boolean auditedDynamicProviderObserved() {
-            return auditedDynamicProviderObserved.get();
+        boolean certifiedProviderObserved() {
+            return certifiedProviderObserved.get();
         }
 
         void recordWorkerProviderLookupBypass() {
@@ -105,8 +121,13 @@ public final class FabricLandPathRegistryLatch {
             // An audited dynamic provider was frozen like a static one, but the audit is evidence
             // rather than proven inertness, so it only counts above the strict tier. Read here
             // rather than at registration: this runs at dispatch, where config is loaded.
+            if (certifiedProviderObserved.get() && !ActiveCompatibilityPolicy.allowsAudited()) {
+                return false;
+            }
+            // The audit proved a property of bytes read from a jar. Another mod transforming that
+            // class changes what actually runs, so re-check once the scan can answer.
             return !auditedDynamicProviderObserved.get()
-                || dev.pathweaver.config.PathWeaverConfig.get().allowsAuditedCompatibility();
+                || FarmersDelightStoveCompatibility.hostNotTransformed();
         }
 
         boolean providerRegistrationObserved() {

@@ -4,14 +4,16 @@ This table is version-exact. A verdict applies only to the listed artifact on Mi
 
 `SAFE` means the exact audited worker-reachable behavior uses parameters, immutable data, or per-search state and performs no unsafe shared mutation or unbounded callback. `STALE-PATH RISK ONLY` means no worker shared-state mutation was found, but concurrent live reads can select a stale/wrong path and may expose the existing palette/storage lookup-exception envelope. `DENIED` means the default proven-safe tier keeps the affected evaluator family synchronous.
 
-The verdict interacts with the `compatibilityTier` setting. `STRICT` (the default) honours only `SAFE` rows. `AUDITED` additionally honours `STALE-PATH RISK ONLY` rows, which is the setting a Lithium pack needs. `ALL` ignores this table entirely and is not covered by any evidence here.
+The verdict interacts with the `compatibilityTier` setting. `STRICT` (the default) honours only `SAFE` rows. `AUDITED` additionally honours `STALE-PATH RISK ONLY` rows, which is the setting a Lithium pack needs — and, since Fabric API's own interaction module is now a `STALE-PATH RISK ONLY` row, the setting a *stock* Fabric install needs before PathWeaver does anything. `ALL` ignores this table entirely and is not covered by any evidence here.
+
+The tier is read once, when the startup scan computes this evidence, and is frozen for the rest of the process. Saving a different tier from the settings screen persists it and applies on the next launch; it does not re-open or re-close anything in the running server. Making it live would mean atomically rebuilding every denial and revalidating requests already admitted under the old tier, and doing it partially is worse than not doing it: a session started at `ALL` and saved to `STRICT` would otherwise keep dispatching work `STRICT` forbids.
 
 | Mod | Exact version tested | What it modifies | Worker can reach it? | Verdict | Evidence hash (artifact SHA-256) |
 |---|---|---|---|---|---|
 | ServerCore | `1.5.19+26.1.2` | Three redirects in `PathFinder.findPath(PathNavigationRegion, Mob, Set, float, int, float)` replacing stream/map construction with a local map and per-search evaluator scratch | Yes | **SAFE** — exact exemption implemented | `593941ef360ba493b180c213bbb093d95223dba4a34d97e7559b914847363aa4` |
 | rabbit-pathfinding-fix | `1.3.0` | `PathNavigation.doStuckDetection(Vec3)` and `resetStuckTimeout()` navigation-maintenance injections | No in the pinned submitted search closure; a live worker-marker probe observed zero entries | **SAFE** — exact non-reachability exemption implemented | `6388f7a83b303c7de485f5f0089bd7e887ea45f9adf6bc9b099cad932fa58851` |
 | Fabric content registries | `11.2.1+76b0b6bb4c` | Land path-type hooks in `PathfindingContext`/Walk plus the structural `BlockStateBase` refresher | Yes for Walk; exact Swim route is structurally independent | **SAFE only while sealed empty** — exact lifecycle hooks publish a process-lifetime registration latch before provider mutation, worker lookup returns before the live registry map, dispatch denies after publication, and an exact in-flight Walk result is discarded if registration wins before install. | `d1c8a0a2753850ec422f9c03824a0475a24f1d27bbbf1227d9f9d952406bebd1` |
-| Fabric events interaction | `5.2.2+07b380be4c` | Two cancellable `HEAD` injections into the exact `BlockStateBase.useItemOn` and `useWithoutItem` descriptors | No from the pinned MC 26.1.2 worker search call surface | **SAFE** — exact negative-reachability exemption implemented; identity, ownership, selector, injector count, plugin absence, and aggregate claims fail closed. | `dc4a15c9250c6d0e5839e5b696792b06869c65f1ab7e71627986d8f9ed247d60` |
+| Fabric events interaction | `5.2.2+07b380be4c` | Two cancellable `HEAD` injections into the exact `BlockStateBase.useItemOn` and `useWithoutItem` descriptors | Not from the six pinned worker-side classes that were inventoried | **STALE-PATH RISK ONLY** — the non-reachability argument is a bounded sample, not an exhaustive proof: it inventories direct calls from six pinned classes and does not traverse the whole worker call graph or build a reverse callsite inventory for those two methods. Honoured at `compatibilityTier=AUDITED`; denied at the `STRICT` default, which is why a stock Fabric install is inert at `STRICT`. | `dc4a15c9250c6d0e5839e5b696792b06869c65f1ab7e71627986d8f9ed247d60` |
 | Farmer's Delight Refabricated | `26.1-3.6.7+refabricated` | Registers a **dynamic** land path-type provider (`AbstractStoveBlock`) | Yes when its provider is registered | **ALLOWED at `AUDITED`** — its provider receives the world and never loads it, so the answers are precomputed and frozen; denied at `STRICT` | `25adee6361b37f1e559373bf6aedc90fa62b2da8ab084e3dee53f037ffcac636` |
 | Spiky Spikes | `26.1.0` | Registers **static** land path-type providers (fixed enums) | Answers are precomputed, so its code never runs on a worker | **ALLOWED** — certified generically; no audit or hash pin needed | `323d974770988a17c6d054dc879b528c5e5c25ac48241748316bb6aa679eee04` |
 | Carpet | `26.1+v260402` | Navigation `createPath` overload/deferred-return behavior and a piston transformation | Not from the audited worker search entry | **DENIED** pending a live logging/deferred-return semantic witness; it will be dropped if that witness is ambiguous | `59bd225d12423a7d7a635ca0c94fa786f97ccebb116922b16d76072da4ee67e7` |
@@ -97,7 +99,8 @@ against the vanilla bytes actually loaded.
 **What this does not prove.** Lithium still adds live section and palette reads on the search path.
 A search running concurrently with a block change can observe a stale or torn view and return a
 worse path, and can meet a concurrent-resize exception. That failure is contained — it surfaces as a
-failed search that falls back to synchronous pathfinding — but path *quality* under live mutation
+failed search, which is discarded and leaves that mob synchronous for a short cooldown rather than
+being retried synchronously in place — but path *quality* under live mutation
 was never measured. This is why Lithium sits behind an explicit opt-in and not in the default tier.
 
 **Live witness.** With Lithium loaded and `compatibilityTier=AUDITED`, the startup scan reports
@@ -140,6 +143,23 @@ and must deny Walk.
 the release file — 128015 bytes with no `META-INF/jars` entry, against the 126183-byte release that
 actually contains the library. The harness fetches the release file directly and pins its SHA-1, so
 a substituted parent cannot stage a library the audit never examined.
+
+## What the structural verifiers actually check
+
+The Lithium and Diagonal Blocks entries above say "bytecode proof". Read that as a bounded
+mechanical check, not a whole-program proof, and specifically:
+
+- The Lithium verifier rejects field writes by opcode (`PUTFIELD`/`PUTSTATIC`) in the audited
+  classes. It does not model array stores, mutations performed by methods those classes call, or
+  transitive effects through helpers. Its initializer-confinement check is scoped to callers within
+  the same class, not to a whole-jar caller inventory.
+- The Diagonal Blocks verifier permits a small set of helper calls and establishes that the override
+  never reaches `StarCollisionBlock`, which owns the unsynchronised shape caches. It assumes
+  `PROPERTY_BY_DIRECTION` is immutable from its `static final` declaration rather than proving the
+  closure of every call it allows.
+
+Both are pinned to exact artifact bytes, so a different build fails closed rather than inheriting
+these findings. That is what makes the bounded check worth something: it cannot silently drift.
 
 ## Land path-type providers (generic, no per-mod entry)
 
@@ -227,12 +247,12 @@ standalone, so the audit passed in dev and denied in production. The released ja
 booted on a plain dedicated server built from release artifacts only.
 
 Fabric API `0.153.0+26.1.2`, Cloth Config `26.1.154`, Lithium `0.24.6+mc26.1.2`, and
-`pathweaver-0.3.0+26.1.2` (SHA-256 `2c098aa2…b882`), on JDK 25. 1024-mob maze load,
+`pathweaver-0.3.0+26.1.2` (SHA-256 `7d30e3a8…7724`), on JDK 25. 1024-mob maze load,
 `maxInFlight=256`.
 
 | Mods added | Tier | Scan result | Dispatched |
 |---|---|---|---|
-| Farmer's Delight | `AUDITED` | scanned=36, failed=0, denied=0 | **0** — dynamic provider closed the latch |
+| Farmer's Delight | `AUDITED` | scanned=36, failed=0, denied=0 | **11119** — stove provider certified by the exact audit |
 | Farmer's Delight | `ALL` | scanned=36, failed=0, denied=0 | 11133 |
 | Farmer's Delight + FerriteCore | `AUDITED` | scanned=41, failed=0, **denied=2** | **0** — `WalkNodeEvaluator`, `SwimNodeEvaluator` |
 | Farmer's Delight + FerriteCore | `ALL` | scanned=41, failed=0, denied=0 (waived, logged `WARN`) | 11132 |
@@ -271,6 +291,12 @@ PathWeaver stats: dispatched=10975, installed=10489, discarded=708
 
 `failed=0` across 331 scanned mixin configs is the load-bearing part: the scanner parsed every
 config in a pack of that size without a single fail-closed fallback.
+
+Provenance note: the scan census and the mod count come from the retained server logs
+(`.minecraft-dev/pathweaver-pack/boot-pack.log` and `run-k*.log`), not from the benchmark JSON,
+which records only timing and dispatch counters. The same applies to the "two builds" claim in the
+four-mod table: the JSON carries no artifact hash, so which jar produced which result is established
+by the run logs and the commit history rather than by the result files themselves.
 
 **What the same pack denies at `AUDITED`** — read from the live scan, not from a corpus guess, which
 matters because a static estimate over the same pack counted nearly twice as many:

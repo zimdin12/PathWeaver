@@ -303,9 +303,41 @@ final class FarmersDelightStoveCompatibility {
         return false;           // never reached the audited host
     }
 
-    /** True when this provider instance is the audited stove lambda. */
+    /**
+     * True when this provider instance really is a lambda of the audited host class.
+     *
+     * <p>Matching the class name prefix is not identity — another jar could define a class of the
+     * same name, and a transformed host could supply a same-prefix implementation. A lambda's own
+     * class has no readable bytecode, but it is a nestmate of the class that declares it, so its nest
+     * host is compared by reference against the class the audited name actually resolves to through
+     * the provider's own loader. Combined with the proof that the host declares exactly one provider
+     * lambda, that pins the instance to the audited callsite.
+     */
     static boolean isAuditedProvider(Object provider) {
-        return provider != null
-            && provider.getClass().getName().startsWith(HOST + "$$Lambda");
+        if (provider == null) return false;
+        Class<?> lambda = provider.getClass();
+        Class<?> nestHost = lambda.getNestHost();
+        if (nestHost == null || !HOST.equals(nestHost.getName())) return false;
+        try {
+            return nestHost == Class.forName(HOST, false, lambda.getClassLoader());
+        } catch (Throwable unresolvable) {
+            return false;
+        }
+    }
+
+    /**
+     * Re-checked at dispatch: no foreign mixin may have transformed the audited host.
+     *
+     * <p>The audit reads the jar's original bytes. A mixin injecting into the decider changes what
+     * actually runs, and could branch on the null world and position this certification passes in --
+     * returning one answer during precompute and a different one in play, without ever throwing.
+     * Neither the hash nor the local-slot proof can see that, and the override walk cannot either,
+     * because the declared owner is unchanged.
+     *
+     * <p>Checked at dispatch rather than at registration because the scan has not run yet when mods
+     * register their blocks.
+     */
+    static boolean hostNotTransformed() {
+        return !ForeignMixinScanner.anyActiveClaimTargets(HOST);
     }
 }

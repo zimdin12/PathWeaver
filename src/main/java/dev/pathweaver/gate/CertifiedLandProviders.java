@@ -19,23 +19,32 @@ import java.util.Map;
  * and would therefore route a mob straight over the block the mod marked dangerous.
  *
  * <p>{@link LandPathTypeRegistry.StaticPathTypeProvider} takes only a {@link BlockState} and a
- * neighbour flag: no {@code BlockGetter}, no {@code BlockPos}. It is structurally incapable of
- * reading the world or varying by position, and its input domain — every state a block can have,
- * times two — is finite and enumerable. So the provider is called here, on the main thread, once
- * per input, and the answers are frozen into an immutable table.
+ * neighbour flag: no {@code BlockGetter}, no {@code BlockPos}. Its input domain — every state a
+ * block can have, times two — is finite and enumerable, so the provider is called here, on the main
+ * thread, once per input, and the answers are frozen into an immutable table. The worker then reads
+ * that table instead of calling anything, so third-party provider code never executes off-thread.
+ * This needs no bytecode audit, no artifact hash, and no per-mod entry, and works for mods written
+ * after this code.
  *
- * <p>The worker then reads that table instead of calling anything. Third-party provider code never
- * executes off-thread, which means this needs no bytecode audit, no artifact hash, and no per-mod
- * entry. Any mod using the static form works, including ones written after this code.
+ * <h2>What this does and does not establish</h2>
+ *
+ * <p>The signature proves what the provider is <em>not handed</em>. It does not prove the answer is
+ * stable. Provider code is arbitrary: it can close over a {@code Level} or any mutable object, read
+ * a singleton, a config value or the clock, and return something different later. A provider
+ * answering from a captured {@code AtomicBoolean} would diverge from this table the moment it
+ * flipped, and nothing here would notice.
+ *
+ * <p>So this is a bounded assumption about how the Fabric API is meant to be used — that a static
+ * provider is a pure function of block state — and not a structural proof. It is therefore honoured
+ * above {@link dev.pathweaver.config.CompatibilityTier#STRICT} only, which is the tier that admits
+ * evidence rather than proof. Lithium already caches path types per block state eagerly at startup,
+ * so a provider that is not stable is already misbehaving on any pack running Lithium; that makes
+ * the assumption reasonable, not verified.
  *
  * <p>{@link LandPathTypeRegistry.DynamicPathTypeProvider} does receive the world and is not handled
  * here; such a registration still denies Walk through
  * {@link FabricLandPathRegistryLatch#beforeProviderMutation()}.
  *
- * <p>Residual limitation: a static provider that closes over mutable state and changes its answer
- * after registration would leave this table stale. That is a weak concern in practice — Lithium
- * already caches path types per block state eagerly at startup, so a provider that is not stable is
- * already misbehaving on any pack running Lithium — but it is a real assumption and not a proof.
  */
 public final class CertifiedLandProviders {
     /** Answers for [state][neighbour], published as one immutable snapshot per registration. */

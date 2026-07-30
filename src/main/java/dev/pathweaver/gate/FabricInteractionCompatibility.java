@@ -1,6 +1,7 @@
 package dev.pathweaver.gate;
 
 import com.google.gson.JsonObject;
+import dev.pathweaver.config.CompatibilityTier;
 import com.google.gson.JsonParser;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
@@ -140,9 +141,29 @@ final class FabricInteractionCompatibility {
         return new Verification(diagnostics.isEmpty(), diagnostics, targets, workerCalls);
     }
 
+    /**
+     * Evidence for the Fabric interaction module, honoured above the strict tier only.
+     *
+     * <p>This was previously treated as a structural non-reachability proof and honoured at
+     * {@link CompatibilityTier#STRICT}. It is not one. The check inventories direct
+     * {@code BlockStateBase} invocations from six pinned worker-side classes, which is a bounded
+     * sample: it does not traverse the full worker call graph through helpers, synthetic accessors
+     * and virtual evaluator routes, and it does not establish a whole-game reverse inventory of
+     * callsites for {@code useItemOn} and {@code useWithoutItem}. Exact hashes make that sample
+     * stable against drift; they do not make it exhaustive.
+     *
+     * <p>So it is evidence, not proof, and belongs at {@link CompatibilityTier#AUDITED}. Completing
+     * the reverse-callsite inventory would move it back.
+     */
     static ForeignMixinScanner.AuditedExemptionEvidence inspectRuntime(
-            FabricLoader loader, ModContainer module) {
+            FabricLoader loader, ModContainer module, CompatibilityTier tier) {
         try {
+            if (!tier.allowsAudited()) {
+                return ForeignMixinScanner.AuditedExemptionEvidence.unverified(
+                    "Fabric interaction non-reachability is a bounded audit, not a structural proof; "
+                        + "compatibilityTier=" + tier + " keeps it synchronous. "
+                        + "Set compatibilityTier=AUDITED to allow it.");
+            }
             if (!MOD_ID.equals(module.getMetadata().getId())
                     || !MOD_VERSION.equals(module.getMetadata().getVersion().getFriendlyString())) {
                 return ForeignMixinScanner.AuditedExemptionEvidence.unverified(

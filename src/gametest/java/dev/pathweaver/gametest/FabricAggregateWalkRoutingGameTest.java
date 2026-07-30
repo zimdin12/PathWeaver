@@ -235,23 +235,24 @@ public final class FabricAggregateWalkRoutingGameTest {
             check(navigation.getPath() != null,
                 "provider-present denial must still produce a real synchronous path");
 
-            // ALL means all. With the provider latch tripped, STRICT correctly keeps Walk
-            // synchronous -- but an operator who has explicitly asked for no compatibility
-            // checking must actually get async dispatch, and previously did not: the land-provider
-            // gate stayed armed regardless of tier, so "ignore every check" silently still refused
-            // to run Walk. The gate is checked per request, so flipping the tier here exercises
-            // exactly that waiver and nothing else (the scan already left this harness undenied).
+            // The tier is frozen at scan time, so writing it here -- which is exactly what saving
+            // the settings screen does -- must NOT change what this process admits. Before the
+            // freeze, raising the tier mid-session re-opened per-request gates while startup
+            // denials stayed as they were, which let a session started at ALL keep dispatching
+            // after being saved to STRICT. Assert the write is inert rather than that it works.
             CompatibilityTier previousTier = cfg.compatibilityTier;
             cfg.compatibilityTier = CompatibilityTier.ALL;
             try {
                 navigation.stop();
                 long beforeAll = counter("dispatched");
                 BlockPos allTarget = helper.absolutePos(new BlockPos(11, 2, 3));
-                check(navigation.moveTo(allTarget.getX() + 0.5, allTarget.getY(),
-                        allTarget.getZ() + 0.5, 1.0),
-                    "ALL-tier Walk request must be accepted");
-                check(counter("dispatched") == beforeAll + 1,
-                    "compatibilityTier=ALL must waive the land-provider gate and dispatch Walk");
+                navigation.moveTo(allTarget.getX() + 0.5, allTarget.getY(),
+                    allTarget.getZ() + 0.5, 1.0);
+                check(counter("dispatched") == beforeAll,
+                    "a tier written after the scan must not waive the land-provider gate; "
+                        + "the tier is frozen until restart");
+                check(navigation.getPath() != null,
+                    "the request must still produce a real synchronous path");
             } finally {
                 cfg.compatibilityTier = previousTier;
             }

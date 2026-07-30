@@ -14,10 +14,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 /**
  * Publishes provider mutation before the live map changes and keeps workers out of that map.
  *
- * <p>A static registration is certified instead of denied. Its provider cannot read the world, so
- * every answer it can give is precomputed here on the main thread and frozen; the worker reads the
- * frozen table and the mod's code never runs off-thread. A dynamic registration does receive the
- * world, so it still denies.
+ * <p>A static registration is certified instead of denied: every answer it can give is precomputed
+ * here on the main thread and frozen, so the worker reads a table and the mod's code never runs
+ * off-thread. That is not a proof of inertness — the signature shows only that the provider is not
+ * handed the world, not that its answer is stable — so a certified provider is honoured above the
+ * strict tier only. A dynamic registration does receive the world and denies unless an exact audit
+ * covers it.
  */
 @Mixin(LandPathTypeRegistry.class)
 abstract class LandPathTypeRegistryMixin {
@@ -32,7 +34,14 @@ abstract class LandPathTypeRegistryMixin {
         // Certification runs before the live map is mutated, so a worker can never observe a block
         // that is registered but not yet frozen. If it cannot be completed the latch still denies,
         // because a partial table would answer some states and silently diverge on the rest.
-        if (!CertifiedLandProviders.certify(block, provider)) {
+        if (CertifiedLandProviders.certify(block, provider)) {
+            // Certified, not proven inert: the signature shows the provider is not handed the world,
+            // which is not the same as showing its answer cannot change. It may close over mutable
+            // state, so the frozen table is an assumption about provider semantics and is honoured
+            // above the strict tier only. The tier is applied at dispatch, because registration runs
+            // before PathWeaver has loaded its config.
+            FabricLandPathRegistryLatch.certifiedProviderRegistered();
+        } else {
             FabricLandPathRegistryLatch.beforeProviderMutation();
         }
     }

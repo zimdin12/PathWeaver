@@ -107,23 +107,29 @@ class PathWeaverConfigTest {
         assertEquals(0, c.poolThreads);
         assertEquals(1, c.maxInFlight);
     }
-    @Test void moddedMobAsyncFollowsTheTierAndTheFlagIndependently() {
+    @Test void tierAccessorsReportTheFrozenPolicyAndIgnoreThePersistedField() {
+        // The tier is frozen at scan time, so writing the field -- which is what a settings save
+        // does -- must not change runtime policy. Before any scan publishes, everything denies.
         PathWeaverConfig c = new PathWeaverConfig();
-        // The default must keep mod-defined mobs synchronous; this is the gate's whole purpose.
         assertSame(CompatibilityTier.STRICT, c.compatibilityTier);
         assertFalse(c.allowModdedMobAsync);
-        assertFalse(c.moddedMobAsyncAllowed(), "default must not dispatch mod-defined mobs");
+        assertEquals(c.bypassesCompatibilityScan(), c.moddedMobAsyncAllowed(),
+            "with the flag off, modded mobs follow the frozen tier and nothing else");
 
-        c.compatibilityTier = CompatibilityTier.AUDITED;
-        assertFalse(c.moddedMobAsyncAllowed(),
-            "AUDITED rests on per-artifact proofs and grants nothing about mob subclasses");
+        // Invariant rather than a fixed expectation: whatever the frozen policy says, writing the
+        // field cannot change it. Asserting a literal false here would couple this test to whether
+        // some other test had already published a policy into the same JVM.
+        boolean bypass = c.bypassesCompatibilityScan();
+        boolean audited = c.allowsAuditedCompatibility();
+        for (CompatibilityTier tier : CompatibilityTier.values()) {
+            c.compatibilityTier = tier;
+            assertEquals(bypass, c.bypassesCompatibilityScan(),
+                "writing the field must not change policy: " + tier);
+            assertEquals(audited, c.allowsAuditedCompatibility(),
+                "writing the field must not change policy: " + tier);
+        }
 
-        // ALL means all: the operator asked for no checking, and the origin gate is a check.
-        c.compatibilityTier = CompatibilityTier.ALL;
-        assertTrue(c.moddedMobAsyncAllowed(), "ALL must not silently keep modded mobs synchronous");
-
-        // The dedicated flag stays reachable from the stricter tiers.
-        c.compatibilityTier = CompatibilityTier.STRICT;
+        // The dedicated flag is not tier-derived and stays live.
         c.allowModdedMobAsync = true;
         assertTrue(c.moddedMobAsyncAllowed());
     }

@@ -2,7 +2,9 @@
 
 **Experimental server-side mod for Minecraft 26.1.2 (Fabric). Moves vanilla mob path searches off the server thread.**
 
-**Read this first: PathWeaver refuses to run wherever another mod modifies pathfinding code and that mod has not been individually audited.** Stock Fabric API and Lithium have both been audited, so a typical performance pack can now use it — but plenty of packs will still find it inert. See [Will it actually do anything?](#will-it-actually-do-anything) before installing.
+**Read this first: PathWeaver refuses to run wherever another mod modifies pathfinding code and that mod has not been individually audited.**
+
+**Most installs will need `compatibilityTier=AUDITED` to do anything at all.** The default, `STRICT`, admits only structural proofs, and the exemption covering Fabric API's own interaction module is a bounded audit rather than a proof — so on a stock Fabric install `STRICT` denies and PathWeaver is inert. `AUDITED` additionally covers Fabric API, Lithium, Diagonal Blocks and Farmer's Delight, which is what a typical performance pack needs. This is a deliberate honesty choice, not an oversight: see [Will it actually do anything?](#will-it-actually-do-anything).
 
 See the [version-exact compatibility matrix](COMPATIBILITY.md) for audited verdicts, artifact hashes, and the evidence boundary. Future or modified artifacts fail closed.
 
@@ -10,7 +12,7 @@ See the [version-exact compatibility matrix](COMPATIBILITY.md) for audited verdi
 
 Minecraft runs mob A* path searches on the server thread. PathWeaver runs eligible ones on a small worker pool instead, so a server that is falling behind because of pathfinding can keep up.
 
-It only touches the exact vanilla `WalkNodeEvaluator` and `SwimNodeEvaluator` searches, and only for mobs whose class comes from vanilla. Everything else — flying mobs, amphibious mobs, evaluator subclasses, mod-defined mob classes — stays synchronous. It does not move entity ticking, collision, or AI goals off-thread.
+It only touches the exact vanilla `WalkNodeEvaluator` and `SwimNodeEvaluator` searches. Flying mobs, amphibious mobs and evaluator subclasses always stay synchronous. Mob classes added by mods also stay synchronous unless you opt in, either with `allowModdedMobAsync` or by choosing `compatibilityTier=ALL`, which implies it. It does not move entity ticking, collision, or AI goals off-thread.
 
 ## Will it actually do anything?
 
@@ -18,10 +20,10 @@ At startup PathWeaver scans every loaded mod for mixins into pathfinding code. I
 
 Failing closed is better than running unaudited code on a worker thread and corrupting a world. The consequence is that PathWeaver only does something once the mods in your pack that touch pathfinding have each been individually audited. Two of the biggest have been:
 
-- **The Fabric API that PathWeaver itself requires.** It bundles `fabric-content-registries-v0`, which injects into a method the walk search calls for every block. That alone used to deny Walk on *every* stock install. It is now allowed while no mod has registered a land path-type provider — the condition that makes the injection inert — and denies permanently the moment one registers, including cancelling a search already in flight.
+- **The Fabric API that PathWeaver itself requires.** It bundles `fabric-content-registries-v0`, which injects into a method the walk search calls for every block. That alone used to deny Walk on *every* stock install. It is now allowed while no mod has registered a land path-type provider — the condition that makes the injection inert — and denies permanently the moment one registers, including cancelling a search already in flight. Fabric API also bundles `fabric-events-interaction-v0`, whose exemption rests on an inventory of calls from six pinned worker-side classes. That is a bounded sample, not an exhaustive proof that no worker route reaches those methods, so **it is honoured at `AUDITED` only** — which is why `STRICT` is inert on a stock install.
 - **Lithium**, which ships in most performance modpacks, and **Diagonal Blocks** (Diagonal Fences/Walls/Windows). Their pathfinding mixins are pinned by hash and verified at startup against a bytecode proof that nothing a worker executes writes shared state. Allowing them requires setting `compatibilityTier` to `AUDITED`; see below for the trade.
 
-Mods that just mark a block dangerous — "mobs should avoid my spikes" — are handled generically and need no audit at all, because their rule can be precomputed and frozen before any worker sees it. The exception is a rule that inspects the surrounding world (Farmer's Delight's lit stove is one); those still switch Walk back to synchronous.
+Mods that just mark a block dangerous — "mobs should avoid my spikes" — are handled generically and need no audit at all, because their rule can be precomputed and frozen before any worker sees it. A rule that *receives* the surrounding world normally switches Walk back to synchronous, because its answers cannot be precomputed. Farmer's Delight's lit stove is the one exception: it receives the world and provably never reads it, so an exact audit of that artifact lets its answers be frozen too. That audit is honoured at `AUDITED`, not at `STRICT`.
 
 Still denied at the time of writing: Carpet, and any mod not in [the compatibility matrix](COMPATIBILITY.md).
 
@@ -54,7 +56,7 @@ Mean tick time fell **about 40%** — median 40.1%, mean 41.2%, range 36.2–48.
 
 **Read the spread, not the headline.** The async arm is strikingly stable (49–50 ms in all four runs, across two builds), while the *synchronous* baseline swings 78–96 ms depending on ambient machine load. A single pair therefore over- or under-states the gain by several points; an earlier revision of this table quoted 44.8% because it happened to be paired against the heaviest sync run. Quote the range.
 
-**The caveat that matters: at the shipped in-flight limit, 13.6–20.6% of searches were discarded.** Under this much load roughly one search in six is thrown away and recomputed later. It still wins decisively, but that is the default doing real work at saturation, not a tuned value.
+**The caveat that matters: at the shipped in-flight limit, 13.6–20.6% of dispatched searches were not installed within the capture window.** The harness records dispatches and installs and then halts, so it does not observe whether a straggler landed afterwards; read these as work not used in time, not as proven-discarded. Under this much load roughly one search in six is not making it back before it is wanted, which is the default doing real work at saturation rather than a tuned value.
 
 This is still a synthetic burst with all other mob AI stripped out. It shows what happens when pathfinding alone overloads the server; it is not a measurement of ordinary play.
 
@@ -68,7 +70,7 @@ Every table above uses zombies, which exercises only `WalkNodeEvaluator`. `SwimN
 | Tick interval, p99 | 212 / 217 ms | **73 / 75 ms** |
 | Main-thread cost per request | 101–103 µs | **12.6–12.8 µs** |
 
-95,204 searches dispatched and 94,214 installed — a **1.0% discard rate**, against 13.5% for the walking workload, because swim searches finish fast enough to beat their mob's next request.
+95,204 searches dispatched and 94,214 installed within the capture window — **1.0% not installed in time**, against 13.5% for the walking workload, because swim searches finish fast enough to beat their mob's next request.
 
 Mean tick time did not move, and that is the honest result rather than a disappointing one: 1024 cod never push this server past its budget, so both arms sit at the 20 TPS cap and there is no throughput to reclaim. What changes is the spike profile — **p99 fell 65%** and per-request main-thread cost fell **8×**. This is the clearest demonstration of the claim at the top of this section: the benefit is fewer tick spikes, not a higher average.
 
@@ -81,7 +83,7 @@ The four-mod environment isolates the effect but says nothing about a pack where
 | 1 | 99.4 ms | **49.9 ms** (−49.8%) | 893 → **353 ms** | 10.1 → **20.0** |
 | 2 | 90.9 ms | **61.5 ms** (−32.3%) | 815 → **449 ms** | 11.0 → **16.3** |
 
-Mean reduction **41%**, which lands on the same number as the isolated environment. But the spread is much wider, and the reason is visible in the discard rate: **13.4% in the first pair and 38.0% in the second**. On a busy pack the workers contend with everything else the pack is doing, so more results arrive too late to use and get recomputed. The second pair could not reach 20 TPS at all.
+Mean reduction **41%**, which lands on the same number as the isolated environment. But the spread is much wider, and the reason is visible in how much work went unused: **13.4% of dispatches were not installed within the capture window in the first pair, and 38.0% in the second**. On a busy pack the workers contend with everything else the pack is doing, so more results arrive too late to be wanted. The second pair could not reach 20 TPS at all.
 
 Take from this that the *shape* of the win holds at pack scale — large p99 reduction, no overlap between arms — while the *size* of it is less predictable than the isolated benchmark suggests.
 
@@ -89,12 +91,14 @@ Take from this that the *shape* of the win holds at pack scale — large p99 red
 
 An earlier revision of this file said `maxInFlight` was "the knob that matters when discards climb", which implied raising it. **That was wrong, and measurably so.** Sweeping it on the same 371-mod pack, same load, with the shipped default repeated last so drift could not flatter the larger values:
 
-| `maxInFlight` | Installed | Discarded |
-|---|---|---|
-| 256 | 45781 | **13.5%** |
-| 1024 | 6165 | **90.7%** |
-| 4096 | **0** | **100%** |
-| 256 (repeat) | 25715 | 34.7% |
+| `maxInFlight` | Dispatched | Installed in window | Not installed in window |
+|---|---|---|---|
+| 256 | 52948 | 45781 | **13.5%** |
+| 1024 | 66288 | 6165 | **90.7%** |
+| 4096 | 54312 | **0** | **100%** |
+| 256 (repeat) | 39396 | 25715 | 34.7% |
+
+These count what the capture observed, not what was terminally thrown away: the harness halts at the end of the window, so the 4096 row says *nothing landed while we were watching*, not that every search was ultimately discarded.
 
 The limit is not a buffer that catches overflow — it is an admission bound, and widening it converts refusals into latency. Workers are a fixed pool, so a deeper queue means each result lands later; a result that arrives after its mob has already asked again is superseded and dropped. In this workload every mob repaths every 6 ticks, so once the queue exceeds a few ticks of work, essentially nothing survives to be installed.
 
@@ -157,7 +161,7 @@ The figures in this subsection used a cleared gate, a much larger in-flight limi
 
 With ModMenu installed: **Mods → PathWeaver → Config**. The first option is the master switch; turning it off sends all new path requests through vanilla synchronous pathfinding and disables repath reuse. Work already accepted drains safely; later routing is vanilla-synchronous.
 
-You can also edit `config/pathweaver.json`. **The exact keys differ between versions — open your own file and edit what is there rather than copying an example from anywhere.** A malformed or unreadable config falls back to synchronous behaviour until a valid one is saved. Worker-thread and in-flight limits apply after a restart.
+You can also edit `config/pathweaver.json`. **The exact keys differ between versions — open your own file and edit what is there rather than copying an example from anywhere.** A malformed or unreadable config falls back to synchronous behaviour until a valid one is saved. Worker-thread and in-flight limits, and the compatibility tier, apply after a restart.
 
 `compatibilityTier` decides how much risk to accept from mods that modify pathfinding:
 

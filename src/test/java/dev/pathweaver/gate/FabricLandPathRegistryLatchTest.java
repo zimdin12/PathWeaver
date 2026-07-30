@@ -12,42 +12,50 @@ class FabricLandPathRegistryLatchTest {
      * than proven inertness, so it must count only above the strict tier. The tier is read here, at
      * dispatch, because registration happens before PathWeaver's config is loaded.
      */
-    @Test void auditedDynamicProviderIsHonouredOnlyAboveTheStrictTier() {
-        var previous = dev.pathweaver.config.PathWeaverConfig.get();
+    @Test void certifiedProviderIsHonouredOnlyAboveTheStrictTier() {
         try {
             var state = FabricLandPathRegistryLatch.isolatedState();
             state.publishHooksVerified(true);
+            ActiveCompatibilityPolicy.resetForTests();
+            ActiveCompatibilityPolicy.publish(false, false);          // STRICT
             assertTrue(state.allowsWalk(), "nothing registered yet");
 
-            state.auditedDynamicProviderRegistered();
-            for (var tier : dev.pathweaver.config.CompatibilityTier.values()) {
-                var config = new dev.pathweaver.config.PathWeaverConfig();
-                config.compatibilityTier = tier;
-                dev.pathweaver.config.PathWeaverConfig.set(config);
-                assertEquals(tier != dev.pathweaver.config.CompatibilityTier.STRICT,
-                    state.allowsWalk(), "tier " + tier);
-            }
+            state.certifiedProviderRegistered();
+            assertFalse(state.allowsWalk(), "a frozen table is evidence, not proof, so STRICT denies");
+
+            ActiveCompatibilityPolicy.resetForTests();
+            ActiveCompatibilityPolicy.publish(true, false);           // AUDITED
+            assertTrue(state.allowsWalk());
         } finally {
-            dev.pathweaver.config.PathWeaverConfig.set(previous);
+            ActiveCompatibilityPolicy.resetForTests();
         }
     }
 
-    @Test void anUncertifiedRegistrationStillDeniesAtEveryTier() {
-        var previous = dev.pathweaver.config.PathWeaverConfig.get();
+    @Test void certificationNeverReopensALatchAPlainRegistrationClosed() {
         try {
             var state = FabricLandPathRegistryLatch.isolatedState();
             state.publishHooksVerified(true);
-            // Both observed: a certified provider must never re-open a latch a plain one closed.
-            state.auditedDynamicProviderRegistered();
+            state.certifiedProviderRegistered();
             state.beforeProviderMutation();
-            for (var tier : dev.pathweaver.config.CompatibilityTier.values()) {
-                var config = new dev.pathweaver.config.PathWeaverConfig();
-                config.compatibilityTier = tier;
-                dev.pathweaver.config.PathWeaverConfig.set(config);
-                assertFalse(state.allowsWalk(), "tier " + tier);
+            for (boolean audited : new boolean[] {false, true}) {
+                ActiveCompatibilityPolicy.resetForTests();
+                ActiveCompatibilityPolicy.publish(audited, false);
+                assertFalse(state.allowsWalk(), "allowsAudited=" + audited);
             }
         } finally {
-            dev.pathweaver.config.PathWeaverConfig.set(previous);
+            ActiveCompatibilityPolicy.resetForTests();
+        }
+    }
+
+    @Test void anUnpublishedPolicyDeniesCertifiedProviders() {
+        try {
+            ActiveCompatibilityPolicy.resetForTests();
+            var state = FabricLandPathRegistryLatch.isolatedState();
+            state.publishHooksVerified(true);
+            state.certifiedProviderRegistered();
+            assertFalse(state.allowsWalk(), "an aborted or absent scan must not admit evidence");
+        } finally {
+            ActiveCompatibilityPolicy.resetForTests();
         }
     }
 
