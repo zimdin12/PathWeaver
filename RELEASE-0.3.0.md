@@ -71,6 +71,18 @@ heaviest sync run.
 under this load — roughly one in six thrown away and recomputed later. It still wins decisively, but
 that is the default doing real work at saturation.
 
+### And on an actual modpack
+
+The four-mod environment isolates the effect. The same jar, same load, on a **371-mod server-side
+derivative of a real pack** at `ALL`: mean 99.4 -> 49.9 ms and 90.9 -> 61.5 ms (mean **41%**, the same
+figure), p99 893 -> 353 ms and 815 -> 449 ms. The scanner parsed **331 mixin configs with zero
+failures**.
+
+The spread is wider though, and the discard rate says why: **13.4% in one pair, 38.0% in the other**.
+On a busy pack the workers compete with everything else, so more results arrive too late to use. The
+shape of the win holds; the size is less predictable than the isolated benchmark suggests. If you see
+heavy discarding, `maxInFlight` is the knob.
+
 This is a synthetic burst with all other mob AI stripped out. It shows what happens when pathfinding
 alone overloads a server. It is not a measurement of ordinary play, and PathWeaver's benefit is
 **fewer tick spikes, not a higher average TPS**.
@@ -93,6 +105,8 @@ copy — see COMPATIBILITY.md for the residual assumptions, stated plainly.
       `auditedTierHarness` 2/2 `deniedFamilies=0`
 - [x] Release jar booted on a dedicated server **outside** Loom's dev classpath, with Farmer's
       Delight and FerriteCore loaded, at every tier
+- [x] Release jar booted at **modpack scale** — 371 mods, 331 mixin configs scanned, 0 failures —
+      with a paired A/B and the audited-tier denial list read from the live scan
 - [x] Clean build from `master` reproduces the jar hash byte-for-byte
 - [x] Tagged `v0.3.0`; `master` at `71cb2b6`
 - [x] Benchmark claims reconciled with measurements

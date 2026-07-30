@@ -226,6 +226,45 @@ The benchmark harness refuses to report an async arm that dispatched nothing
 startup, so a silently-synchronous run cannot be mistaken for a win. Both `AUDITED` rows above were
 rejected by that check rather than reported as results.
 
+### At modpack scale
+
+The four-mod environment above isolates the gate; it does not show what happens when 300+ mods are
+transforming the same classes. So the same release jar was also booted on a **371-mod load — 222
+jars plus their nested libraries — a server-side derivative of a real 26.1.2 pack**, with that pack's
+own `config/` directory and its own `pathweaver.json`.
+
+```
+Loading 371 mods
+Foreign-mixin scan complete: scanned=331, failed=0, deniedFamilies=0    (compatibilityTier=ALL)
+PathWeaver stats: dispatched=10975, installed=10489, discarded=708
+```
+
+`failed=0` across 331 scanned mixin configs is the load-bearing part: the scanner parsed every
+config in a pack of that size without a single fail-closed fallback.
+
+**What the same pack denies at `AUDITED`** — read from the live scan, not from a corpus guess, which
+matters because a static estimate over the same pack counted nearly twice as many:
+
+| | |
+|---|---|
+| Denied families | `WalkNodeEvaluator`, `SwimNodeEvaluator` |
+| Distinct denying mods (9) | `balm`, `carpet`, `expandability`, `ferritecore`, `scalablelux`, `sereneseasons`, `terrain_slabs`, `vehicleupgrade`, `yungscavebiomes` |
+| Audited and exempt | `servercore`, `rabbit-pathfinding-fix`, `fabric-events-interaction-v0`, `lithium`, `diagonalblocks` |
+
+Most of these mix into `BlockStateBase`, and most call into their own code from the injected method,
+which is why the audited tier cannot clear them: proving they perform no shared-state write on the
+search path would require a transitive analysis through mod code, not a signature check.
+
+**A version-pinning demonstration fell out of this run.** The first attempt denied Lithium too:
+
+```
+Foreign-mixin scan failure (fail-closed): Lithium exact audit: unsupported version 0.24.5+mc26.1.2
+```
+
+The derivative carried Lithium `0.24.5`; the audit pins `0.24.6`. An unpinned build denies rather
+than reusing an audit written against different bytes, exactly as intended. Aligning the version made
+the audit verify and dropped Lithium from the denied list.
+
 Residual assumption: a static provider that closes over mutable state and changes its answer after
 registration would leave the frozen table stale. Lithium already caches path types per block state
 eagerly at startup, so such a provider is already misbehaving on any pack running Lithium — but this

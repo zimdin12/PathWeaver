@@ -58,6 +58,19 @@ Mean tick time fell **about 40%** — median 40.1%, mean 41.2%, range 36.2–48.
 
 This is still a synthetic burst with all other mob AI stripped out. It shows what happens when pathfinding alone overloads the server; it is not a measurement of ordinary play.
 
+### On a real modpack
+
+The four-mod environment isolates the effect but says nothing about a pack where 300+ mods transform the same classes. The same release jar, same load, on a **371-mod server-side derivative of a real pack** at `compatibilityTier=ALL`:
+
+| Pair | Synchronous | With PathWeaver | p99 | Effective TPS |
+|---|---|---|---|---|
+| 1 | 99.4 ms | **49.9 ms** (−49.8%) | 893 → **353 ms** | 10.1 → **20.0** |
+| 2 | 90.9 ms | **61.5 ms** (−32.3%) | 815 → **449 ms** | 11.0 → **16.3** |
+
+Mean reduction **41%**, which lands on the same number as the isolated environment. But the spread is much wider, and the reason is visible in the discard rate: **13.4% in the first pair and 38.0% in the second**. On a busy pack the workers contend with everything else the pack is doing, so more results arrive too late to use and get recomputed. The second pair could not reach 20 TPS at all.
+
+Take from this that the *shape* of the win holds at pack scale — large p99 reduction, no overlap between arms — while the *size* of it is less predictable than the isolated benchmark suggests, and `maxInFlight` is the knob that matters when discards climb.
+
 ### Earlier figures, measured with the gate forced open
 
 The figures below predate the audited exemptions and were produced **with the compatibility gate manually cleared by a test harness**, on a 16-core / 32-thread desktop CPU with 8 worker threads. Measurements were reproduced by a second engineer using an audited derivative of the same corrected harness, with fresh worlds and reversed-order paired runs. That is a check on the runs and the analysis, not an independently written timer.
