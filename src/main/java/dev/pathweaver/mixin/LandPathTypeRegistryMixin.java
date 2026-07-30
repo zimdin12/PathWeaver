@@ -45,6 +45,18 @@ abstract class LandPathTypeRegistryMixin {
         expect = 1)
     private static void pathweaver$beforeDynamicProviderMutation(
             Block block, LandPathTypeRegistry.DynamicPathTypeProvider provider, CallbackInfo ci) {
+        // A dynamic provider receives the world, so it normally denies. One exception is carried by an
+        // exact audit proving the provider never loads the world or position it is handed, which makes
+        // it precomputable like a static one.
+        //
+        // The tier is deliberately not read here. Mods register blocks from their own initializer,
+        // which can run before PathWeaver has loaded its config -- Farmer's Delight does exactly that
+        // -- so this would see the fail-closed default and deny whatever the operator had chosen. The
+        // audit result is published instead, and the tier decides at dispatch.
+        if (CertifiedLandProviders.certifyAuditedDynamic(block, provider)) {
+            FabricLandPathRegistryLatch.auditedDynamicProviderRegistered();
+            return;
+        }
         FabricLandPathRegistryLatch.beforeProviderMutation();
     }
 

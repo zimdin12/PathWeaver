@@ -58,6 +58,20 @@ Mean tick time fell **about 40%** — median 40.1%, mean 41.2%, range 36.2–48.
 
 This is still a synthetic burst with all other mob AI stripped out. It shows what happens when pathfinding alone overloads the server; it is not a measurement of ordinary play.
 
+### Swimming, measured separately
+
+Every table above uses zombies, which exercises only `WalkNodeEvaluator`. `SwimNodeEvaluator` is the other family PathWeaver accelerates, so it was measured on its own: 1024 cod in a flooded maze, same shipped configuration, same paired method.
+
+| | Synchronous | With PathWeaver |
+|---|---|---|
+| Tick interval, mean | 50.0 ms | 50.0 ms |
+| Tick interval, p99 | 212 / 217 ms | **73 / 75 ms** |
+| Main-thread cost per request | 101–103 µs | **12.6–12.8 µs** |
+
+95,204 searches dispatched and 94,214 installed — a **1.0% discard rate**, against 13.5% for the walking workload, because swim searches finish fast enough to beat their mob's next request.
+
+Mean tick time did not move, and that is the honest result rather than a disappointing one: 1024 cod never push this server past its budget, so both arms sit at the 20 TPS cap and there is no throughput to reclaim. What changes is the spike profile — **p99 fell 65%** and per-request main-thread cost fell **8×**. This is the clearest demonstration of the claim at the top of this section: the benefit is fewer tick spikes, not a higher average.
+
 ### On a real modpack
 
 The four-mod environment isolates the effect but says nothing about a pack where 300+ mods transform the same classes. The same release jar, same load, on a **371-mod server-side derivative of a real pack** at `compatibilityTier=ALL`:

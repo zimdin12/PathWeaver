@@ -12,7 +12,7 @@ The verdict interacts with the `compatibilityTier` setting. `STRICT` (the defaul
 | rabbit-pathfinding-fix | `1.3.0` | `PathNavigation.doStuckDetection(Vec3)` and `resetStuckTimeout()` navigation-maintenance injections | No in the pinned submitted search closure; a live worker-marker probe observed zero entries | **SAFE** — exact non-reachability exemption implemented | `6388f7a83b303c7de485f5f0089bd7e887ea45f9adf6bc9b099cad932fa58851` |
 | Fabric content registries | `11.2.1+76b0b6bb4c` | Land path-type hooks in `PathfindingContext`/Walk plus the structural `BlockStateBase` refresher | Yes for Walk; exact Swim route is structurally independent | **SAFE only while sealed empty** — exact lifecycle hooks publish a process-lifetime registration latch before provider mutation, worker lookup returns before the live registry map, dispatch denies after publication, and an exact in-flight Walk result is discarded if registration wins before install. | `d1c8a0a2753850ec422f9c03824a0475a24f1d27bbbf1227d9f9d952406bebd1` |
 | Fabric events interaction | `5.2.2+07b380be4c` | Two cancellable `HEAD` injections into the exact `BlockStateBase.useItemOn` and `useWithoutItem` descriptors | No from the pinned MC 26.1.2 worker search call surface | **SAFE** — exact negative-reachability exemption implemented; identity, ownership, selector, injector count, plugin absence, and aggregate claims fail closed. | `dc4a15c9250c6d0e5839e5b696792b06869c65f1ab7e71627986d8f9ed247d60` |
-| Farmer's Delight Refabricated | `26.1-3.6.7+refabricated` | Registers a **dynamic** land path-type provider (`AbstractStoveBlock`) | Yes when its provider is registered | **DENIED** — dynamic providers receive the world, so their answers cannot be precomputed | `25adee6361b37f1e559373bf6aedc90fa62b2da8ab084e3dee53f037ffcac636` |
+| Farmer's Delight Refabricated | `26.1-3.6.7+refabricated` | Registers a **dynamic** land path-type provider (`AbstractStoveBlock`) | Yes when its provider is registered | **ALLOWED at `AUDITED`** — its provider receives the world and never loads it, so the answers are precomputed and frozen; denied at `STRICT` | `25adee6361b37f1e559373bf6aedc90fa62b2da8ab084e3dee53f037ffcac636` |
 | Spiky Spikes | `26.1.0` | Registers **static** land path-type providers (fixed enums) | Answers are precomputed, so its code never runs on a worker | **ALLOWED** — certified generically; no audit or hash pin needed | `323d974770988a17c6d054dc879b528c5e5c25ac48241748316bb6aa679eee04` |
 | Carpet | `26.1+v260402` | Navigation `createPath` overload/deferred-return behavior and a piston transformation | Not from the audited worker search entry | **DENIED** pending a live logging/deferred-return semantic witness; it will be dropped if that witness is ambiguous | `59bd225d12423a7d7a635ca0c94fa786f97ccebb116922b16d76072da4ee67e7` |
 | Lithium | `0.24.6+mc26.1.2` | Region/block-state path-type shortcuts, block-state flag cache, chunk-access region lookup, and inactive-navigation listener bookkeeping | Yes, except the navigation hook | **STALE-PATH RISK ONLY** — bytecode proof that no worker-reachable method writes shared state; honoured at `compatibilityTier=AUDITED`, denied at the `STRICT` default | `509e7f770c7d48bd37e9592917329db2768e4695c72a43e22c19ef64d0f9839f` |
@@ -157,11 +157,12 @@ here, and works for mods written after this release.**
 `DynamicPathTypeProvider` additionally receives the world and the position, so its answers cannot be
 precomputed. Such a registration still denies Walk for the remainder of the process.
 
-### Worked example: Farmer's Delight is denied, and does not have to be
+### Audited exception: Farmer's Delight's stove
 
 `farmersdelight 26.1-3.6.7+refabricated` (artifact SHA-256 `25adee63…c636`) registers a *dynamic*
-provider on its stove, so the rule above denies Walk for the whole process. Disassembling it shows
-the denial is conservative rather than necessary:
+provider on its stove, so the rule above would deny Walk for the whole process. Farmer's Delight is
+common enough that this alone switched PathWeaver off on a large number of packs — and the denial is
+conservative rather than necessary:
 
 ```
 AbstractStoveBlock.<init> → invokedynamic getPathType()DynamicPathTypeProvider
@@ -187,7 +188,36 @@ call chain with virtual dispatch — a transitive escape analysis, not a signatu
 were considered and rejected as unsound: invoking the provider with `null` world and position (a
 provider that branches on `world == null` would answer differently under a real world), and checking
 only that the implementation method itself never loads those locals (Farmer's Delight fails that
-check, because it forwards them to a method that ignores them). No dynamic provider is certified.
+check, because it forwards them to a method that ignores them).
+
+So this one artifact is audited by hand instead, and the audit fails closed on every step:
+
+1. Artifact and `AbstractStoveBlock` pinned by SHA-256.
+2. Exactly one `invokedynamic` in that class produces a `DynamicPathTypeProvider`, and its bootstrap
+   arguments name `lambda$new$0`. Resolving the implementation from the bootstrap handle is what
+   makes the runtime identity check meaningful: a lambda's own class has no readable bytecode, so
+   the instance is matched by its host class, which only means something once that class is known to
+   contain a single provider lambda.
+3. That lambda calls nothing except `BlockState.getBlock` and the decider — it may forward, not
+   compute.
+4. The decider never references local slot 2 or 3, the `BlockGetter` and the `BlockPos`.
+5. No other class in the jar declares the decider, and the jar carries no nested jars. The decider is
+   invoked virtually, so a second implementation would be dispatched to instead.
+6. At registration, the concrete block's class hierarchy is walked up to the audited host and must
+   declare no override — closing the same hole for a subclass added by *another* mod, which the jar
+   scan cannot see.
+
+Only then is the provider evaluated over every block state with null world and position — safe
+precisely because step 4 proved those arguments dead — and the answers frozen like a static
+provider's. Honoured at `AUDITED`, not `STRICT`: the static form is world-independent by its
+*signature*, whereas this rests on reading one artifact's bytecode.
+
+**The tier is not read at registration time.** Mods register blocks from their own initializer, and
+Farmer's Delight's runs before PathWeaver has loaded its config, so a tier read there sees the
+fail-closed default and denies whatever the operator actually chose. The audit result is published to
+the registry latch instead, and the tier is applied at dispatch. Verified both ways on a dedicated
+server outside Loom: with Farmer's Delight loaded, `AUDITED` dispatched 11119 searches where it
+previously dispatched 0, and `STRICT` still refused to run.
 
 ## Shipped-artifact verification, outside Loom
 

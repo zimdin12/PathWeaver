@@ -12,6 +12,17 @@ _Not yet published. The audits below are version-exact; see COMPATIBILITY.md._
   bytecode analysis to perform no shared-state writes on the search path. `ALL` ignores the scan
   entirely. Configs carrying the retired boolean migrate to `ALL` when it was on and `STRICT`
   otherwise; an explicit tier always wins, and an unreadable tier fails closed.
+- Audit Farmer's Delight `26.1-3.6.7+refabricated` so its stove no longer switches PathWeaver off.
+  It registers a *dynamic* land path-type provider, which normally denies Walk for the whole process
+  because such a provider receives the world. This one never loads it: the provider forwards to a
+  method whose entire body reads the `LIT` property, so its answers are precomputable exactly like a
+  static provider's. The audit pins the artifact, resolves the single provider lambda from its
+  bootstrap handle, requires that lambda to forward and nothing more, proves the decider never
+  references the `BlockGetter` or `BlockPos` locals, and rules out any other implementation in the
+  jar, in a nested jar, or in the registered block's own class hierarchy. Honoured at `AUDITED`.
+  Generalising this is deliberately not attempted: it needs a transitive escape analysis, and both
+  cheap substitutes are unsound -- invoking with a null world misreads a provider that branches on
+  null, and checking only the entry method's locals fails on Farmer's Delight itself.
 - Audit and exempt Lithium `0.24.6+mc26.1.2` at the `AUDITED` tier. Lithium ships in most
   performance modpacks and previously kept PathWeaver switched off in exactly the packs that want
   it. All eight of its sensitive claims are pinned by artifact hash and verified at startup.
@@ -31,6 +42,11 @@ _Not yet published. The audits below are version-exact; see COMPATIBILITY.md._
 
 ### Fixed
 
+- Apply the compatibility tier at dispatch rather than at provider registration. Mods register blocks
+  from their own initializer, which for Farmer's Delight runs before PathWeaver has loaded its config,
+  so a tier read at registration saw the fail-closed default and denied regardless of the operator's
+  setting. The audit outcome is published to the registry latch and the policy applied where config
+  is known to be loaded.
 - Warn when almost no search result is being used. Sweeping `maxInFlight` on a 371-mod pack showed it
   is an admission bound rather than a buffer: widening it converts refusals into latency, and a result
   that lands after its mob has asked again is superseded and dropped. At 1024 mobs repathing every 6

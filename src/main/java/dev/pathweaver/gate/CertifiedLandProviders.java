@@ -79,6 +79,41 @@ public final class CertifiedLandProviders {
         }
     }
 
+    /**
+     * Main thread: freeze a dynamic provider that has been proven not to read the world.
+     *
+     * <p>Only for providers carrying an exact audit establishing that the {@code BlockGetter} and
+     * {@code BlockPos} are never loaded — see {@link FarmersDelightStoveCompatibility}. Given that,
+     * passing null for both is not a guess about behaviour: the arguments are provably dead, so the
+     * provider's answer over the finite state domain is complete and stable, exactly as for the
+     * static form.
+     *
+     * <p>Never call this on an unaudited dynamic provider. A provider that merely happens not to
+     * throw on null could still be branching on it, and would then answer differently under a real
+     * world while this table claimed otherwise.
+     */
+    private static boolean certifyWorldIndependentDynamic(
+            Block block, LandPathTypeRegistry.DynamicPathTypeProvider provider) {
+        return certify(block, (state, isNeighbour) -> provider.getPathType(state, null, null, isNeighbour));
+    }
+
+    /**
+     * Certify a dynamic provider only if an exact audit covers this provider, this artifact, and this
+     * concrete block.
+     *
+     * <p>All three conditions are required and each closes a different hole: the identity check that
+     * this really is the audited lambda, the artifact audit that its implementation ignores the world,
+     * and the per-block override check that no subclass from another mod is dispatched to instead.
+     */
+    public static boolean certifyAuditedDynamic(
+            Block block, LandPathTypeRegistry.DynamicPathTypeProvider provider) {
+        if (block == null || provider == null) return false;
+        if (!FarmersDelightStoveCompatibility.isAuditedProvider(provider)) return false;
+        if (!FarmersDelightStoveCompatibility.providerIsWorldIndependent()) return false;
+        if (!FarmersDelightStoveCompatibility.deciderNotOverriddenFor(block.getClass())) return false;
+        return certifyWorldIndependentDynamic(block, provider);
+    }
+
     /** True when every state of this block has a frozen answer. */
     public static boolean isCertified(Block block) {
         Table table = published;

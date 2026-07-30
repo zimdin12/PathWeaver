@@ -7,6 +7,50 @@ import java.util.concurrent.CountDownLatch;
 import static org.junit.jupiter.api.Assertions.*;
 
 class FabricLandPathRegistryLatchTest {
+    /**
+     * An audited dynamic provider is frozen like a static one, but the evidence is an audit rather
+     * than proven inertness, so it must count only above the strict tier. The tier is read here, at
+     * dispatch, because registration happens before PathWeaver's config is loaded.
+     */
+    @Test void auditedDynamicProviderIsHonouredOnlyAboveTheStrictTier() {
+        var previous = dev.pathweaver.config.PathWeaverConfig.get();
+        try {
+            var state = FabricLandPathRegistryLatch.isolatedState();
+            state.publishHooksVerified(true);
+            assertTrue(state.allowsWalk(), "nothing registered yet");
+
+            state.auditedDynamicProviderRegistered();
+            for (var tier : dev.pathweaver.config.CompatibilityTier.values()) {
+                var config = new dev.pathweaver.config.PathWeaverConfig();
+                config.compatibilityTier = tier;
+                dev.pathweaver.config.PathWeaverConfig.set(config);
+                assertEquals(tier != dev.pathweaver.config.CompatibilityTier.STRICT,
+                    state.allowsWalk(), "tier " + tier);
+            }
+        } finally {
+            dev.pathweaver.config.PathWeaverConfig.set(previous);
+        }
+    }
+
+    @Test void anUncertifiedRegistrationStillDeniesAtEveryTier() {
+        var previous = dev.pathweaver.config.PathWeaverConfig.get();
+        try {
+            var state = FabricLandPathRegistryLatch.isolatedState();
+            state.publishHooksVerified(true);
+            // Both observed: a certified provider must never re-open a latch a plain one closed.
+            state.auditedDynamicProviderRegistered();
+            state.beforeProviderMutation();
+            for (var tier : dev.pathweaver.config.CompatibilityTier.values()) {
+                var config = new dev.pathweaver.config.PathWeaverConfig();
+                config.compatibilityTier = tier;
+                dev.pathweaver.config.PathWeaverConfig.set(config);
+                assertFalse(state.allowsWalk(), "tier " + tier);
+            }
+        } finally {
+            dev.pathweaver.config.PathWeaverConfig.set(previous);
+        }
+    }
+
     @Test void unverifiedHooksFailClosedEvenWhenRegistryAppearsEmpty() {
         var state = FabricLandPathRegistryLatch.isolatedState();
         assertFalse(state.allowsWalk());

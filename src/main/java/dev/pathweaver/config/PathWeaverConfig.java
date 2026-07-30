@@ -132,6 +132,15 @@ public class PathWeaverConfig implements ConfigData {
      * <p>Primitive for the same reason as {@link #bypassesCompatibilityScan()}: the caller is a
      * mixin applied during early transformation and must not name the tier enum.
      */
+    /**
+     * True when exemptions resting on an audit, rather than on proven inertness, may be honoured.
+     *
+     * <p>Primitive for the same reason as {@link #bypassesCompatibilityScan()}.
+     */
+    public boolean allowsAuditedCompatibility() {
+        return compatibilityTier.allowsAudited();
+    }
+
     public boolean moddedMobAsyncAllowed() {
         return allowModdedMobAsync || compatibilityTier.bypassesScan();
     }

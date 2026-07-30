@@ -21,6 +21,24 @@ public final class FabricLandPathRegistryLatch {
         PROCESS.beforeProviderMutation();
     }
 
+    /**
+     * Record that a dynamic provider was registered but certified by an exact audit.
+     *
+     * <p>Kept separate from {@link #beforeProviderMutation()} because the two are decided at
+     * different times. Whether the audit may be honoured depends on the compatibility tier, and
+     * registration is far too early to read it: mods register blocks during their own initializer,
+     * which for Farmer's Delight runs before PathWeaver has loaded its config at all. Reading the
+     * tier there saw the fail-closed default and denied every time, regardless of the real setting.
+     * So the fact is published here and the policy is applied at dispatch, where config is loaded.
+     */
+    public static void auditedDynamicProviderRegistered() {
+        PROCESS.auditedDynamicProviderRegistered();
+    }
+
+    public static boolean auditedDynamicProviderObserved() {
+        return PROCESS.auditedDynamicProviderObserved();
+    }
+
     /** Called only when the worker-side HEAD hook bypasses the live provider map. */
     public static void recordWorkerProviderLookupBypass() {
         PROCESS.recordWorkerProviderLookupBypass();
@@ -54,11 +72,20 @@ public final class FabricLandPathRegistryLatch {
 
     static final class State {
         private final AtomicBoolean providerRegistrationObserved = new AtomicBoolean();
+        private final AtomicBoolean auditedDynamicProviderObserved = new AtomicBoolean();
         private final AtomicLong workerProviderLookupBypasses = new AtomicLong();
         private volatile boolean hooksVerified;
 
         void beforeProviderMutation() {
             providerRegistrationObserved.set(true);
+        }
+
+        void auditedDynamicProviderRegistered() {
+            auditedDynamicProviderObserved.set(true);
+        }
+
+        boolean auditedDynamicProviderObserved() {
+            return auditedDynamicProviderObserved.get();
         }
 
         void recordWorkerProviderLookupBypass() {
@@ -74,7 +101,12 @@ public final class FabricLandPathRegistryLatch {
         }
 
         boolean allowsWalk() {
-            return hooksVerified && !providerRegistrationObserved.get();
+            if (!hooksVerified || providerRegistrationObserved.get()) return false;
+            // An audited dynamic provider was frozen like a static one, but the audit is evidence
+            // rather than proven inertness, so it only counts above the strict tier. Read here
+            // rather than at registration: this runs at dispatch, where config is loaded.
+            return !auditedDynamicProviderObserved.get()
+                || dev.pathweaver.config.PathWeaverConfig.get().allowsAuditedCompatibility();
         }
 
         boolean providerRegistrationObserved() {
