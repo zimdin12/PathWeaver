@@ -153,9 +153,12 @@ public final class FabricAggregateWalkRoutingGameTest {
             check(PathWeaverRuntime.get().entitySink().isRegistered(mob.getId()),
                 "late-registration witness did not capture an in-flight Walk request");
 
-            // A static provider cannot read the world, so its answers are precomputed on the
-            // main thread and frozen. That must NOT deny: the whole point is that an ordinary mod
-            // adding a path-type rule no longer switches PathWeaver off.
+            // The fixed-enum registration overload used here builds Fabric's own pure lambda, so
+            // its answers are precomputed on the main thread and frozen. That must NOT deny: the
+            // whole point is that an ordinary mod adding a path-type rule no longer switches
+            // PathWeaver off. Note this is a property of that overload, not of the interface: a
+            // hand-written StaticPathTypeProvider can close over mutable state, which is why
+            // certification generally is an assumption honoured at AUDITED rather than a proof.
             LandPathTypeRegistry.register(Blocks.STRUCTURE_BLOCK,
                 PathType.DAMAGING, PathType.DAMAGING);
             check(CertifiedLandProviders.isCertified(Blocks.STRUCTURE_BLOCK),

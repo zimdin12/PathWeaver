@@ -29,13 +29,17 @@ rather than a structural proof, so it is not admitted here — which means a sto
 denies at the default. That is deliberate: the alternative is calling a six-class sample an
 exhaustive proof. **Most servers will want `AUDITED`.**
 
-**`AUDITED`** — additionally trusts mods that pass a bounded bytecode check for writes on the search
-path. **Lithium is the one that matters** — it ships in most performance packs, and at `STRICT` its
-presence alone kept PathWeaver off. Diagonal Blocks, Farmer's Delight and Fabric API's own
-interaction module are also cleared here. The honest trade: no worker-side write was *found*, by a
-check that looks at field-write opcodes and does not model array stores, mutations inside methods
-those classes call, or effects reached through helpers — so this lowers the risk of corruption from a
-worker rather than ruling it out. These mods also add live reads, so a search can return a slightly
+**`AUDITED`** — additionally trusts mods cleared by bounded evidence rather than by proof.
+**Lithium is the one that matters** — it ships in most performance packs, and at `STRICT` its
+presence alone kept PathWeaver off. Four distinct mechanisms sit behind this tier, and they are not
+equally strong: Lithium and Diagonal Blocks pass a field-write-opcode check on the search path;
+Fabric API's interaction module rests on an inventory of direct calls from six pinned classes;
+mods that merely mark blocks dangerous rest on an assumption that their rule is a pure function of
+block state; and Farmer's Delight's stove rests on reading one artifact's bytecode. The honest
+trade on the first of those: no worker-side write was *found*, by a check that does not model array
+stores, mutations inside methods those classes call, or effects reached through helpers — so it
+lowers the risk of corruption from a worker rather than ruling it out. COMPATIBILITY.md states each
+mechanism separately. These mods also add live reads, so a search can return a slightly
 stale path if the world changes mid-search.
 
 **`ALL`** — ignores every check and runs off-thread regardless. This runs unaudited third-party code

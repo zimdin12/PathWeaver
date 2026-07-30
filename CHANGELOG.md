@@ -50,11 +50,14 @@ _Not yet published. The audits below are version-exact; see COMPATIBILITY.md._
 - Warn when almost no search result is being used. Sweeping `maxInFlight` on a 371-mod pack showed it
   is an admission bound rather than a buffer: widening it converts refusals into latency, and a result
   that lands after its mob has asked again is superseded and dropped. At 1024 mobs repathing every 6
-  ticks, 13.5% of searches were discarded at the shipped 256, 90.7% at 1024, and effectively all of
-  them at 4096 -- with no errors logged and the server still at 20 TPS, so the pool burned CPU on work
-  nothing consumed while looking healthy. The install ratio is now sampled once a minute and a warning
-  names `maxInFlight` and `poolThreads` when under a quarter of completed searches are used. The
-  README previously advised raising `maxInFlight` when discards climb, which was backwards; corrected.
+  ticks, measured as the share of dispatches not installed within the capture window: 13.5% at the
+  shipped 256, 90.7% at 1024, and nothing installed at all while observing at 4096 -- with no errors
+  logged and the server still at 20 TPS, so the pool spent CPU on work that was not being used while
+  looking healthy. The counters record dispatches and installs and the harness then halts, so these
+  are shares of work unused in time rather than proven terminal discards. The install ratio is now
+  sampled once a minute and a warning names `maxInFlight` and `poolThreads` when under a quarter of
+  completed searches are used. The README previously advised raising `maxInFlight` when that share
+  climbs, which was backwards; corrected.
 - Make `compatibilityTier=ALL` waive the mob-origin gate as well. The origin gate refuses mob classes
   defined by a mod because their navigation overrides have not been inspected — a compatibility check
   like any other — so leaving it armed under "ignore every check" kept most of a heavily-modded
@@ -66,7 +69,8 @@ _Not yet published. The audits below are version-exact; see COMPATIBILITY.md._
   about 40% (median 40.1%, range 36.2–48.2% over four pairs). The original figure came from a single
   pair whose synchronous baseline was the heaviest of four such runs; the asynchronous arm is stable
   at 49–50 ms across two builds while the synchronous baseline varies 78–96 ms with ambient load.
-  The discard-rate caveat widens from 14.8% to a 13.6–20.6% range for the same reason.
+  The unused-work caveat widens from 14.8% to a 13.6–20.6% range for the same reason, and is now
+  stated as dispatches not installed within the capture window rather than as a discard rate.
 - Fix the game-test harness self-check, which asserted the harness contributes no sensitive mixin
   claim using `allMatch` over a stream that is empty before any scan publishes a report. It
   therefore returned true and failed open. It also could not observe a harness config that no

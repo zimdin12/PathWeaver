@@ -166,7 +166,13 @@ You can also edit `config/pathweaver.json`. **The exact keys differ between vers
 `compatibilityTier` decides how much risk to accept from mods that modify pathfinding:
 
 - **`STRICT`** (default) only runs off-thread where a worker provably cannot observe the other mod's change at all.
-- **`AUDITED`** additionally allows mods that pass a bounded bytecode check for shared-state writes on the search path — no field-write opcode in the audited classes, plus per-mod structural conditions. It is what most packs need, including any pack with Fabric API. The honest trade: no worker write was *found*, by a check that inspects field-write opcodes and does not model array stores, mutations inside methods those classes call, or effects reached through helpers — so this lowers the risk of worker-side corruption rather than excluding it. These mods also add live block reads, so a search running while the world changes can return a worse path. Path quality under live mutation has not been measured.
+- **`AUDITED`** additionally allows mods cleared by bounded evidence rather than by proof. It is what most packs need, including any pack with Fabric API. Four different mechanisms sit behind it, and they are not equally strong — [COMPATIBILITY.md](COMPATIBILITY.md) states each one:
+  - **Lithium and Diagonal Blocks**: no field-write opcode in the audited classes on the search path, plus per-mod structural conditions. That check does not model array stores, mutations inside methods those classes call, or effects reached through helpers, so it means no worker write was *found* — it lowers the risk of worker-side corruption rather than excluding it.
+  - **Fabric API's interaction module**: an inventory of direct calls from six pinned worker-side classes, which is a sample rather than an exhaustive proof that no worker route reaches the injected methods.
+  - **Mods that mark blocks dangerous**: an assumption that such a rule is a pure function of block state, which the API's shape encourages but does not enforce.
+  - **Farmer's Delight's stove**: one artifact's bytecode, read to show the world and position it receives are never loaded, plus a runtime check that nothing has transformed that class.
+
+  All of them also add live block reads, so a search running while the world changes can return a worse path. Path quality under live mutation has not been measured.
 - **`ALL`** ignores the scan completely. This runs unaudited third-party code on a worker thread, which is the exact thing the scan exists to prevent. Failures are not limited to bad paths. Keep backups.
 
 `allowModdedMobAsync` is an advanced, genuinely unsafe override. It bypasses only the vanilla-origin mob check; every other gate still applies. Do not enable it unless you accept running unaudited mod code on a worker thread.
