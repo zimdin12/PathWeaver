@@ -11,8 +11,7 @@
   "text.autoconfig.pathweaver.option.allowModdedMobAsync": "Also speed up mobs added by mods",
   "text.autoconfig.pathweaver.option.poolThreads": "Worker threads (0 = automatic)",
   "text.autoconfig.pathweaver.option.maxInFlight": "Maximum searches running at once",
-  "text.autoconfig.pathweaver.option.repathElisionEnabled": "Reuse valid paths instead of recomputing",
-  "text.autoconfig.pathweaver.option.repathToleranceBlocks": "Path reuse tolerance (blocks)",
+  "text.autoconfig.pathweaver.option.repathToleranceBlocks": "Reuse a valid path if the target moved less than (blocks)",
   "text.autoconfig.pathweaver.option.stalenessMoveThreshold": "Discard results after the mob moves (blocks)",
   "text.autoconfig.pathweaver.option.maxResultAgeTicks": "Discard results older than (ticks)",
   "text.autoconfig.pathweaver.option.enabled.@Tooltip[0]": "Master switch. Off returns pathfinding to vanilla at once: no new off-thread searches, no repath reuse.",
@@ -32,13 +31,12 @@
   "text.autoconfig.pathweaver.option.maxInFlight.@Tooltip[1]": "A deeper queue makes each result land later, and one arriving after its mob asked again is discarded.",
   "text.autoconfig.pathweaver.option.maxInFlight.@Tooltip[2]": "Measured on a 371-mod pack: 1024 left 91% of finished searches unused, 4096 effectively all of them.",
   "text.autoconfig.pathweaver.option.maxInFlight.@Tooltip[3]": "Lowering wastes less but pushes searches onto the main thread. 256 measured best. Restart to apply.",
-  "text.autoconfig.pathweaver.option.repathElisionEnabled.@Tooltip[0]": "Leave on. Avoids redundant searches rather than moving them off-thread.",
-  "text.autoconfig.pathweaver.option.repathElisionEnabled.@Tooltip[1]": "Measured on and off with no difference outside run-to-run noise.",
-  "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip[0]": "Leave at default. How far a target may move before an existing path must be recomputed.",
-  "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip[1]": "Measured at 0, 1 and 4 blocks with no difference outside noise.",
+  "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip[0]": "0 disables path reuse entirely, which is the shipped default.",
+  "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip[1]": "Above 0, a mob whose target drifted less than this keeps its current path instead of searching again.",
   "text.autoconfig.pathweaver.option.stalenessMoveThreshold.@Tooltip[0]": "Do not set this near zero. A finished search is discarded if its mob moved farther than this.",
   "text.autoconfig.pathweaver.option.stalenessMoveThreshold.@Tooltip[1]": "A moving mob always moves: measured at 0, 91.8% of completed searches became unusable.",
   "text.autoconfig.pathweaver.option.stalenessMoveThreshold.@Tooltip[2]": "The mod then does essentially nothing while appearing to work. 4 is the default and is fine.",
   "text.autoconfig.pathweaver.option.maxResultAgeTicks.@Tooltip[0]": "Leave at default. How long a finished search stays usable after it completes.",
-  "text.autoconfig.pathweaver.option.maxResultAgeTicks.@Tooltip[1]": "Measured at 10 and 200 ticks with no difference outside noise."
+  "text.autoconfig.pathweaver.option.maxResultAgeTicks.@Tooltip[1]": "Measured at 10 and 200 ticks with no difference outside noise.",
+  "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip[2]": "Avoids searches rather than moving them off-thread. Measured at 0, 1 and 4 with no difference outside noise."
 }

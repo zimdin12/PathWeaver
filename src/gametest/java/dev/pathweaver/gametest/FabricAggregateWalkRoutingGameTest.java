@@ -42,7 +42,7 @@ public final class FabricAggregateWalkRoutingGameTest {
         private final PathWeaverConfig cfg;
         private final boolean oldEnabled;
         private final boolean oldModded;
-        private final boolean oldElision;
+        private final int oldTolerance;
         private final CompatibilityTier oldTier;
         private Mob mob;
         private PathNavigation navigation;
@@ -58,7 +58,7 @@ public final class FabricAggregateWalkRoutingGameTest {
             this.cfg = PathWeaverConfig.get();
             this.oldEnabled = cfg.enabled;
             this.oldModded = cfg.allowModdedMobAsync;
-            this.oldElision = cfg.repathElisionEnabled;
+            this.oldTolerance = cfg.repathToleranceBlocks;
             this.oldTier = cfg.compatibilityTier;
         }
 
@@ -112,7 +112,7 @@ public final class FabricAggregateWalkRoutingGameTest {
             navigation = mob.getNavigation();
             cfg.enabled = true;
             cfg.allowModdedMobAsync = false;
-            cfg.repathElisionEnabled = false;
+            cfg.repathToleranceBlocks = 0;
 
             long dispatchBefore = counter("dispatched");
             installBefore = counter("installed");
@@ -270,7 +270,7 @@ public final class FabricAggregateWalkRoutingGameTest {
             cleaned = true;
             cfg.enabled = oldEnabled;
             cfg.allowModdedMobAsync = oldModded;
-            cfg.repathElisionEnabled = oldElision;
+            cfg.repathToleranceBlocks = oldTolerance;
             cfg.compatibilityTier = oldTier;
         }
 

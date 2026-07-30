@@ -62,8 +62,9 @@ public final class PathWeaverRuntime {
         discarded.set(0);
         resetWasteReportingForTests();
         running = true;
-        PathWeaver.LOG.info("PathWeaver runtime started: epoch={}, {} worker thread(s), maxInFlight={}.",
-            epoch, c.resolvedPoolThreads(), c.maxInFlight);
+        PathWeaver.LOG.info("PathWeaver runtime started: epoch={}, {} worker thread(s), "
+                + "maxInFlight={} (configured {}).",
+            epoch, pool.threads(), pool.effectiveMaxInFlight(), pool.configuredMaxInFlight());
         warnAboutSelfDefeatingSettings(c);
         PathWeaver.LOG.info("Mob-origin CodeSource probe: Mob={}, Zombie={}, moddedBypass={}.",
             MobOriginGate.isAllowed(Mob.class, false), MobOriginGate.isAllowed(Zombie.class, false),
@@ -113,6 +114,22 @@ public final class PathWeaverRuntime {
                     + "Measured at 0, {}% of finished searches were unusable. The value is being "
                     + "honoured as configured; raise it to about {} to get any benefit.",
                 c.stalenessMoveThreshold, 91.8, MIN_USEFUL_STALENESS_BLOCKS * 4);
+        }
+        int threads = c.resolvedPoolThreads();
+        if (c.poolThreads > 0 && c.poolThreads > Runtime.getRuntime().availableProcessors()) {
+            PathWeaver.LOG.warn("poolThreads={} exceeds the {} processors this machine reports. The "
+                    + "extra threads cannot run in parallel and compete with the server thread for "
+                    + "the same cores. 0 picks a size automatically.",
+                c.poolThreads, Runtime.getRuntime().availableProcessors());
+        }
+        int effective = Math.max(1,
+            Math.min(c.maxInFlight, threads * dev.pathweaver.async.PathWorkerPool.DEPTH_PER_WORKER));
+        if (effective < c.maxInFlight) {
+            PathWeaver.LOG.info("maxInFlight={} is capped to {} for {} worker thread(s): a limit is "
+                    + "only meaningful against the number of threads draining it, and measurement "
+                    + "showed about {} in flight per worker still lands in time.",
+                c.maxInFlight, effective, threads,
+                dev.pathweaver.async.PathWorkerPool.DEPTH_PER_WORKER);
         }
         if (c.maxInFlight > MAX_USEFUL_IN_FLIGHT) {
             PathWeaver.LOG.warn("maxInFlight={} is above the measured useful range. It is an admission "
@@ -199,8 +216,7 @@ public final class PathWeaverRuntime {
                 + "for {} worker thread(s): a deeper queue adds latency rather than throughput. "
                 + "Consider lowering maxInFlight (256 is the shipped default) or raising poolThreads.",
             windowInstalled, windowDispatched, WASTE_SAMPLE_INTERVAL_TICKS,
-            consecutiveWastedWindows, PathWeaverConfig.get().maxInFlight,
-            PathWeaverConfig.get().resolvedPoolThreads());
+            consecutiveWastedWindows, pool.effectiveMaxInFlight(), pool.threads());
     }
 
     /**

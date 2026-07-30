@@ -257,7 +257,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
 
         // Feature B remains opt-in. Recompute (including changed-block invalidation) always bypasses
         // tolerance reuse; ordinary target drift must satisfy endpoint, reach and navigation validity.
-        if (cfg.repathElisionEnabled && cfg.repathToleranceBlocks > 0 && this.path != null) {
+        if (cfg.repathToleranceBlocks > 0 && this.path != null) {
             Path currentPath = this.path;
             net.minecraft.world.level.pathfinder.Node endpoint = currentPath.getEndNode();
             var current = new dev.pathweaver.elision.RepathTolerance.CurrentPath(

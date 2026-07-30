@@ -63,10 +63,6 @@ public class PathWeaverConfig implements ConfigData {
     public CompatibilityTier compatibilityTier = CompatibilityTier.AUDITED;
 
     @ConfigEntry.Gui.Tooltip(count = 2)
-    @ConfigEntry.Category("general")
-    public boolean repathElisionEnabled = true;
-
-    @ConfigEntry.Gui.Tooltip(count = 2)
     @ConfigEntry.Gui.RequiresRestart
     @ConfigEntry.Category("performance")
     public int poolThreads = 0;          // 0 = auto (cores/4)
@@ -77,7 +73,7 @@ public class PathWeaverConfig implements ConfigData {
     public int maxInFlight = 256;
 
 
-    @ConfigEntry.Gui.Tooltip(count = 2)
+    @ConfigEntry.Gui.Tooltip(count = 3)
     @ConfigEntry.Category("repath")
     public int repathToleranceBlocks = 0;
 

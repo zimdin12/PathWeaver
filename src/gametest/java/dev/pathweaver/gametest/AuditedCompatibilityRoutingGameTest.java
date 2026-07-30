@@ -52,7 +52,7 @@ public final class AuditedCompatibilityRoutingGameTest {
         private final PathWeaverConfig cfg;
         private final boolean oldEnabled;
         private final boolean oldModded;
-        private final boolean oldElision;
+        private final int oldTolerance;
         private final Set<Class<?>> oldDenials;
         private PathNavigation navigation;
         private Mob mob;
@@ -69,7 +69,7 @@ public final class AuditedCompatibilityRoutingGameTest {
             this.cfg = PathWeaverConfig.get();
             this.oldEnabled = cfg.enabled;
             this.oldModded = cfg.allowModdedMobAsync;
-            this.oldElision = cfg.repathElisionEnabled;
+            this.oldTolerance = cfg.repathToleranceBlocks;
             synchronized (SafetyGate.deniedBySafety) {
                 this.oldDenials = Set.copyOf(SafetyGate.deniedBySafety);
             }
@@ -137,7 +137,7 @@ public final class AuditedCompatibilityRoutingGameTest {
             navigation = mob.getNavigation();
             cfg.enabled = true;
             cfg.allowModdedMobAsync = false;
-            cfg.repathElisionEnabled = false;
+            cfg.repathToleranceBlocks = 0;
             apply(exact.denied());
             RabbitWorkerReachabilityProbe.reset();
 
@@ -213,7 +213,7 @@ public final class AuditedCompatibilityRoutingGameTest {
             cleaned = true;
             cfg.enabled = oldEnabled;
             cfg.allowModdedMobAsync = oldModded;
-            cfg.repathElisionEnabled = oldElision;
+            cfg.repathToleranceBlocks = oldTolerance;
             synchronized (SafetyGate.deniedBySafety) {
                 SafetyGate.deniedBySafety.clear();
                 SafetyGate.deniedBySafety.addAll(oldDenials);

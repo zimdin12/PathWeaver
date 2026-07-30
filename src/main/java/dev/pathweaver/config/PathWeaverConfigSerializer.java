@@ -131,7 +131,6 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
 
     private static void validateCurrentFieldTypes(JsonObject raw) {
         strictOptionalBoolean(raw, "allowModdedMobAsync");
-        strictOptionalBoolean(raw, "repathElisionEnabled");
         strictOptionalInteger(raw, "poolThreads");
         strictOptionalInteger(raw, "maxInFlight");
         strictOptionalInteger(raw, "repathToleranceBlocks");

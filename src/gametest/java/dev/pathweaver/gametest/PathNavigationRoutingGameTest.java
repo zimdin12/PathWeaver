@@ -49,14 +49,13 @@ public final class PathNavigationRoutingGameTest {
         PathWeaverConfig cfg = PathWeaverConfig.get();
         boolean oldEnabled = cfg.enabled;
         boolean oldModdedMobOverride = cfg.allowModdedMobAsync;
-        boolean oldElision = cfg.repathElisionEnabled;
         int oldTolerance = cfg.repathToleranceBlocks;
         Set<Class<?>> oldDenials;
         synchronized (SafetyGate.deniedBySafety) {
             oldDenials = Set.copyOf(SafetyGate.deniedBySafety);
         }
         Runnable teardown = () -> {
-            restore(cfg, oldEnabled, oldModdedMobOverride, oldElision, oldTolerance);
+            restore(cfg, oldEnabled, oldModdedMobOverride, oldTolerance);
             synchronized (SafetyGate.deniedBySafety) {
                 SafetyGate.deniedBySafety.clear();
                 SafetyGate.deniedBySafety.addAll(oldDenials);
@@ -246,7 +245,6 @@ public final class PathNavigationRoutingGameTest {
                         && runtimeCounter("installed") == baseInstalled + 5,
                     "recompute request did not install before the deadline", teardown, () -> {
                         cfg.enabled = true;
-                        cfg.repathElisionEnabled = true;
                         cfg.repathToleranceBlocks = 1;
                         Path reusable = queryNav.getPath();
                         BlockPos drifted = target.offset(1, 0, 0);
@@ -325,7 +323,6 @@ public final class PathNavigationRoutingGameTest {
         }
         cfg.enabled = true;
         cfg.allowModdedMobAsync = false;
-        cfg.repathElisionEnabled = false;
 
         for (int x = 0; x <= 8; x++) {
             for (int z = 7; z <= 11; z++) {
@@ -526,10 +523,9 @@ public final class PathNavigationRoutingGameTest {
     }
 
     private static void restore(PathWeaverConfig cfg, boolean enabled,
-                                boolean moddedMobOverride, boolean elision, int tolerance) {
+                                boolean moddedMobOverride, int tolerance) {
         cfg.enabled = enabled;
         cfg.allowModdedMobAsync = moddedMobOverride;
-        cfg.repathElisionEnabled = elision;
         cfg.repathToleranceBlocks = tolerance;
     }
 

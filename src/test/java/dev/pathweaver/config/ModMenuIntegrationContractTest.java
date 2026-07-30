@@ -146,7 +146,6 @@ class ModMenuIntegrationContractTest {
         expectedCategories.put("enabled", "general");
         expectedCategories.put("allowModdedMobAsync", "general");
         expectedCategories.put("compatibilityTier", "general");
-        expectedCategories.put("repathElisionEnabled", "general");
         expectedCategories.put("poolThreads", "performance");
         expectedCategories.put("maxInFlight", "performance");
         expectedCategories.put("repathToleranceBlocks", "repath");

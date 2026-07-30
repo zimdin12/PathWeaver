@@ -51,7 +51,7 @@ public final class AuditedTierWalkRoutingGameTest {
         private final PathWeaverConfig cfg;
         private final boolean oldEnabled;
         private final boolean oldModded;
-        private final boolean oldElision;
+        private final int oldTolerance;
         private Mob mob;
         private PathNavigation navigation;
         private long installBefore;
@@ -63,7 +63,7 @@ public final class AuditedTierWalkRoutingGameTest {
             this.cfg = PathWeaverConfig.get();
             this.oldEnabled = cfg.enabled;
             this.oldModded = cfg.allowModdedMobAsync;
-            this.oldElision = cfg.repathElisionEnabled;
+            this.oldTolerance = cfg.repathToleranceBlocks;
         }
 
         void tick() {
@@ -143,7 +143,7 @@ public final class AuditedTierWalkRoutingGameTest {
             navigation = mob.getNavigation();
             cfg.enabled = true;
             cfg.allowModdedMobAsync = false;
-            cfg.repathElisionEnabled = false;
+            cfg.repathToleranceBlocks = 0;
 
             long dispatchBefore = counter("dispatched");
             installBefore = counter("installed");
@@ -177,7 +177,7 @@ public final class AuditedTierWalkRoutingGameTest {
             cleaned = true;
             cfg.enabled = oldEnabled;
             cfg.allowModdedMobAsync = oldModded;
-            cfg.repathElisionEnabled = oldElision;
+            cfg.repathToleranceBlocks = oldTolerance;
         }
 
         private void check(boolean condition, String message) {

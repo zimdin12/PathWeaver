@@ -70,7 +70,6 @@ class PathWeaverConfigSerializerTest {
         PathWeaverConfig c = new PathWeaverConfigSerializer(path).deserialize();
         assertTrue(c.enabled);
         assertTrue(c.allowModdedMobAsync);
-        assertFalse(c.repathElisionEnabled);
         assertEquals(PathWeaverConfig.MAX_POOL_THREADS, c.poolThreads);
         assertEquals(1, c.maxInFlight);
         assertEquals(7, c.repathToleranceBlocks);

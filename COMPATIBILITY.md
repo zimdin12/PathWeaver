@@ -314,6 +314,32 @@ so the scan is checked there too via the Fabric client game test:
 `failed=0` across 64 configs is the part that matters: the client-only configs parse without a single
 fail-closed fallback, and the tier behaves the same way it does on a server.
 
+### The limit only means something relative to the worker count
+
+Every measurement above ran on a 32-core machine. Worker threads are sized automatically at
+`cores / 4`, so that is eight workers and the shipped `maxInFlight` of 256 was **32 queued per
+worker**. A four-core server gets **one** worker, and the same setting becomes 256 deep on a single
+thread — eight times deeper than anything that had been measured.
+
+Measured with the pool forced to one worker:
+
+| `maxInFlight` | Unused work |
+|---|---|
+| 32 | **0.7%** |
+| 64 | 2.9% |
+| 256 *(shipped)* | **48–54%** |
+
+At two workers, 256 leaves 13% unused against 1.0% at 64. Two honest caveats: the one-worker drift
+control moved 43.7% between identical arms, so tick time is **not** resolvable in that regime and
+only the wasted share is; and forcing one worker on a 32-core box leaves the other 31 cores idle, so
+real low-core hardware is likely worse rather than better.
+
+So the limit is now capped to the pool's width: the enforced bound is
+`min(maxInFlight, workers × 32)`. On the eight-worker machine every measurement here was taken on,
+that is `min(256, 256)` and nothing changes. On a single-worker machine it becomes 32, which is the
+regime that measured well. The configured value stays the operator's ceiling and the startup log
+states both when they differ.
+
 ### What `discarded` in the stats line actually counts
 
 Worth stating because it is easy to misread, and I misread it: the `discarded` counter is **not**

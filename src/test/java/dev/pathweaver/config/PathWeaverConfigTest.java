@@ -33,8 +33,10 @@ class PathWeaverConfigTest {
         PathWeaverConfig c = new PathWeaverConfig();
         assertEquals(2, c.configVersion);
         assertTrue(c.enabled);
-        assertTrue(c.repathElisionEnabled);
         assertFalse(c.allowModdedMobAsync);
+        // Path reuse is a single control now, and 0 keeps it off exactly as before: the retired
+        // repathElisionEnabled flag defaulted to true while this defaulted to 0, so the feature was
+        // advertised as on and was in fact inert.
         assertEquals(0, c.repathToleranceBlocks);
         assertEquals(40, c.maxResultAgeTicks);
     }

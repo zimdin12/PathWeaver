@@ -170,7 +170,10 @@ class PathNavigationStalenessContractTest {
                     enabled = i;
                     enabledReads++;
                 }
-                if (field.name.equals("repathElisionEnabled")) elision = i;
+                // Path reuse is controlled solely by the tolerance now; the separate boolean was
+                // removed because it defaulted to on while the tolerance defaulted to 0, so the
+                // feature advertised itself as enabled and was inert.
+                if (field.name.equals("repathToleranceBlocks")) elision = i;
             } else if (insns[i] instanceof MethodInsnNode call
                     && call.owner.equals("dev/pathweaver/gate/SafetyGate")
                     && call.name.equals("isAllowed")) {
@@ -180,7 +183,9 @@ class PathNavigationStalenessContractTest {
         assertTrue(enabled >= 0, "master Enabled must be read in the routing injection");
         assertEquals(1, enabledReads,
             "routing injection must have one unambiguous master Enabled decision");
-        assertTrue(elision >= 0, "repath elision must remain reachable while Enabled is ON");
+        assertTrue(elision >= 0, "path reuse must remain reachable while Enabled is ON");
+        assertTrue(elision > enabled,
+            "master Enabled must be decided before path reuse, or OFF would still reuse paths");
         assertTrue(safety >= 0, "async eligibility must remain reachable while Enabled is ON");
 
         int branchIndex = nextOpcode(insns, enabled + 1);
