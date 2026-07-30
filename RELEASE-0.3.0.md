@@ -139,5 +139,11 @@ copy — see COMPATIBILITY.md for the residual assumptions, stated plainly.
 - [x] Clean build from `master` reproduces the jar hash byte-for-byte
 - [x] Tagged `v0.3.0` on `master`
 - [x] Benchmark claims reconciled with measurements
-- [ ] **Independent review — IN PROGRESS** with mc-senior-dev, read-only, verdict pending.
+- [x] **Independent review — APPROVED** by mc-senior-dev after four read-only passes. Approval
+      attaches **only** to commit/tag `5854b606b5d24b60cc2290a65a0c487660cc2bc1` and jar SHA-256
+      `9baa9f7d40e31d796b968c65065d6b48a1e97543f7d10a215c576168ed994314`. **Moving either requires a
+      new exact-tree check before publishing.** The four passes found: a critical live-tier
+      incoherence (start `ALL`, save `STRICT`, keep dispatching), a public policy setter reachable
+      before the scan, package-private not being a boundary on Fabric's shared classloader, and a
+      documentation rewrite that clobbered the pinned artifact hashes.
 - [ ] Upload to Modrinth (project `ZQJOU3vB`, `POST /v2/version`) — awaiting go-ahead
