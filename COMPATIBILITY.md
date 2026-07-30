@@ -249,6 +249,63 @@ the registry latch instead, and the tier is applied at dispatch. Verified both w
 server outside Loom: with Farmer's Delight loaded, `AUDITED` dispatched 11119 searches where it
 previously dispatched 0, and `STRICT` still refused to run.
 
+## Every setting, measured
+
+Single-variable sweep: one option moves per run, everything else stays at the shipped default.
+Fabric API + Cloth + Lithium + Farmer's Delight + PathWeaver, `AUDITED`, 1024 zombies in a maze
+retargeted every 6 ticks, 300 warm-up and 600 measured ticks. The shipped default was run first and
+last as a drift control and came back 51.1 and 50.8 ms, so differences below roughly 1 ms of mean or
+4 points of unused work are inside run-to-run noise and are reported as "no measurable effect"
+rather than as small wins.
+
+"Unused" means dispatched minus installed **within the capture window**. The harness halts at the
+end of the window, so it does not observe stragglers; this is work that did not come back in time,
+not proven-discarded work.
+
+| Setting | Value | Mean | p99 | Unused | Verdict |
+|---|---|---|---|---|---|
+| *(baseline)* | shipped defaults | 51.1 / 50.8 ms | 388 / 385 ms | 30.1 / 26.2% | — |
+| `enabled` | `false` | 92.7 ms | 941 ms | — | the A/B: **−45%** when on |
+| `maxInFlight` | 64 | 49.5 ms | 425 ms | **1.1%** | **strictly better** |
+| `maxInFlight` | 512 | 50.0 ms | 357 ms | **56.4%** | wastes over half the work |
+| `stalenessMoveThreshold` | 0.0 | 51.2 ms | 386 ms | **91.8%** | **destroys the feature** |
+| `poolThreads` | 2 / 4 / 16 | 50.0 / 65.4 / 52.5 ms | 365 / 533 / 367 ms | 15.8 / 15.6 / 13.1% | no consistent direction |
+| `repathElisionEnabled` | `false` | 53.8 ms | 396 ms | 26.3% | no measurable effect here |
+| `repathToleranceBlocks` | 0 / 4 | 56.1 / 55.2 ms | 424 / 414 ms | 32.2 / 28.5% | no measurable effect here |
+| `maxResultAgeTicks` | 10 / 200 | 61.9 / 59.3 ms | 472 / 478 ms | 19.0 / 20.6% | no measurable effect here |
+| `stalenessMoveThreshold` | 64.0 | 53.6 ms | 408 ms | 28.6% | no measurable effect here |
+
+Two settings matter and the rest do not, on this workload.
+
+### `stalenessMoveThreshold` must not be zero
+
+At `0.0`, **91.8% of completed searches were unusable**: a result is rejected if its mob moved at all
+since dispatch, and a moving mob always has. The setting exists to reject results that no longer
+describe where the mob is; set to zero it rejects everything. Nothing in the config validation stops
+this, because zero is a legal distance.
+
+### `maxInFlight`: the shipped default is too high
+
+Confirmed in a second pass with the default interleaved first and last, so drift cannot manufacture
+the effect:
+
+| `maxInFlight` | Runs | Mean | Unused | Dispatched |
+|---|---|---|---|---|
+| 64 | 2 | **49.4 ms** | **0.9%** | 65197 / 61511 |
+| 128 | 1 | 49.7 ms | 4.0% | 64933 |
+| 256 *(shipped)* | 2 | 53.7 ms | 29.5% | 51520 / 48803 |
+
+Lowering it is better on every axis at once: about 8% lower mean tick time, roughly thirty times less
+wasted work, and **more** searches completed rather than fewer. That last part is the counter-intuitive
+bit and the reason the limit is not a buffer — a smaller admission bound means each accepted search
+finishes sooner, so it is still wanted when it lands, and the mob can ask again sooner.
+
+Together with the pack-scale sweep, where 1024 and 4096 wasted 90.7% and effectively everything, the
+relationship is monotonic across two orders of magnitude: **lower is better on this workload down to
+at least 64.** The shipped default of 256 is left unchanged in this release because changing it is a
+behaviour change that would need its own review pass; it is documented here so an operator can lower
+it deliberately.
+
 ## Shipped-artifact verification, outside Loom
 
 Every gametest runs inside Loom's dev classpath. That has hidden a production-only failure before —
