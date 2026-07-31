@@ -26,6 +26,16 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     private static final RequestTarget UNSPECIFIED_TARGET =
         RequestTarget.of(Set.of(), 0, false, 0, 0.0F);
     private final Map<Integer, Registration> inFlight = new ConcurrentHashMap<>();
+    /**
+     * Evaluators still owed their {@code done()}, keyed by the exact request that prepared them.
+     *
+     * <p>Keyed by request rather than held on the navigation, because a superseded request's
+     * evaluator outlives its registration: the navigation can dispatch again on the next tick, and a
+     * navigation-scoped field would then run the epilogue against the *new* request's evaluator while
+     * the old one silently kept the mob's search costs forever.
+     */
+    private final Map<RequestKey, net.minecraft.world.level.pathfinder.NodeEvaluator> epilogues =
+        new ConcurrentHashMap<>();
     private final Map<Integer, Long> failUntilTick = new ConcurrentHashMap<>();
     private final AtomicBoolean callbackFailureLogged = new AtomicBoolean();
     private final AtomicBoolean rollbackFailureLogged = new AtomicBoolean();
@@ -117,9 +127,17 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         return true;
     }
 
+    /**
+     * End a request without installing. The epilogue is deliberately NOT run here.
+     *
+     * <p>Superseding or stopping a navigation happens while its worker may still be searching, and
+     * the evaluator's {@code done()} clears the two caches that search is reading and nulls the
+     * context it is reading them through. Running it here raced the worker. The epilogue is owed
+     * until {@link #runEpilogue} is called from the result-drain path, which cannot happen before
+     * the worker has finished and handed its outcome back.
+     */
     private void finishDiscard(Registration registration, RequestOutcome reason) {
         rollbackOptimisticTarget(registration);
-        finishCallback(registration);
         dev.pathweaver.PathWeaverRuntime.get().markOutcome(reason);
     }
 
@@ -159,9 +177,27 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         }
     }
 
-    private void finishCallback(Registration registration) {
+    /** Arm the epilogue for a request whose prologue has fully run on the main thread. */
+    public void armEpilogue(RequestKey key,
+                            net.minecraft.world.level.pathfinder.NodeEvaluator evaluator) {
+        epilogues.put(key, evaluator);
+    }
+
+    /**
+     * Run the epilogue owed by one request, on the main thread, exactly once.
+     *
+     * <p>Called from the drain path for every outcome, which is the earliest moment the worker is
+     * provably done with this evaluator: the pool hands its result to the installer queue only after
+     * the search callable has returned.
+     */
+    public void runEpilogue(RequestKey key) {
+        net.minecraft.world.level.pathfinder.NodeEvaluator evaluator = epilogues.remove(key);
+        if (evaluator != null) finishCallback(evaluator);
+    }
+
+    private void finishCallback(net.minecraft.world.level.pathfinder.NodeEvaluator evaluator) {
         try {
-            registration.navigation().pathweaver$onPathfindingDone();
+            evaluator.done();
         } catch (Throwable callbackFailure) {
             if (callbackFailureLogged.compareAndSet(false, true)) {
                 try {
@@ -251,8 +287,6 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
                         // Callback balance and failure cooldown must survive a broken logging backend.
                     }
                 }
-            } finally {
-                finishCallback(registration);
             }
         }
     }
@@ -291,6 +325,9 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
                 finishDiscard(registration, RequestOutcome.SERVER_RESET);
             }
         }
+        // PathWeaverRuntime shuts the pool down before calling this, so no worker still owns an
+        // evaluator and every outstanding epilogue can safely run now rather than leak.
+        for (RequestKey key : epilogues.keySet().toArray(RequestKey[]::new)) runEpilogue(key);
         failUntilTick.clear();
         // Reset the sweep clock too. A new server starts its tick count near zero, so a
         // timestamp left from a long previous run would suppress sweeping until the new

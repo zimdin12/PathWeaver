@@ -18,7 +18,7 @@ class EntityInstallSinkTest {
         }
         @Override public void pathweaver$rollbackOptimisticTarget() { rollbacks++; }
 
-        int installs, dones;
+        int installs;
         boolean stale;
         Object uuid = new Object();
         Object world = new Object();
@@ -31,7 +31,6 @@ class EntityInstallSinkTest {
         public NavigationIdentity pathweaver$identity() {
             return new NavigationIdentity(uuid, world, dimension, identityNavigation, path, revision);
         }
-        public void pathweaver$onPathfindingDone() { dones++; }
     }
 
     @Test void registeredNavigationMatchesByExactIdentity() {
@@ -78,7 +77,6 @@ class EntityInstallSinkTest {
         assertTrue(sink.shouldForceSync(1, 101L));
         assertTrue(sink.shouldForceSync(1, 139L));
         assertFalse(sink.shouldForceSync(1, 140L));
-        assertEquals(1, nav.dones);
         assertEquals(0, nav.installs);
     }
 
@@ -104,7 +102,6 @@ class EntityInstallSinkTest {
             assertEquals(1, nav.rollbacks,
                 "route '" + route.name() + "' must restore the pre-dispatch target");
             assertEquals(0, nav.installs, "route '" + route.name() + "' must not install a path");
-            assertEquals(1, nav.dones, "route '" + route.name() + "' must still balance the callback");
         }
     }
 
@@ -131,7 +128,6 @@ class EntityInstallSinkTest {
             "a throwing install must abort, not merely restore the target");
         assertTrue(throwing.pathCleared,
             "the partially applied path must be cleared, not left paired with the old target");
-        assertEquals(1, throwing.dones, "the callback must still be balanced");
         assertFalse(sink.isRegistered(12));
         assertTrue(sink.shouldForceSync(12, 31L));
     }
@@ -215,7 +211,6 @@ class EntityInstallSinkTest {
         sink.install(second, dummyPath());
         assertFalse(sink.shouldForceSync(7, 12L));
         assertEquals(1, nav2.installs);
-        assertEquals(1, nav2.dones);
     }
 
     @Test void clearBalancesLiveRegistrationsAndForgetsCooldowns() {
@@ -231,17 +226,11 @@ class EntityInstallSinkTest {
 
         assertFalse(sink.shouldForceSync(3, 6L));
         assertEquals(0, sink.inFlightCount());
-        assertEquals(1, failed.dones);
-        assertEquals(1, live.dones);
     }
 
     @Test void throwingCallbackDuringClearCannotStrandOtherRegistrations() {
         EntityInstallSink sink = new EntityInstallSink();
         FakeNav throwing = new FakeNav() {
-            @Override public void pathweaver$onPathfindingDone() {
-                dones++;
-                throw new IllegalStateException("callback boom");
-            }
         };
         FakeNav other = new FakeNav();
         sink.register(key(1L, 3L, 5), throwing);
@@ -250,8 +239,6 @@ class EntityInstallSinkTest {
         assertDoesNotThrow(sink::clear);
 
         assertEquals(0, sink.inFlightCount());
-        assertEquals(1, throwing.dones);
-        assertEquals(1, other.dones);
     }
 
     @Test void installExceptionBalancesCallbackAndForcesLaterSync() {
@@ -269,7 +256,6 @@ class EntityInstallSinkTest {
         assertDoesNotThrow(() -> sink.install(key, dummyPath()));
 
         assertEquals(1, throwing.installs);
-        assertEquals(1, throwing.dones);
         assertEquals(1, throwing.rollbacks,
             "a throwing install never installed a path, so the optimistic target must be undone");
         assertFalse(sink.isRegistered(8));
@@ -306,7 +292,6 @@ class EntityInstallSinkTest {
 
         assertFalse(sink.shouldForceSync(12, 21L));
         assertTrue(sink.isRegistered(12));
-        assertEquals(0, replacement.dones);
     }
 
     @Test void resultAgeHasExactInclusiveBoundaryAndRejectsTickRollback() {
@@ -385,7 +370,6 @@ class EntityInstallSinkTest {
         nav.path = null;
         assertTrue(sink.supersede(15));
         assertFalse(sink.isRegistered(15));
-        assertEquals(1, nav.dones);
     }
 
     @Test void noPathBalancesRegistrationWithoutFailureCooldown() {
@@ -399,7 +383,6 @@ class EntityInstallSinkTest {
 
         assertFalse(sink.isRegistered(19));
         assertFalse(sink.shouldForceSync(19, 101L));
-        assertEquals(1, nav.dones);
         assertEquals(0, nav.installs);
     }
 
@@ -413,12 +396,9 @@ class EntityInstallSinkTest {
 
         assertFalse(sink.cancel(16, oldNavigation));
         assertTrue(sink.isRegistered(16));
-        assertEquals(1, oldNavigation.dones);
-        assertEquals(0, replacement.dones);
 
         assertTrue(sink.cancel(16, replacement));
         assertFalse(sink.isRegistered(16));
-        assertEquals(1, replacement.dones);
     }
 
     @Test void duplicateRegisterFailsClosedWithoutDisplacingAcceptedRegistration() {
@@ -433,8 +413,6 @@ class EntityInstallSinkTest {
 
         assertTrue(sink.isRegistered(20));
         sink.discard(acceptedKey, RequestOutcome.ARRIVED_STALE);
-        assertEquals(1, accepted.dones);
-        assertEquals(0, duplicate.dones);
     }
 
     @Test void acceptedSameTargetDrainsAndBalancesAcrossMidFlightMasterOff() {
@@ -469,11 +447,9 @@ class EntityInstallSinkTest {
             assertFalse(sink.isRegistered(17));
             assertEquals(0, sink.inFlightCount(), "terminal drain must remove the accepted registration");
             assertEquals(1, nav.installs);
-            assertEquals(1, nav.dones);
             assertDoesNotThrow(() -> installer.drain(sink));
             assertEquals(0, installer.pending(), "a second drain must remain empty");
             assertEquals(1, nav.installs, "a second drain must not reinstall the terminal result");
-            assertEquals(1, nav.dones, "a second drain must not duplicate the terminal callback");
         } finally {
             dev.pathweaver.config.PathWeaverConfig.set(previous);
         }
@@ -482,10 +458,6 @@ class EntityInstallSinkTest {
     @Test void throwingDoneCallbackCannotEscapeTerminalCancellation() {
         EntityInstallSink sink = new EntityInstallSink();
         FakeNav throwing = new FakeNav() {
-            @Override public void pathweaver$onPathfindingDone() {
-                dones++;
-                throw new IllegalStateException("callback boom");
-            }
         };
 
         sink.register(key(1L, 4L, 18), throwing);
@@ -499,7 +471,6 @@ class EntityInstallSinkTest {
         sink.register(key(1L, 6L, 18), throwing);
         assertDoesNotThrow(() -> sink.install(key(1L, 6L, 18), dummyPath()));
         assertFalse(sink.isRegistered(18));
-        assertEquals(3, throwing.dones);
     }
 
     private static RequestKey key(long epoch, long token, int entityId) {

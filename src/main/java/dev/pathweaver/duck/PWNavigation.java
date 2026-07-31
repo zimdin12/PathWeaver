@@ -21,12 +21,7 @@ public interface PWNavigation {
     /** Main thread: current entity/world/navigation/path/intent identity for exact install validation. */
     NavigationIdentity pathweaver$identity();
 
-    /**
-     * Main thread: fire {@code mob.onPathfindingDone()} iff a matching {@code onPathfindingStart} was
-     * fired at dispatch and not yet balanced. Idempotent, so install-vs-discard both call it safely.
-     */
-    void pathweaver$onPathfindingDone();
-
+    
     /**
      * Main thread: undo the optimistic {@code targetPos} write made at dispatch.
      *

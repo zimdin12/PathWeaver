@@ -91,6 +91,7 @@ class PathWorkerPoolTest {
             @Override public void install(RequestKey ignored, net.minecraft.world.level.pathfinder.Path path) {
                 fail("delivery-failure fallback must not install");
             }
+            @Override public void runEpilogue(RequestKey key) { }
             @Override public void discard(RequestKey discarded, RequestOutcome reason) {
                 assertEquals(key, discarded);
                 assertEquals(RequestOutcome.HANDOFF_FAILED, reason,

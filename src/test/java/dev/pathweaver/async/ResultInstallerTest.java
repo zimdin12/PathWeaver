@@ -26,6 +26,8 @@ class ResultInstallerTest {
             discarded.add(key);
             reasons.add(reason);
         }
+        final List<RequestKey> epilogues = new ArrayList<>();
+        public void runEpilogue(RequestKey key) { epilogues.add(key); }
         public void noPath(RequestKey key) { noPaths.add(key); }
         public void failed(RequestKey key, Throwable failure) { failures.add(key); }
     }

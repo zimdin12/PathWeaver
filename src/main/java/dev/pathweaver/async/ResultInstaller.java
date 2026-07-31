@@ -20,6 +20,14 @@ public class ResultInstaller {
          */
         void discard(RequestKey key, RequestOutcome reason);
 
+        /**
+         * Release the evaluator this request prepared, now that its worker has provably finished.
+         *
+         * <p>The pool queues a result only after the search callable returns, so draining one is the
+         * earliest point at which the main thread may touch that evaluator again.
+         */
+        void runEpilogue(RequestKey key);
+
         default void noPath(RequestKey key) { discard(key, RequestOutcome.NO_PATH); }
         default void failed(RequestKey key, Throwable failure) {
             discard(key, RequestOutcome.SEARCH_FAILED);
@@ -49,9 +57,20 @@ public class ResultInstaller {
     public void drain(InstallSink sink) {
         Result result;
         while ((result = queue.poll()) != null) {
+            try {
+                deliver(sink, result);
+            } finally {
+                // Unconditional: a request whose delivery threw still owes its mob the search costs
+                // the prologue took, and leaving them applied is permanent.
+                sink.runEpilogue(result.key());
+            }
+        }
+    }
+
+    private void deliver(InstallSink sink, Result result) {
             if (result.discardOnly()) {
                 sink.discard(result.key(), RequestOutcome.HANDOFF_FAILED);
-                continue;
+                return;
             }
             switch (result.outcome().status()) {
                 case NO_PATH -> sink.noPath(result.key());
@@ -65,7 +84,6 @@ public class ResultInstaller {
                     }
                 }
             }
-        }
     }
 
     public int pending() { return queue.size(); }

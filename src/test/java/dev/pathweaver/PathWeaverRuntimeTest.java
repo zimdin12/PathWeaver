@@ -108,7 +108,6 @@ class PathWeaverRuntimeTest {
         public NavigationIdentity pathweaver$identity() {
             return new NavigationIdentity("uuid", world, "dimension", this, null, 1L);
         }
-        public void pathweaver$onPathfindingDone() { dones++; }
     }
 
     @Test void startStopAdvancesEpochAndTokensNeverRepeat() {
@@ -148,7 +147,6 @@ class PathWeaverRuntimeTest {
 
             runtime.onServerStopping(null);
 
-            assertEquals(1, navigation.dones);
             assertEquals(0, runtime.entitySink().inFlightCount());
         } finally {
             runtime.onServerStopping(null);

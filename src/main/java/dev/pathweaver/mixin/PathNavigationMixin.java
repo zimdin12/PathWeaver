@@ -66,16 +66,6 @@ public abstract class PathNavigationMixin implements PWNavigation {
     @Unique private BlockPos pathweaver$optimisticTargetPos;
     /** The targetPos to restore if the pending request never installs a path. */
     @Unique private BlockPos pathweaver$targetPosBeforeDispatch;
-    /**
-     * The evaluator whose {@code done()} this navigation still owes, or null.
-     *
-     * <p>This was a count of {@code onPathfindingDone} calls to replay, which only worked because a
-     * table said the answer was one for walking and zero for swimming. Holding the evaluator instead
-     * means the epilogue is whatever that evaluator's epilogue actually is — the amphibious one
-     * restores two malus values, a third-party one does whatever it does — with no table to consult
-     * and nothing to keep in step with the allowlist.
-     */
-    @Unique private NodeEvaluator pathweaver$pendingDoneEvaluator;
     // Movement callers supply speed outside createPath. Capture it at those approved callers and
     // bind the exact double (including 0, negative values, and NaN) to the accepted registration.
     @Unique private double pathweaver$requestSpeed = 1.0;
@@ -403,7 +393,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // permanently. An unbalanced onPathfindingDone is the milder failure, and vanilla itself
             // leaves that pair unbalanced whenever getStart() returns null.
             freshEval.prepare(region, theMob);
-            this.pathweaver$pendingDoneEvaluator = freshEval;
+            sink.armEpilogue(submittedKey, freshEval);
 
             // Keep moving on the current path this tick; the async result installs next tick.
             this.pathweaver$acceptedDeferred = true;
@@ -487,12 +477,4 @@ public abstract class PathNavigationMixin implements PWNavigation {
         PathWeaverRuntime.get().entitySink().cancel(this.mob.getId(), this);
     }
 
-    @Override
-    public void pathweaver$onPathfindingDone() {
-        NodeEvaluator pending = this.pathweaver$pendingDoneEvaluator;
-        this.pathweaver$pendingDoneEvaluator = null;
-        // Cleared before the call: a throwing epilogue must not leave the obligation outstanding for
-        // a later request to run a second time against an evaluator that already restored its state.
-        if (pending != null) pending.done();
-    }
 }

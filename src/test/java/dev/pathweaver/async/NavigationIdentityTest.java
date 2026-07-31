@@ -37,6 +37,5 @@ class NavigationIdentityTest {
         public void pathweaver$install(Path path) { }
         public boolean pathweaver$stale(double x, double y, double z) { return false; }
         public NavigationIdentity pathweaver$identity() { throw new UnsupportedOperationException(); }
-        public void pathweaver$onPathfindingDone() { }
     }
 }
