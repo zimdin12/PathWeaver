@@ -92,11 +92,18 @@ public final class PathWeaverCommand {
             + "succeeded, and a mob that stopped moving is the mob behaving normally.");
     }
 
+    /**
+     * Answering this means building one of every registered mob to read the evaluator its navigation
+     * really holds, which on a large pack is a couple of hundred constructions inside one tick. That
+     * cost is reported rather than estimated: an operator who sees the server hitch deserves to know
+     * whether this command caused it, and a number nobody measured is not worth defending.
+     */
     private static void mobs(CommandSourceStack source) {
         boolean moddedAllowed = PathWeaverConfig.get().moddedMobAsyncAllowed();
         Map<String, Integer> verdicts = new LinkedHashMap<>();
         int types = 0;
         int eligible = 0;
+        long startedAt = System.nanoTime();
 
         for (Identifier id : BuiltInRegistries.ENTITY_TYPE.keySet()) {
             EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(id);
@@ -111,45 +118,35 @@ public final class PathWeaverCommand {
             }
             if (!(entity instanceof Mob mob)) continue;
             types++;
-            verdicts.merge(verdictFor(mob, moddedAllowed), 1, Integer::sum);
-            if (verdicts.containsKey(ELIGIBLE)) eligible = verdicts.get(ELIGIBLE);
+            MobEligibility.Verdict verdict = verdictFor(mob, moddedAllowed);
+            if (verdict.eligible()) eligible++;
+            verdicts.merge(verdict.reason(), 1, Integer::sum);
         }
+        long elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000L;
 
         say(source, "§6PathWeaver mob coverage");
         say(source, "  " + eligible + " of " + types + " mob types can path off-thread");
         verdicts.entrySet().stream()
             .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
-            .forEach(entry -> say(source, (entry.getKey().equals(ELIGIBLE) ? "  §a" : "  §e")
-                + entry.getValue() + "§r  " + entry.getKey()));
+            .forEach(entry -> say(source,
+                (entry.getKey().equals(MobEligibility.ELIGIBLE) ? "  §a" : "  §e")
+                    + entry.getValue() + "§r  " + entry.getKey()));
         say(source, "  §7Every vanilla evaluator can run off-thread. What remains synchronous is "
             + "mobs whose evaluator a mod replaced, and — below the unsafe tier — mob classes mods "
             + "added. The compatibility risk setting governs which mods may have touched "
             + "pathfinding, not which searches are safe to move.");
+        say(source, "  §7Built and inspected " + types + " mob types in " + elapsedMillis
+            + " ms of one tick. This command is a diagnostic, not something to run on a timer.");
     }
 
-    private static final String ELIGIBLE = "eligible";
-
-    private static String verdictFor(Mob mob, boolean moddedAllowed) {
+    private static MobEligibility.Verdict verdictFor(Mob mob, boolean moddedAllowed) {
         try {
-            PathNavigation navigation = mob.getNavigation();
-            NodeEvaluator evaluator = evaluatorOf(navigation);
-            boolean evaluatorOk = evaluator != null && SafetyGate.isAllowed(evaluator.getClass());
-            boolean originOk = MobOriginGate.isAllowed(mob.getClass(), moddedAllowed);
-            if (evaluatorOk && originOk) return ELIGIBLE;
-            if (!originOk && !evaluatorOk) {
-                return "mob class added by a mod, and its evaluator is not a vanilla one";
-            }
-            if (!originOk) {
-                return "mob class added by a mod (enable \"Also speed up mobs added by mods\")";
-            }
-            if (evaluator == null) return "navigation uses no node evaluator";
-            if (!dev.pathweaver.async.EvaluatorCloner.canClone(evaluator.getClass())) {
-                return "uses " + evaluator.getClass().getSimpleName()
-                    + ", which has no constructor shape we can rebuild";
-            }
-            return "uses " + evaluator.getClass().getSimpleName() + ", which is not a vanilla evaluator";
+            NodeEvaluator evaluator = evaluatorOf(mob.getNavigation());
+            return MobEligibility.of(mob.getClass(),
+                evaluator == null ? null : evaluator.getClass(), moddedAllowed);
         } catch (Throwable failed) {
-            return "could not be inspected (" + failed.getClass().getSimpleName() + ")";
+            return new MobEligibility.Verdict(false,
+                "could not be inspected (" + failed.getClass().getSimpleName() + ")");
         }
     }
 
