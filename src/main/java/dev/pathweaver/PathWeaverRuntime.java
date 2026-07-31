@@ -32,6 +32,11 @@ public final class PathWeaverRuntime {
     private final java.util.concurrent.atomic.AtomicLong serverEpoch = new java.util.concurrent.atomic.AtomicLong();
     private final java.util.concurrent.atomic.AtomicLong requestTokens = new java.util.concurrent.atomic.AtomicLong();
 
+    /** Read-only counter access for the in-game diagnostic. */
+    public long dispatchedCount() { return dispatched.get(); }
+    public long installedCount() { return installed.get(); }
+    public long discardedCount() { return discarded.get(); }
+
     public void markDispatched() { dispatched.incrementAndGet(); }
     public void markInstalled() { installed.incrementAndGet(); }
     public void markDiscarded() { discarded.incrementAndGet(); }

@@ -12,6 +12,12 @@ public class PathWeaver implements ModInitializer {
     public void onInitialize() {
         LOG.info("PathWeaver initializing");
 
+        // In-game diagnostics. Until this existed, the only way to answer "does this cover my mobs,
+        // and if not why" was to write a probe against the mod's internals.
+        net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback.EVENT.register(
+            (dispatcher, registry, environment) ->
+                dev.pathweaver.command.PathWeaverCommand.register(dispatcher));
+
         // Register Cloth AutoConfig (persists config/pathweaver.json; GUI via ModMenu when present).
         // Guarded so a config-API mismatch forces synchronous fail-closed defaults rather than
         // silently enabling async or breaking dedicated-server startup.

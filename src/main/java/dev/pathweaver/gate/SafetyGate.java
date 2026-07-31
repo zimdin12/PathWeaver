@@ -1,5 +1,7 @@
 package dev.pathweaver.gate;
 
+import net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator;
+import net.minecraft.world.level.pathfinder.FlyNodeEvaluator;
 import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
 import net.minecraft.world.level.pathfinder.SwimNodeEvaluator;
 
@@ -53,14 +55,64 @@ public final class SafetyGate {
         }
     }
 
+    /**
+     * Vanilla evaluators that write to the mob itself, and every subclass of them.
+     *
+     * <p>Excluded at <em>every</em> tier, including the one that waives all compatibility checking,
+     * and the distinction is worth stating precisely. The tier decides how much risk to accept from
+     * <em>other mods'</em> code. These two are vanilla, and they are not a risk -- they are a
+     * certainty. {@code AmphibiousNodeEvaluator} calls {@code Mob.setPathfindingMalus} five times,
+     * saving and restoring live entity state around a search; {@code FlyNodeEvaluator} calls
+     * {@code Mob.getRandom} and advances the mob's RNG during start-node selection. Both mutate the
+     * mob from a worker thread on every single search, with zero mods installed. No compatibility
+     * setting can make that safe, so exposing it behind one would ship a mode that is broken by
+     * construction. Fixing it means resolving that state on the main thread before dispatch, the way
+     * step height already is -- a feature, not a toggle.
+     *
+     * <p>By assignability, not exact class: {@code Frog$FrogNodeEvaluator} extends the amphibious
+     * one and inherits the writes.
+     */
+    private static final Set<Class<?>> MUTATES_THE_MOB = Set.of(
+        AmphibiousNodeEvaluator.class,
+        FlyNodeEvaluator.class
+    );
+
     /** Exact-class allowlist membership only. */
     public static boolean isEvaluatorAllowed(Class<?> evaluatorClass) {
         return ALLOWED.contains(evaluatorClass);
     }
 
-    /** Full gate: allowlisted AND not force-denied by a foreign mixin. */
+    /**
+     * True when an evaluator subclass may run because the operator waived compatibility checking.
+     *
+     * <p>A mod subclassing {@code WalkNodeEvaluator} -- stormiespiders' {@code
+     * AdvancedWalkNodeProcessor} is the live example, and it is why spiders path synchronously -- is
+     * exactly the "another mod modified pathfinding" case the tier exists to govern. At the tier
+     * that ignores the scan entirely, refusing it anyway made the setting mean less than it says.
+     *
+     * <p>Both vanilla exclusions also extend {@code WalkNodeEvaluator}, so admitting subclasses
+     * without {@link #MUTATES_THE_MOB} would silently admit precisely the two that are unsafe.
+     */
+    private static boolean isWaivableSubclass(Class<?> evaluatorClass) {
+        for (Class<?> unsafe : MUTATES_THE_MOB) {
+            if (unsafe.isAssignableFrom(evaluatorClass)) return false;
+        }
+        for (Class<?> allowed : ALLOWED) {
+            if (allowed.isAssignableFrom(evaluatorClass)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Full gate: allowlisted AND not force-denied by a foreign mixin.
+     *
+     * <p>Where the operator has waived compatibility checking, a third-party subclass of an
+     * allowlisted evaluator is admitted too -- see {@link #isWaivableSubclass}.
+     */
     public static boolean isAllowed(Class<?> evaluatorClass) {
-        return isEvaluatorAllowed(evaluatorClass)
-            && !deniedBySafety.contains(evaluatorClass);
+        if (isEvaluatorAllowed(evaluatorClass)) {
+            return !deniedBySafety.contains(evaluatorClass);
+        }
+        return ActiveCompatibilityPolicy.bypassesScan() && isWaivableSubclass(evaluatorClass);
     }
 }
