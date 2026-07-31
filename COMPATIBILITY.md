@@ -146,6 +146,57 @@ the release file — 128015 bytes with no `META-INF/jars` entry, against the 126
 actually contains the library. The harness fetches the release file directly and pins its SHA-1, so
 a substituted parent cannot stage a library the audit never examined.
 
+## 0.4.0 evaluator expansion — what was checked
+
+Before 0.4.0 only the exact vanilla walk and swim evaluators could run off-thread. All six concrete
+evaluators can now. The exclusion that was lifted had been justified inaccurately, and the correction
+is the evidence.
+
+**The claim it replaced:** "the amphibious evaluator writes to the live mob during a search, and the
+flying one reads the live mob's randomness, so neither can run off-thread."
+
+**What the 26.1.2 bytecode actually shows:**
+
+| Evaluator | Live-mob operation | Where it is |
+|---|---|---|
+| `AmphibiousNodeEvaluator` | `Mob.setPathfindingMalus` ×3 | `prepare()` |
+| `AmphibiousNodeEvaluator` | `Mob.setPathfindingMalus` ×2 | `done()` |
+| `FlyNodeEvaluator` | `Mob.getRandom()` ×1 | `iteratePathfindingStartNodeCandidatePositions`, reached only from `getStart()` |
+| `Frog$FrogNodeEvaluator` | `Mob.getBoundingBox` ×3 (read-only) | overrides `getStart`/`getPathType` |
+| `Creaking$HomeNodeEvaluator` | none | overrides `getPathType` |
+
+Every write is in the prologue or the epilogue; the A* loop between them only reads. `PathFinder.findPath`
+calls `prepare` at one site and `done` at one site, so `PathFinderMixin` skips both when a worker is
+executing and `PathNavigationMixin` runs them on the main thread instead. The flying evaluator's single
+randomness read is redirected to a thread-confined `RandomSource`; vanilla selects that start candidate
+arbitrarily, so a different arbitrary selection is inside the specification.
+
+**Not proven:** path equivalence for any of the four new families. The static-world oracle comparison
+covers walk and swim only and has not been re-run. A flying search *cannot* reproduce vanilla's start
+node by construction, so equivalence for it would have to be defined over reachability rather than nodes.
+
+**Vanilla classes newly executed by a worker, pinned into the Fabric interaction call inventory:**
+
+| Class | SHA-256 |
+|---|---|
+| `FlyNodeEvaluator` | `1312463f02c254e020fbadd0cc53b646674553e0d13e90977d80145d4ccaeef1` |
+| `AmphibiousNodeEvaluator` | `4eaa062968f8e353bff5df4fc0a61287b2b0387885e86b42a3b40c992050df5d` |
+| `Frog$FrogNodeEvaluator` | `0fb1bfa9dad8599b84aceccae2edc7eb79b26c83c066698a0769f641400fad09` |
+| `Creaking$HomeNodeEvaluator` | `65118998c7fe8dca68f39ee318992d17403a44b8f978c1ac123bbbe54d58fd93` |
+
+That exemption rests on an inventory of `BlockState` calls made from every class a worker runs, so
+widening what a worker runs had to widen the sample or the evidence would have described a smaller
+surface than the one executing. Measured: the four contribute only `is(Object)` and `is(TagKey)`, both
+already in the expected set, so the inventory is unchanged and the exemption still holds. Had they
+reached `useItemOn` or `useWithoutItem`, this would now deny.
+
+**Cache isolation.** `PathfindingContext`'s constructor takes the level's shared `PathTypeCache`, and
+the mixin that substitutes a confined one keyed on whether the *calling thread* was a worker. Moving
+the prologue to the main thread made that condition false while the context was still built for a
+worker, so the isolation silently stopped applying. It now keys on whether the *search* runs
+off-thread. A game test asserts both directions: confined inside the prologue scope, still shared for
+an ordinary synchronous search.
+
 ## What the structural verifiers actually check
 
 The Lithium and Diagonal Blocks entries above say "bytecode proof". Read that as a bounded
