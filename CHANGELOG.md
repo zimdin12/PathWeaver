@@ -48,6 +48,24 @@ the old name deliberately: they describe what those versions actually shipped._
 - Game tests read the runtime's counters through public accessors instead of reflecting into a
   private field, which is why renaming that field broke three of them at once.
 
+### Introduced and fixed during this release (never shipped)
+
+Recorded because each one looked correct and did nothing, which is the failure mode this project keeps
+producing and the only reason to write them down.
+
+- **Hoisting the prologue silently defeated `PathfindingContextMixin`.** That mixin swaps the level's
+  shared `PathTypeCache` for a thread-confined one, keyed on whether the *calling thread* is a worker.
+  Once `prepare()` ran on the main thread that condition was false, so every async search was built
+  around the shared cache and handed to a worker that writes through it — the exact unsynchronised
+  shared write the mixin exists to prevent. It stayed present, mandatory and passing its own contract
+  test throughout. It now keys on whether the *search* runs off-thread.
+- **The epilogue raced the worker that still owned the evaluator.** `done()` clears two caches and
+  nulls the pathfinding context, and `supersede()`/`stop()` invoked it while the search could still be
+  running. The epilogue is now owed and released on the drain path, keyed by request rather than by
+  navigation.
+- **The prologue scope was set and cleared rather than saved and restored**, so a mod override that
+  started another mob navigating would have cleared it for the outer search.
+
 ### Known gaps
 
 - **The four newly eligible families have no path-equivalence evidence.** The static-world oracle
