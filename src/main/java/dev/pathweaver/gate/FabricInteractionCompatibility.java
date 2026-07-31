@@ -30,6 +30,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -98,11 +99,34 @@ final class FabricInteractionCompatibility {
         "getValue(Lnet/minecraft/world/level/block/state/properties/Property;)Ljava/lang/Comparable;"
     );
 
+    /**
+     * Vanilla evaluators that a worker began executing in 0.4.0, pinned like the rest of the sample.
+     *
+     * <p>The exemption below rests on an inventory of {@code BlockState} calls made from every class
+     * a worker runs. Flying, amphibious, frog and creaking searches only became worker-reachable in
+     * 0.4.0, so leaving them out would have left the inventory describing a surface smaller than the
+     * one that actually executes -- evidence that reads as current and is not.
+     *
+     * <p>Measured: they contribute only {@code is(Object)} and {@code is(TagKey)}, both already in
+     * the expected set, so widening the sample does not widen the inventory. That is the outcome
+     * that makes the exemption still honest, and it had to be checked rather than assumed.
+     */
+    private static final Map<String, String> WORKER_EVALUATOR_SHAS = Map.of(
+        "net.minecraft.world.level.pathfinder.FlyNodeEvaluator",
+        "1312463f02c254e020fbadd0cc53b646674553e0d13e90977d80145d4ccaeef1",
+        "net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator",
+        "4eaa062968f8e353bff5df4fc0a61287b2b0387885e86b42a3b40c992050df5d",
+        "net.minecraft.world.entity.animal.frog.Frog$FrogNodeEvaluator",
+        "0fb1bfa9dad8599b84aceccae2edc7eb79b26c83c066698a0769f641400fad09",
+        "net.minecraft.world.entity.monster.creaking.Creaking$HomeNodeEvaluator",
+        "65118998c7fe8dca68f39ee318992d17403a44b8f978c1ac123bbbe54d58fd93");
+
     private FabricInteractionCompatibility() {}
 
     record Bundle(byte[] moduleJar, byte[] config, byte[] mixin, byte[] blockStateBase,
                   byte[] pathFinder, byte[] nodeEvaluator, byte[] walkNodeEvaluator,
-                  byte[] pathContext, byte[] pathTypeCache, byte[] pathRegion) {}
+                  byte[] pathContext, byte[] pathTypeCache, byte[] pathRegion,
+                  Map<String, byte[]> workerEvaluators) {}
 
     record Verification(boolean valid, List<String> diagnostics, Set<String> injectedTargets,
                         Set<String> workerBlockStateCalls) {
@@ -128,6 +152,14 @@ final class FabricInteractionCompatibility {
         checkHash("vanilla PathfindingContext", b.pathContext(), PATH_CONTEXT_SHA, diagnostics);
         checkHash("vanilla PathTypeCache", b.pathTypeCache(), PATH_TYPE_CACHE_SHA, diagnostics);
         checkHash("vanilla PathNavigationRegion", b.pathRegion(), PATH_REGION_SHA, diagnostics);
+        for (Map.Entry<String, String> pinned : WORKER_EVALUATOR_SHAS.entrySet()) {
+            byte[] bytes = b.workerEvaluators().get(pinned.getKey());
+            if (bytes == null) {
+                diagnostics.add("worker-reachable evaluator unavailable: " + pinned.getKey());
+                continue;
+            }
+            checkHash("vanilla " + pinned.getKey(), bytes, pinned.getValue(), diagnostics);
+        }
         Set<String> targets = new HashSet<>();
         Set<String> workerCalls = new HashSet<>();
         try {
@@ -135,6 +167,9 @@ final class FabricInteractionCompatibility {
             verifyMixin(b.mixin(), b.blockStateBase(), targets, diagnostics);
             for (byte[] bytes : List.of(b.pathFinder(), b.nodeEvaluator(), b.walkNodeEvaluator(),
                     b.pathContext(), b.pathTypeCache(), b.pathRegion())) {
+                collectBlockStateCalls(bytes, workerCalls);
+            }
+            for (byte[] bytes : b.workerEvaluators().values()) {
                 collectBlockStateCalls(bytes, workerCalls);
             }
             if (!workerCalls.equals(EXPECTED_WORKER_BLOCK_STATE_CALLS)) {
@@ -202,7 +237,7 @@ final class FabricInteractionCompatibility {
             readClassBytes(BlockBehaviour.BlockStateBase.class), readClassBytes(PathFinder.class),
             readClassBytes(NodeEvaluator.class), readClassBytes(WalkNodeEvaluator.class),
             readClassBytes(PathfindingContext.class), readClassBytes(PathTypeCache.class),
-            readClassBytes(PathNavigationRegion.class));
+            readClassBytes(PathNavigationRegion.class), readWorkerEvaluators());
     }
 
     static ForeignMixinScanner.AuditedExemptionEvidence exactEvidence() {
@@ -368,6 +403,27 @@ final class FabricInteractionCompatibility {
         Path path = module.findPath(resource)
             .orElseThrow(() -> new IOException("module resource missing: " + resource));
         return Files.readAllBytes(path);
+    }
+
+    /**
+     * Bytes for every pinned worker-reachable evaluator.
+     *
+     * <p>Two of them are declared inside their mob and are package-private, so they are resolved by
+     * name. A missing one is reported by the hash loop rather than silently skipped: an absent class
+     * means the sample no longer covers what runs, which must deny rather than pass.
+     */
+    private static Map<String, byte[]> readWorkerEvaluators() {
+        Map<String, byte[]> bytes = new java.util.LinkedHashMap<>();
+        for (String className : WORKER_EVALUATOR_SHAS.keySet()) {
+            try {
+                Class<?> type = Class.forName(className, false,
+                    FabricInteractionCompatibility.class.getClassLoader());
+                bytes.put(className, readClassBytes(type));
+            } catch (ClassNotFoundException | LinkageError | IOException | RuntimeException absent) {
+                // Left out deliberately; verifyBundle turns the absence into a diagnostic.
+            }
+        }
+        return Map.copyOf(bytes);
     }
 
     private static byte[] readClassBytes(Class<?> type) throws IOException {

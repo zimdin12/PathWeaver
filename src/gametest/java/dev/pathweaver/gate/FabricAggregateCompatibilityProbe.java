@@ -163,6 +163,6 @@ public final class FabricAggregateCompatibilityProbe {
             FabricInteractionCompatibility.Bundle b, byte[] module, byte[] mixin) {
         return new FabricInteractionCompatibility.Bundle(module, b.config(), mixin, b.blockStateBase(),
             b.pathFinder(), b.nodeEvaluator(), b.walkNodeEvaluator(), b.pathContext(),
-            b.pathTypeCache(), b.pathRegion());
+            b.pathTypeCache(), b.pathRegion(), b.workerEvaluators());
     }
 }

@@ -51,7 +51,8 @@ class FabricInteractionCompatibilityTest {
             byte[][] copy = Arrays.stream(parts).map(byte[]::clone).toArray(byte[][]::new);
             copy[changed][copy[changed].length - 1] ^= 1;
             var result = FabricInteractionCompatibility.verifyBundle(new FabricInteractionCompatibility.Bundle(
-                copy[0], copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7], copy[8], copy[9]));
+                copy[0], copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7], copy[8], copy[9],
+                workerEvaluators()));
             assertFalse(result.valid(), "resource " + changed + " drift must deny");
             assertTrue(result.diagnostics().stream().anyMatch(s -> s.contains("hash mismatch")));
         }
@@ -83,7 +84,7 @@ class FabricInteractionCompatibilityTest {
                 classBytes(BlockBehaviour.BlockStateBase.class), classBytes(PathFinder.class),
                 classBytes(NodeEvaluator.class), classBytes(WalkNodeEvaluator.class),
                 classBytes(PathfindingContext.class), classBytes(PathTypeCache.class),
-                classBytes(PathNavigationRegion.class));
+                classBytes(PathNavigationRegion.class), workerEvaluators());
         }
     }
 
@@ -105,7 +106,7 @@ class FabricInteractionCompatibilityTest {
             FabricInteractionCompatibility.Bundle b, byte[] mixin) {
         return new FabricInteractionCompatibility.Bundle(b.moduleJar(), b.config(), mixin,
             b.blockStateBase(), b.pathFinder(), b.nodeEvaluator(), b.walkNodeEvaluator(),
-            b.pathContext(), b.pathTypeCache(), b.pathRegion());
+            b.pathContext(), b.pathTypeCache(), b.pathRegion(), b.workerEvaluators());
     }
 
     private static byte[] changeFirstSelector(byte[] bytes) {
@@ -152,5 +153,22 @@ class FabricInteractionCompatibilityTest {
         ClassWriter writer = new ClassWriter(0);
         node.accept(writer);
         return writer.toByteArray();
+    }
+
+    /**
+     * The four evaluators that became worker-reachable in 0.4.0, read the same way production does.
+     *
+     * <p>Two are declared inside their mob and package-private, so they are resolved by name.
+     */
+    private static java.util.Map<String, byte[]> workerEvaluators() throws Exception {
+        java.util.Map<String, byte[]> bytes = new java.util.LinkedHashMap<>();
+        for (String className : java.util.List.of(
+                "net.minecraft.world.level.pathfinder.FlyNodeEvaluator",
+                "net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator",
+                "net.minecraft.world.entity.animal.frog.Frog$FrogNodeEvaluator",
+                "net.minecraft.world.entity.monster.creaking.Creaking$HomeNodeEvaluator")) {
+            bytes.put(className, classBytes(Class.forName(className)));
+        }
+        return java.util.Map.copyOf(bytes);
     }
 }
