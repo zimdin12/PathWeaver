@@ -111,9 +111,10 @@ public final class PathWeaverCommand {
             .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
             .forEach(entry -> say(source, (entry.getKey().equals(ELIGIBLE) ? "  §a" : "  §e")
                 + entry.getValue() + "§r  " + entry.getKey()));
-        say(source, "  §7Flying and amphibious mobs are excluded at every tier — the compatibility "
-            + "risk setting governs which mods may have touched pathfinding, not which searches are "
-            + "safe to move.");
+        say(source, "  §7Every vanilla evaluator can run off-thread. What remains synchronous is "
+            + "mobs whose evaluator a mod replaced, and — below the unsafe tier — mob classes mods "
+            + "added. The compatibility risk setting governs which mods may have touched "
+            + "pathfinding, not which searches are safe to move.");
     }
 
     private static final String ELIGIBLE = "eligible";
@@ -126,13 +127,17 @@ public final class PathWeaverCommand {
             boolean originOk = MobOriginGate.isAllowed(mob.getClass(), moddedAllowed);
             if (evaluatorOk && originOk) return ELIGIBLE;
             if (!originOk && !evaluatorOk) {
-                return "mob class added by a mod, and its evaluator is not the vanilla walk/swim one";
+                return "mob class added by a mod, and its evaluator is not a vanilla one";
             }
             if (!originOk) {
                 return "mob class added by a mod (enable \"Also speed up mobs added by mods\")";
             }
             if (evaluator == null) return "navigation uses no node evaluator";
-            return "uses " + evaluator.getClass().getSimpleName() + ", not the vanilla walk/swim one";
+            if (!dev.pathweaver.async.EvaluatorCloner.canClone(evaluator.getClass())) {
+                return "uses " + evaluator.getClass().getSimpleName()
+                    + ", which has no constructor shape we can rebuild";
+            }
+            return "uses " + evaluator.getClass().getSimpleName() + ", which is not a vanilla evaluator";
         } catch (Throwable failed) {
             return "could not be inspected (" + failed.getClass().getSimpleName() + ")";
         }

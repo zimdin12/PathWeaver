@@ -1,37 +1,70 @@
 package dev.pathweaver.gate;
 
-import net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator;
-import net.minecraft.world.level.pathfinder.FlyNodeEvaluator;
-import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
-import net.minecraft.world.level.pathfinder.SwimNodeEvaluator;
-
+import dev.pathweaver.async.EvaluatorCloner;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
+import net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator;
+import net.minecraft.world.level.pathfinder.FlyNodeEvaluator;
+import net.minecraft.world.level.pathfinder.SwimNodeEvaluator;
+import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
 
 /**
- * Decides whether a mob's A* search may run off-thread. The rule: the mob's NodeEvaluator must be
- * EXACTLY one of the temporarily eligible vanilla evaluator classes. The worker still consumes a
- * read-only region view backed by live chunks and live mob inputs, so async remains experimental even
- * though v0.2.1 enables it by default. The fail-closed scanner may force eligible families sync.
+ * Decides whether a mob's A* search may run off-thread.
  *
- * Exact-class ({@code getClass() ==}), never {@code instanceof}: a mod evaluator that
- * {@code extends WalkNodeEvaluator} (e.g. stormiespiders' AdvancedWalkNodeProcessor) reads live
- * world state during node evaluation, so {@code instanceof} would wrongly pass it. Default-deny.
+ * <p>The rule is an exact-class allowlist of vanilla evaluators, never {@code instanceof}: a mod
+ * evaluator that extends one of them — stormiespiders' {@code AdvancedWalkNodeProcessor} is the live
+ * example — reads live world state during node evaluation, so {@code instanceof} would wrongly pass
+ * it. Default-deny. The worker still consumes a read-only region view backed by live chunks and live
+ * mob inputs, so async remains experimental.
  *
- * {@code AmphibiousNodeEvaluator} is deliberately EXCLUDED: verified on 26.1.2, its {@code prepare}/
- * {@code done} save-and-restore the live mob's WATER/WATER_BORDER pathfinding malus via
- * {@code mob.setPathfindingMalus(...)} — a WRITE to live entity state that would race off-thread (and
- * can't be reproduced faithfully off-thread anyway). It stays synchronous. {@code SwimNodeEvaluator}
- * is eligible for the experimental path: its prepare/done only touch evaluator fields.
- * {@code FlyNodeEvaluator} is excluded because start-node selection consumes the live mob RNG from
- * the worker thread.
+ * <p>The allowlist covers every concrete vanilla evaluator as of 26.1.2. The flying and amphibious
+ * ones were excluded until 0.4.0, and the reason they no longer are is worth recording, because the
+ * old exclusion described the problem inaccurately. It was never the search: the amphibious
+ * evaluator's five {@code Mob.setPathfindingMalus} writes are all in {@code prepare} and {@code done},
+ * and the flying evaluator's single {@code Mob.getRandom()} read is in start-node selection. The A*
+ * loop between them only reads. {@code PathFinderMixin} now runs the prologue and epilogue on the
+ * main thread and {@code FlyNodeEvaluatorMixin} gives a worker its own randomness, which removes the
+ * hazard at its source rather than routing around it. The frog's and creaking's evaluators come along
+ * with it: verified on 26.1.2, they override only {@code getStart} and {@code getPathType}, touch the
+ * mob solely through {@code getBoundingBox}, and inherit their prologue from the classes above.
+ *
+ * <p>Two package-private evaluators are declared inside their mobs and so cannot be named in source.
+ * They are resolved by name and simply absent if a future version moves them — the allowlist shrinks,
+ * which fails in the safe direction.
  */
 public final class SafetyGate {
-    private static final Set<Class<?>> ALLOWED = Set.of(
-        WalkNodeEvaluator.class,
-        SwimNodeEvaluator.class
-    );
+    private static final String FROG_EVALUATOR =
+        "net.minecraft.world.entity.animal.frog.Frog$FrogNodeEvaluator";
+    private static final String CREAKING_EVALUATOR =
+        "net.minecraft.world.entity.monster.creaking.Creaking$HomeNodeEvaluator";
+
+    private static final Set<Class<?>> ALLOWED = allowlist();
+
+    private static Set<Class<?>> allowlist() {
+        Set<Class<?>> allowed = new LinkedHashSet<>(Set.of(
+            WalkNodeEvaluator.class,
+            SwimNodeEvaluator.class,
+            FlyNodeEvaluator.class,
+            AmphibiousNodeEvaluator.class));
+        addIfPresent(allowed, FROG_EVALUATOR);
+        addIfPresent(allowed, CREAKING_EVALUATOR);
+        return Collections.unmodifiableSet(allowed);
+    }
+
+    private static void addIfPresent(Set<Class<?>> allowed, String className) {
+        try {
+            allowed.add(Class.forName(className, false, SafetyGate.class.getClassLoader()));
+        } catch (ClassNotFoundException | LinkageError movedOrRenamed) {
+            // Absent means that mob keeps pathing synchronously, which is the safe direction.
+        }
+    }
+
+    /** Every evaluator class this build knows how to run off-thread, denials aside. */
+    public static Set<Class<?>> allowlisted() {
+        return ALLOWED;
+    }
 
     /**
      * Allowlisted vanilla classes that another jar mixes into (populated at startup by
@@ -55,48 +88,36 @@ public final class SafetyGate {
         }
     }
 
-    /**
-     * Vanilla evaluators that write to the mob itself, and every subclass of them.
-     *
-     * <p>Excluded at <em>every</em> tier, including the one that waives all compatibility checking,
-     * and the distinction is worth stating precisely. The tier decides how much risk to accept from
-     * <em>other mods'</em> code. These two are vanilla, and they are not a risk -- they are a
-     * certainty. {@code AmphibiousNodeEvaluator} calls {@code Mob.setPathfindingMalus} five times,
-     * saving and restoring live entity state around a search; {@code FlyNodeEvaluator} calls
-     * {@code Mob.getRandom} and advances the mob's RNG during start-node selection. Both mutate the
-     * mob from a worker thread on every single search, with zero mods installed. No compatibility
-     * setting can make that safe, so exposing it behind one would ship a mode that is broken by
-     * construction. Fixing it means resolving that state on the main thread before dispatch, the way
-     * step height already is -- a feature, not a toggle.
-     *
-     * <p>By assignability, not exact class: {@code Frog$FrogNodeEvaluator} extends the amphibious
-     * one and inherits the writes.
-     */
-    private static final Set<Class<?>> MUTATES_THE_MOB = Set.of(
-        AmphibiousNodeEvaluator.class,
-        FlyNodeEvaluator.class
-    );
-
     /** Exact-class allowlist membership only. */
     public static boolean isEvaluatorAllowed(Class<?> evaluatorClass) {
         return ALLOWED.contains(evaluatorClass);
     }
 
     /**
+     * True when a denial covers this evaluator, by inheritance rather than identity.
+     *
+     * <p>Every land evaluator extends {@code WalkNodeEvaluator} and executes its code, so a foreign
+     * mixin into Walk modifies the search that a flying, amphibious, frog or creaking mob runs just
+     * as much as a zombie's. Matching the denied set exactly would have denied the zombie and kept
+     * dispatching the other four through the very code the scan objected to.
+     */
+    private static boolean isDenied(Class<?> evaluatorClass) {
+        synchronized (deniedBySafety) {
+            for (Class<?> denied : deniedBySafety) {
+                if (denied.isAssignableFrom(evaluatorClass)) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * True when an evaluator subclass may run because the operator waived compatibility checking.
      *
-     * <p>A mod subclassing {@code WalkNodeEvaluator} -- stormiespiders' {@code
-     * AdvancedWalkNodeProcessor} is the live example, and it is why spiders path synchronously -- is
-     * exactly the "another mod modified pathfinding" case the tier exists to govern. At the tier
-     * that ignores the scan entirely, refusing it anyway made the setting mean less than it says.
-     *
-     * <p>Both vanilla exclusions also extend {@code WalkNodeEvaluator}, so admitting subclasses
-     * without {@link #MUTATES_THE_MOB} would silently admit precisely the two that are unsafe.
+     * <p>A mod subclassing an allowlisted evaluator is exactly the "another mod modified pathfinding"
+     * case the tier exists to govern. At the tier that ignores the scan entirely, refusing it anyway
+     * made the setting mean less than it says.
      */
     private static boolean isWaivableSubclass(Class<?> evaluatorClass) {
-        for (Class<?> unsafe : MUTATES_THE_MOB) {
-            if (unsafe.isAssignableFrom(evaluatorClass)) return false;
-        }
         for (Class<?> allowed : ALLOWED) {
             if (allowed.isAssignableFrom(evaluatorClass)) return true;
         }
@@ -104,15 +125,19 @@ public final class SafetyGate {
     }
 
     /**
-     * Full gate: allowlisted AND not force-denied by a foreign mixin.
+     * Full gate: admitted by the allowlist or by an explicit waiver, not denied by a foreign mixin,
+     * and actually rebuildable.
      *
-     * <p>Where the operator has waived compatibility checking, a third-party subclass of an
-     * allowlisted evaluator is admitted too -- see {@link #isWaivableSubclass}.
+     * <p>Rebuildability belongs here rather than at dispatch. It was previously discovered one layer
+     * down, where a refusal became an abandoned dispatch that had already counted itself, and where
+     * the in-game diagnostic reported a mob as eligible that could never run. A gate that answers
+     * differently from what happens is not a gate.
      */
     public static boolean isAllowed(Class<?> evaluatorClass) {
-        if (isEvaluatorAllowed(evaluatorClass)) {
-            return !deniedBySafety.contains(evaluatorClass);
+        if (!isEvaluatorAllowed(evaluatorClass)
+                && !(ActiveCompatibilityPolicy.bypassesScan() && isWaivableSubclass(evaluatorClass))) {
+            return false;
         }
-        return ActiveCompatibilityPolicy.bypassesScan() && isWaivableSubclass(evaluatorClass);
+        return !isDenied(evaluatorClass) && EvaluatorCloner.canClone(evaluatorClass);
     }
 }

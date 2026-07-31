@@ -20,7 +20,7 @@ class AuditedMixinDecisionTest {
     @Test void exactServerCoreClaimRequiresVerifiedRuntimeEvidence() {
         var config = serverCoreConfig("1.5.19+26.1.2", "servercore.common.mixins.json",
             "me.wesley1808.servercore.mixin.optimizations.misc.PathFinderMixin", true);
-        assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+        assertEquals(SafetyGate.allowlisted(),
             decide(config, ForeignMixinScanner.AuditedExemptionEvidence.unverified()).denied());
         assertTrue(decide(config, AuditedMixinCompatibility.exactServerCoreEvidence()).denied().isEmpty());
     }
@@ -28,7 +28,7 @@ class AuditedMixinDecisionTest {
     @Test void exactRabbitClaimRequiresVerifiedRuntimeEvidence() {
         var config = rabbitConfig("1.3.0", "rabbit-pathfinding-fix.mixins.json",
             "net.litetex.rpf.mixin.EntityNavigationMixin", false);
-        assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+        assertEquals(SafetyGate.allowlisted(),
             decide(config, ForeignMixinScanner.AuditedExemptionEvidence.unverified()).denied());
         assertTrue(decide(config, AuditedMixinCompatibility.exactRabbitEvidence()).denied().isEmpty());
     }
@@ -58,7 +58,7 @@ class AuditedMixinDecisionTest {
                 "servercore.common.mixins.json", Set.of(new ForeignMixinScanner.TargetClaim(
                     "me.wesley1808.servercore.mixin.optimizations.misc.PathFinderMixin",
                     "net.minecraft.world.level.pathfinder.NodeEvaluator")), true))) {
-            assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+            assertEquals(SafetyGate.allowlisted(),
                 decide(nearMiss, serverEvidence).denied(), nearMiss.toString());
         }
         for (var nearMiss : List.of(
@@ -76,7 +76,7 @@ class AuditedMixinDecisionTest {
             new ForeignMixinScanner.ActiveConfig("rabbit-pathfinding-fix", "1.3.0",
                 "rabbit-pathfinding-fix.mixins.json", Set.of(new ForeignMixinScanner.TargetClaim(
                     "net.litetex.rpf.mixin.EntityNavigationMixin", PATH_FINDER)), false))) {
-            assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+            assertEquals(SafetyGate.allowlisted(),
                 decide(nearMiss, rabbitEvidence).denied(), nearMiss.toString());
         }
     }
@@ -88,7 +88,7 @@ class AuditedMixinDecisionTest {
             Set.of(exact.claims().iterator().next(),
                 new ForeignMixinScanner.TargetClaim("foreign.AddedMixin",
                     "net.minecraft.world.level.pathfinder.NodeEvaluator")), true);
-        assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+        assertEquals(SafetyGate.allowlisted(),
             decide(extra, AuditedMixinCompatibility.exactServerCoreEvidence()).denied());
     }
 

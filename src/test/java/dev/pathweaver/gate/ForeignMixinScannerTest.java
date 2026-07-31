@@ -40,7 +40,7 @@ class ForeignMixinScannerTest {
             "net.minecraft.world.entity.ai.navigation.GroundPathNavigation",
             "net.minecraft.world.level.pathfinder.PathFinder"
         )) {
-            assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+            assertEquals(SafetyGate.allowlisted(),
                 ForeignMixinScanner.denialsForTargets(List.of(target)), target);
         }
     }
@@ -49,7 +49,7 @@ class ForeignMixinScannerTest {
         assertEquals(Set.of(WalkNodeEvaluator.class),
             ForeignMixinScanner.denialsForTargets(List.of(
                 "net/minecraft/world/level/pathfinder/WalkNodeEvaluator")));
-        assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+        assertEquals(SafetyGate.allowlisted(),
             ForeignMixinScanner.denialsForTargets(List.of(
                 "net/minecraft/world/level/pathfinder/PathFinder")));
     }
@@ -63,7 +63,7 @@ class ForeignMixinScannerTest {
     @Test void anyDiscoveryFailureFailsClosedForEveryEligibleEvaluator() {
         ForeignMixinScanner.ScanDecision decision = ForeignMixinScanner.decide(
             List.of(), List.of("broken nested jar: unreadable"));
-        assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class), decision.denied());
+        assertEquals(SafetyGate.allowlisted(), decision.denied());
         assertEquals(0, decision.scanned());
         assertEquals(1, decision.failed());
     }
@@ -75,7 +75,7 @@ class ForeignMixinScannerTest {
                 "net.minecraft.world.level.pathfinder.PathFinder")), true);
         ForeignMixinScanner.ScanDecision decision = ForeignMixinScanner.decide(
             List.of(pluginConfig), List.of());
-        assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class), decision.denied());
+        assertEquals(SafetyGate.allowlisted(), decision.denied());
         assertEquals(1, decision.scanned());
         assertEquals(0, decision.failed());
     }
@@ -172,7 +172,7 @@ class ForeignMixinScannerTest {
         ForeignMixinScanner.ScanDecision decision = ForeignMixinScanner.decide(
             List.of(exactFabricPathfindingConfig()), List.of(),
             new ForeignMixinScanner.SwimExemptionEvidence(false, List.of("hash mismatch")));
-        assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class), decision.denied());
+        assertEquals(SafetyGate.allowlisted(), decision.denied());
     }
 
     @Test void versionDriftOrPluginContributionCannotUseSwimExemption() {
@@ -183,7 +183,7 @@ class ForeignMixinScannerTest {
             new ForeignMixinScanner.ActiveConfig(exact.modId(), exact.version(), exact.configName(),
                 exact.claims(), true)
         )) {
-            assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+            assertEquals(SafetyGate.allowlisted(),
                 ForeignMixinScanner.decide(List.of(drifted), List.of(),
                     new ForeignMixinScanner.SwimExemptionEvidence(true, List.of())).denied());
         }
@@ -203,7 +203,7 @@ class ForeignMixinScannerTest {
                 new ForeignMixinScanner.TargetClaim("foreign.AddedMixin",
                     "net.minecraft.world.level.pathfinder.NodeEvaluator")), false);
         for (ForeignMixinScanner.ActiveConfig malformed : List.of(missingWalk, extraShared)) {
-            assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+            assertEquals(SafetyGate.allowlisted(),
                 ForeignMixinScanner.decide(List.of(malformed), List.of(),
                     new ForeignMixinScanner.SwimExemptionEvidence(true, List.of())).denied());
         }
@@ -226,7 +226,7 @@ class ForeignMixinScannerTest {
                     "net.minecraft.world.level.pathfinder.NodeEvaluator"), walk), false)
         );
         for (ForeignMixinScanner.ActiveConfig nearMiss : nearMisses) {
-            assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+            assertEquals(SafetyGate.allowlisted(),
                 ForeignMixinScanner.decide(List.of(nearMiss), List.of(),
                     new ForeignMixinScanner.SwimExemptionEvidence(true, List.of())).denied());
         }

@@ -39,10 +39,20 @@ import java.util.Set;
  */
 public final class ForeignMixinScanner {
 
-    private static final Map<String, Class<?>> ALLOWLISTED_BY_NAME = Map.of(
-        WalkNodeEvaluator.class.getName(), WalkNodeEvaluator.class,
-        SwimNodeEvaluator.class.getName(), SwimNodeEvaluator.class
-    );
+    /**
+     * Derived from {@link SafetyGate#allowlisted()} rather than restated here.
+     *
+     * <p>These were two independent lists of the same thing, which is a defect waiting for the next
+     * evaluator to be added: widening the gate without widening the scanner would leave a family
+     * eligible that no foreign mixin could ever deny.
+     */
+    private static final Map<String, Class<?>> ALLOWLISTED_BY_NAME = allowlistByName();
+
+    private static Map<String, Class<?>> allowlistByName() {
+        Map<String, Class<?>> byName = new HashMap<>();
+        for (Class<?> allowed : SafetyGate.allowlisted()) byName.put(allowed.getName(), allowed);
+        return Map.copyOf(byName);
+    }
     private static final String PATHFINDER = "net.minecraft.world.level.pathfinder.PathFinder";
     /**
      * Classes a worker thread reads or mutates during an async search. A foreign mixin into any of
@@ -78,8 +88,7 @@ public final class ForeignMixinScanner {
         "net.minecraft.world.level.pathfinder.Path",
         "net.minecraft.world.level.pathfinder.Target"
     );
-    private static final Set<Class<?>> ELIGIBLE_EVALUATORS =
-        Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class);
+    private static final Set<Class<?>> ELIGIBLE_EVALUATORS = SafetyGate.allowlisted();
 
     /**
      * Compatibility exemptions are exact audited tuples, never owner prefixes or whole-mod trust.

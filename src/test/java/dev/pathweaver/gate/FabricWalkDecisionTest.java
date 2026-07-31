@@ -22,9 +22,9 @@ class FabricWalkDecisionTest {
         var interactionOnly = FabricInteractionCompatibility.exactEvidence();
         var both = contentOnly.merge(interactionOnly);
 
-        assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+        assertEquals(SafetyGate.allowlisted(),
             decide(content, interaction, ForeignMixinScanner.AuditedExemptionEvidence.unverified()).denied());
-        assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+        assertEquals(SafetyGate.allowlisted(),
             decide(content, interaction, contentOnly).denied());
         assertEquals(Set.of(WalkNodeEvaluator.class),
             decide(content, interaction, interactionOnly).denied());
@@ -42,7 +42,7 @@ class FabricWalkDecisionTest {
                 new ForeignMixinScanner.ActiveConfig("fabric-events-interaction-v0",
                     "5.2.2+07b380be4c", "fabric-events-interaction-v0.mixins.json",
                     Set.of(new ForeignMixinScanner.TargetClaim("foreign.ChangedSelector", BLOCK_STATE)), false))) {
-            assertEquals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class),
+            assertEquals(SafetyGate.allowlisted(),
                 decide(content, nearMiss, both).denied(), nearMiss.toString());
         }
     }

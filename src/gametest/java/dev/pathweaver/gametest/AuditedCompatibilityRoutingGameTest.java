@@ -123,11 +123,11 @@ public final class AuditedCompatibilityRoutingGameTest {
                 "1.4.0-near-miss", rabbit.configName(), rabbit.claims(), rabbit.pluginIdentity());
             serverDrift = decide(report, serverNearMiss, rabbit);
             rabbitDrift = decide(report, serverCore, rabbitNearMiss);
-            Set<Class<?>> denyBoth = Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class);
-            check(helper, serverDrift.denied().equals(denyBoth),
-                "ServerCore version near-miss must deny both families");
-            check(helper, rabbitDrift.denied().equals(denyBoth),
-                "rabbit version near-miss must deny both families");
+            Set<Class<?>> denyAll = SafetyGate.allowlisted();
+            check(helper, serverDrift.denied().equals(denyAll),
+                "ServerCore version near-miss must deny every family");
+            check(helper, rabbitDrift.denied().equals(denyAll),
+                "rabbit version near-miss must deny every family");
 
             for (int x = 0; x <= 12; x++) {
                 for (int z = 0; z <= 4; z++) helper.setBlock(x, 1, z, Blocks.STONE);

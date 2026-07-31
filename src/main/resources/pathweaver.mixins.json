@@ -4,10 +4,11 @@
   "compatibilityLevel": "JAVA_25",
   "mixins": [
     "PathFinderAccessor",
+    "PathFinderMixin",
     "PathfindingContextMixin",
     "LandPathTypeRegistryMixin",
     "PathNavigationMixin",
-    "WalkNodeEvaluatorMixin"
+    "FlyNodeEvaluatorMixin"
   ],
   "client": [],
   "injectors": {

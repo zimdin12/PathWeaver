@@ -104,8 +104,10 @@ public final class PathNavigationRoutingGameTest {
                     "net.fabricmc.fabric.mixin.event.interaction.BlockBehaviourBlockStateBaseMixin",
                     "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase")),
                 "scanner must retain the second full-FAPI BlockStateBase claim");
-            check(helper, oldDenials.equals(Set.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class)),
-                "stock full Fabric API must fail closed for both families until its separate "
+            // Every allowlisted family, not a fixed pair: failing closed means nothing is left
+            // dispatching, so this assertion has to grow whenever the allowlist does.
+            check(helper, oldDenials.equals(SafetyGate.allowlisted()),
+                "stock full Fabric API must fail closed for every family until its separate "
                     + "interaction BlockStateBase mixin is independently audited");
             SafetyGate.deniedBySafety.clear();
             cfg.enabled = true;

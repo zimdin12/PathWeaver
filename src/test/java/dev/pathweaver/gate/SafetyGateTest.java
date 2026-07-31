@@ -32,14 +32,18 @@ class SafetyGateTest {
     @Test void unknownEvaluatorDenied() {
         assertFalse(SafetyGate.isEvaluatorAllowed(Object.class));
     }
-    @Test void swimAllowedButFlyDeniedBecauseFlyConsumesLiveMobRngOffThread() {
+    @Test void flyAllowedOnceItsOnlyLiveRandomnessReadIsThreadConfined() {
+        // FlyNodeEvaluator reads Mob.getRandom() in exactly one place, start-node selection, and
+        // FlyNodeEvaluatorMixin hands a worker its own source there. Vanilla picks that candidate
+        // arbitrarily, so a different arbitrary pick is still a correct search.
         assertTrue(SafetyGate.isEvaluatorAllowed(SwimNodeEvaluator.class));
-        assertFalse(SafetyGate.isEvaluatorAllowed(FlyNodeEvaluator.class));
+        assertTrue(SafetyGate.isEvaluatorAllowed(FlyNodeEvaluator.class));
     }
-    @Test void amphibiousDeniedBecauseItMutatesLiveMobMalusOffThread() {
-        // Amphibious prepare/done call mob.setPathfindingMalus(...) - a live-entity WRITE that would
-        // race off-thread. It is intentionally excluded from the allowlist and stays synchronous.
-        assertFalse(SafetyGate.isEvaluatorAllowed(AmphibiousNodeEvaluator.class));
+    @Test void amphibiousAllowedOnceItsMalusWritesRunOnTheMainThread() {
+        // Its five Mob.setPathfindingMalus calls are all in prepare/done, never in the search, and
+        // PathFinderMixin runs both of those on the main thread. The exclusion described the whole
+        // evaluator as unsafe when only its two ends ever touched the mob.
+        assertTrue(SafetyGate.isEvaluatorAllowed(AmphibiousNodeEvaluator.class));
     }
     @Test void foreignMixinDenialOverridesAllowlist() {
         assertTrue(SafetyGate.isAllowed(WalkNodeEvaluator.class));

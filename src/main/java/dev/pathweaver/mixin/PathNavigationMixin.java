@@ -4,7 +4,6 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.pathweaver.PathWeaverRuntime;
 import dev.pathweaver.async.EntityInstallSink;
-import dev.pathweaver.async.EvaluatorCallbackContract;
 import dev.pathweaver.async.NavigationIdentity;
 import dev.pathweaver.async.PathRequest;
 import dev.pathweaver.async.RequestKey;
@@ -67,7 +66,16 @@ public abstract class PathNavigationMixin implements PWNavigation {
     @Unique private BlockPos pathweaver$optimisticTargetPos;
     /** The targetPos to restore if the pending request never installs a path. */
     @Unique private BlockPos pathweaver$targetPosBeforeDispatch;
-    @Unique private int pathweaver$pendingDoneCallbacks;
+    /**
+     * The evaluator whose {@code done()} this navigation still owes, or null.
+     *
+     * <p>This was a count of {@code onPathfindingDone} calls to replay, which only worked because a
+     * table said the answer was one for walking and zero for swimming. Holding the evaluator instead
+     * means the epilogue is whatever that evaluator's epilogue actually is — the amphibious one
+     * restores two malus values, a third-party one does whatever it does — with no table to consult
+     * and nothing to keep in step with the allowlist.
+     */
+    @Unique private NodeEvaluator pathweaver$pendingDoneEvaluator;
     // Movement callers supply speed outside createPath. Capture it at those approved callers and
     // bind the exact double (including 0, negative values, and NaN) to the accepted registration.
     @Unique private double pathweaver$requestSpeed = 1.0;
@@ -290,7 +298,12 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // Clearing the flag here waives the dispatch gate and the install-time re-check together,
         // because both are driven from it.
         final boolean requiresEmptyLandRegistry =
-            this.nodeEvaluator.getClass() == net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class
+            // Every land evaluator -- walking, flying, amphibious, frog, creaking -- resolves block
+            // path types through WalkNodeEvaluator's code, so all of them depend on Fabric's land
+            // registry staying empty. Testing for the exact Walk class covered the zombie and left
+            // the other four dispatching against a registry that could have been populated.
+            net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class
+                    .isAssignableFrom(this.nodeEvaluator.getClass())
                 && !cfg.bypassesCompatibilityScan();
         if (requiresEmptyLandRegistry
                 && !dev.pathweaver.gate.FabricLandPathRegistryLatch.allowsWalkDispatch()) return;
@@ -375,15 +388,21 @@ public abstract class PathNavigationMixin implements PWNavigation {
             this.targetPos = targetsCopy.iterator().next();
             this.pathweaver$optimisticTargetPos = this.targetPos;
 
-            // Replay the exact vanilla per-evaluator callback contract on the MAIN thread. Walk has one
-            // start/done pair; Swim has none. Set the balance bit before invoking untrusted mod code so
-            // even a throwing start is terminally balanced by the outer discard path.
-            EvaluatorCallbackContract callbackContract =
-                EvaluatorCallbackContract.forAsyncEvaluator(this.nodeEvaluator.getClass());
-            this.pathweaver$pendingDoneCallbacks = callbackContract.doneCount();
-            for (int i = 0; i < callbackContract.startCount(); i++) {
-                theMob.onPathfindingStart();
-            }
+            // Run the search's prologue HERE, on the main thread, instead of on the worker.
+            // PathFinderMixin skips the worker's own call, so this happens exactly once. Everything
+            // an evaluator does to the live mob happens in prepare/done -- the walk callbacks, the
+            // amphibious malus save-and-overwrite -- so running the real method is both more faithful
+            // than replaying a remembered callback count and the reason flying and amphibious mobs
+            // can dispatch at all.
+            //
+            // The obligation to call done() is recorded only once prepare has fully returned. A
+            // prepare that throws part-way has written an unknown subset of its state, and the
+            // amphibious epilogue restores from fields its prologue was supposed to have filled:
+            // finishing a half-started evaluator would write zeroed malus values onto the mob
+            // permanently. An unbalanced onPathfindingDone is the milder failure, and vanilla itself
+            // leaves that pair unbalanced whenever getStart() returns null.
+            freshEval.prepare(region, theMob);
+            this.pathweaver$pendingDoneEvaluator = freshEval;
 
             // Keep moving on the current path this tick; the async result installs next tick.
             this.pathweaver$acceptedDeferred = true;
@@ -469,10 +488,10 @@ public abstract class PathNavigationMixin implements PWNavigation {
 
     @Override
     public void pathweaver$onPathfindingDone() {
-        int callbacks = this.pathweaver$pendingDoneCallbacks;
-        this.pathweaver$pendingDoneCallbacks = 0;
-        for (int i = 0; i < callbacks; i++) {
-            this.mob.onPathfindingDone();
-        }
+        NodeEvaluator pending = this.pathweaver$pendingDoneEvaluator;
+        this.pathweaver$pendingDoneEvaluator = null;
+        // Cleared before the call: a throwing epilogue must not leave the obligation outstanding for
+        // a later request to run a second time against an evaluator that already restored its state.
+        if (pending != null) pending.done();
     }
 }

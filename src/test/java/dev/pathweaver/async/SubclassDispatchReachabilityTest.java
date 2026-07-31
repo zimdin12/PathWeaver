@@ -1,24 +1,28 @@
 package dev.pathweaver.async;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.pathweaver.gate.SafetyGate;
+import java.lang.reflect.Field;
+import net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator;
+import net.minecraft.world.level.pathfinder.FlyNodeEvaluator;
+import net.minecraft.world.level.pathfinder.NodeEvaluator;
 import net.minecraft.world.level.pathfinder.SwimNodeEvaluator;
 import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
 import org.junit.jupiter.api.Test;
 
 /**
- * Pins the interaction between the safety gate and the callback contract.
+ * Keeps the admission gate and the rebuilder answering the same question.
  *
- * <p>These are two independent admission decisions and they disagreed. The gate was widened to admit
- * third-party evaluator subclasses at the unsafe tier, but the callback contract still matches on
- * exact class identity, so every admitted subclass reached dispatch and then threw. The failure was
- * invisible because the throw lands inside the dispatch try-block and degrades to a synchronous
- * search: the mod stayed correct while doing the whole setup, submitting to the pool, counting a
- * dispatch, and then unwinding it every single time.
+ * <p>They did not. The gate was widened to admit third-party evaluator subclasses at the unsafe tier
+ * while the rebuilder still named two classes, so every admitted subclass built a region, cloned
+ * nothing, counted a dispatch and unwound to a synchronous search — forever, silently, because the
+ * fallback is correct. Two gates disagreeing is invisible precisely when the second one fails safe.
  *
- * <p>A widening in one gate that another gate silently rejects is worse than no widening at all, so
- * the relationship is pinned here rather than left to be rediscovered.
+ * <p>So the invariant is pinned directly: whatever the allowlist admits, the rebuilder can build.
  */
 class SubclassDispatchReachabilityTest {
 
@@ -30,20 +34,82 @@ class SubclassDispatchReachabilityTest {
         }
     }
 
-    @Test
-    void exactVanillaEvaluatorsHaveAContract() {
-        assertEquals(new EvaluatorCallbackContract(1, 1),
-            EvaluatorCallbackContract.forAsyncEvaluator(WalkNodeEvaluator.class));
-        assertEquals(new EvaluatorCallbackContract(0, 0),
-            EvaluatorCallbackContract.forAsyncEvaluator(SwimNodeEvaluator.class));
+    /** No no-arg constructor, and its argument matches no field: honestly unbuildable. */
+    private static final class Unbuildable extends WalkNodeEvaluator {
+        Unbuildable(String unmatched) {
+            super();
+            if (unmatched == null) throw new IllegalArgumentException();
+        }
     }
 
     @Test
-    void subclassesAdmittedByTheGateCurrentlyHaveNoContract() {
-        // Documents the defect: the gate says yes, the contract says no, and dispatch aborts.
-        assertThrows(IllegalArgumentException.class,
-            () -> EvaluatorCallbackContract.forAsyncEvaluator(ThirdPartyWalk.class));
-        assertThrows(IllegalArgumentException.class,
-            () -> EvaluatorCallbackContract.forAsyncEvaluator(ThirdPartySwim.class));
+    void everyAllowlistedEvaluatorCanBeRebuilt() {
+        assertFalse(SafetyGate.allowlisted().isEmpty(), "allowlist resolved to nothing");
+        for (Class<?> allowed : SafetyGate.allowlisted()) {
+            assertTrue(EvaluatorCloner.canClone(allowed),
+                allowed.getName() + " is admitted by the gate but cannot be rebuilt");
+        }
+    }
+
+    @Test
+    void allSixVanillaEvaluatorsAreAllowlisted() {
+        // Frog's and the creaking's are package-private, so they are named rather than referenced.
+        assertEquals(6, SafetyGate.allowlisted().size(),
+            "expected every concrete 26.1.2 evaluator: " + SafetyGate.allowlisted());
+        assertTrue(SafetyGate.allowlisted().containsAll(java.util.Set.of(
+            WalkNodeEvaluator.class, SwimNodeEvaluator.class,
+            FlyNodeEvaluator.class, AmphibiousNodeEvaluator.class)));
+    }
+
+    @Test
+    void thirdPartySubclassesAreRebuildableWhenTheirShapeIsUnderstood() {
+        assertTrue(EvaluatorCloner.canClone(ThirdPartyWalk.class));
+        assertTrue(EvaluatorCloner.canClone(ThirdPartySwim.class));
+    }
+
+    @Test
+    void anUnrecognisedConstructorShapeIsRefusedRatherThanGuessed() {
+        assertFalse(EvaluatorCloner.canClone(Unbuildable.class),
+            "a guessed constructor argument would silently misconfigure the search");
+    }
+
+    @Test
+    void rebuildingPreservesTheConstructorArgumentAndTheTraversalFlags() throws Exception {
+        SwimNodeEvaluator breaching = new SwimNodeEvaluator(true);
+        breaching.setCanPassDoors(true);
+        breaching.setCanOpenDoors(true);
+        breaching.setCanFloat(true);
+        breaching.setCanWalkOverFences(true);
+
+        NodeEvaluator clone = EvaluatorCloner.cloneWithConfig(breaching);
+
+        assertNotSame(breaching, clone);
+        assertEquals(SwimNodeEvaluator.class, clone.getClass());
+        assertTrue(readBoolean(clone, "allowBreaching"), "constructor argument must survive the rebuild");
+        assertTrue(clone.canPassDoors());
+        assertTrue(clone.canOpenDoors());
+        assertTrue(clone.canFloat());
+        assertTrue(clone.canWalkOverFences());
+    }
+
+    @Test
+    void amphibiousRebuildPreservesItsShallowSwimmingChoice() throws Exception {
+        NodeEvaluator clone = EvaluatorCloner.cloneWithConfig(new AmphibiousNodeEvaluator(true));
+        assertEquals(AmphibiousNodeEvaluator.class, clone.getClass());
+        assertTrue(readBoolean(clone, "prefersShallowSwimming"));
+
+        NodeEvaluator deep = EvaluatorCloner.cloneWithConfig(new AmphibiousNodeEvaluator(false));
+        assertFalse(readBoolean(deep, "prefersShallowSwimming"));
+    }
+
+    private static boolean readBoolean(Object target, String fieldName) throws Exception {
+        for (Class<?> type = target.getClass(); type != null; type = type.getSuperclass()) {
+            for (Field field : type.getDeclaredFields()) {
+                if (!field.getName().equals(fieldName)) continue;
+                field.setAccessible(true);
+                return field.getBoolean(target);
+            }
+        }
+        throw new NoSuchFieldException(fieldName);
     }
 }

@@ -50,9 +50,13 @@ class EvaluatorClonerTest {
         assertTrue(fresh.canWalkOverFences());
     }
 
-    @Test void rejectsFlyBecauseItIsNeverEligibleForAsync() {
+    @Test void flyClonesThroughItsNoArgConstructor() throws Exception {
         FlyNodeEvaluator src = new FlyNodeEvaluator();
-        assertThrows(IllegalArgumentException.class, () -> EvaluatorCloner.cloneWithConfig(src));
+        src.setCanFloat(true);
+        NodeEvaluator fresh = EvaluatorCloner.cloneWithConfig(src);
+        assertEquals(FlyNodeEvaluator.class, fresh.getClass());
+        assertNotSame(src, fresh);
+        assertTrue(fresh.canFloat());
     }
 
     @Test void aquaticSwimEvaluatorClonesWithBooleanArg() throws Exception {
@@ -67,8 +71,12 @@ class EvaluatorClonerTest {
         assertTrue(f.getBoolean(fresh), "allowBreaching must be copied to the fresh evaluator");
     }
 
-    @Test void rejectsAmphibiousBecauseItIsNeverEligibleForAsync() {
+    @Test void amphibiousClonesThroughItsSingleBooleanConstructor() throws Exception {
         var src = new net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator(true);
-        assertThrows(IllegalArgumentException.class, () -> EvaluatorCloner.cloneWithConfig(src));
+        src.setCanPassDoors(true);
+        NodeEvaluator fresh = EvaluatorCloner.cloneWithConfig(src);
+        assertEquals(src.getClass(), fresh.getClass());
+        assertNotSame(src, fresh);
+        assertTrue(fresh.canPassDoors());
     }
 }
