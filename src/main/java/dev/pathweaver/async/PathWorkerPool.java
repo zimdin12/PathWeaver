@@ -175,9 +175,29 @@ public class PathWorkerPool {
         return generation == null ? 0L : generation.completionFailCount.get();
     }
 
-    public synchronized void shutdown() {
+    /**
+     * Stop the pool and wait, briefly, for workers to actually stop.
+     *
+     * <p>{@code shutdownNow} interrupts; it does not wait. Callers that then touch state a worker
+     * owns need to know whether the worker really finished, and one of them assumed it. A search is
+     * milliseconds of work, so a short bounded wait either succeeds immediately or tells the caller
+     * something is genuinely stuck.
+     *
+     * @return true when every worker finished, so state they owned is safe to touch
+     */
+    public synchronized boolean shutdown() {
         Generation generation = current;
         current = null;
-        if (generation != null) generation.exec.shutdownNow();
+        if (generation == null) return true;
+        generation.exec.shutdownNow();
+        try {
+            return generation.exec.awaitTermination(SHUTDOWN_QUIESCE_MILLIS, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
+
+    /** Long enough for a search to finish or an interrupt to land; short enough not to stall a stop. */
+    private static final long SHUTDOWN_QUIESCE_MILLIS = 2000L;
 }

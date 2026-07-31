@@ -43,6 +43,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     /** Tick at which expired cooldown entries were last swept, so the map cannot grow forever. */
     private long lastCooldownSweepTick;
     private final AtomicBoolean installFailureLogged = new AtomicBoolean();
+    private final AtomicBoolean epilogueDropLogged = new AtomicBoolean();
     private static final long FAIL_COOLDOWN_TICKS = 40L;
     private static final long COOLDOWN_SWEEP_INTERVAL_TICKS = 20L;
     private volatile long currentTick;
@@ -320,14 +321,37 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
 
     /** Forget registrations/cooldowns at a server boundary. Late results cannot match a future key. */
     public void clear() {
+        clear(true);
+    }
+
+    /**
+     * @param workersQuiesced whether every worker has finished, so their evaluators are safe to touch
+     */
+    public void clear(boolean workersQuiesced) {
         for (Registration registration : inFlight.values().toArray(Registration[]::new)) {
             if (inFlight.remove(registration.key().entityId(), registration)) {
                 finishDiscard(registration, RequestOutcome.SERVER_RESET);
             }
         }
-        // PathWeaverRuntime shuts the pool down before calling this, so no worker still owns an
-        // evaluator and every outstanding epilogue can safely run now rather than leak.
-        for (RequestKey key : epilogues.keySet().toArray(RequestKey[]::new)) runEpilogue(key);
+        // Only when the pool actually went quiet. This previously assumed it had, because the runtime
+        // shuts the pool down first -- but shutdownNow() interrupts without waiting, so a worker
+        // could still be mid-search. A real server stop caught exactly that: done() nulled the
+        // evaluator's mob while its own worker was still reading it, and the search died on an NPE.
+        // Dropping an epilogue here costs nothing that survives the boundary; racing one does.
+        if (workersQuiesced) {
+            for (RequestKey key : epilogues.keySet().toArray(RequestKey[]::new)) runEpilogue(key);
+        } else {
+            int abandoned = epilogues.size();
+            epilogues.clear();
+            if (abandoned > 0 && epilogueDropLogged.compareAndSet(false, true)) {
+                try {
+                    PathWeaver.LOG.warn("Workers did not stop in time; {} pathfinding epilogue(s) "
+                        + "abandoned rather than run against evaluators still in use.", abandoned);
+                } catch (Throwable ignored) {
+                    // The boundary must stay terminal even if the logging backend is compromised.
+                }
+            }
+        }
         failUntilTick.clear();
         // Reset the sweep clock too. A new server starts its tick count near zero, so a
         // timestamp left from a long previous run would suppress sweeping until the new

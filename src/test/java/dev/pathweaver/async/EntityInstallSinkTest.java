@@ -236,7 +236,7 @@ class EntityInstallSinkTest {
         sink.register(key(1L, 3L, 5), throwing);
         sink.register(key(1L, 4L, 6), other);
 
-        assertDoesNotThrow(sink::clear);
+        assertDoesNotThrow(() -> sink.clear());
 
         assertEquals(0, sink.inFlightCount());
     }

@@ -126,6 +126,24 @@ class EpilogueLifecycleTest {
     }
 
     @Test
+    void aServerResetThatCouldNotQuiesceWorkersAbandonsEpiloguesRatherThanRaceThem() {
+        // Observed on a real server stop: the pool interrupts workers without waiting, so running
+        // the epilogue here nulled an evaluator's mob while its own worker was still reading it and
+        // the search died on an NPE. Dropping the epilogue costs nothing that survives a server
+        // boundary; racing one does.
+        EntityInstallSink sink = new EntityInstallSink();
+        CountingEvaluator stillInUse = new CountingEvaluator();
+        sink.armEpilogue(key(9L, 9), stillInUse);
+
+        sink.clear(false);
+
+        assertEquals(0, stillInUse.dones,
+            "an evaluator a worker may still own must not be finished from the main thread");
+        sink.runEpilogue(key(9L, 9));
+        assertEquals(0, stillInUse.dones, "the abandoned epilogue must not resurface later either");
+    }
+
+    @Test
     void serverResetFinishesEveryOutstandingEpilogue() {
         // Safe here and only here: the runtime shuts the pool down before clearing the sink, so no
         // worker still owns an evaluator. Leaking these would leave mobs carrying search costs.

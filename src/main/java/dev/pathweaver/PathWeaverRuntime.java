@@ -134,8 +134,8 @@ public final class PathWeaverRuntime {
     public void onServerStopping(MinecraftServer server) {
         running = false;
         serverEpoch.incrementAndGet(); // invalidate every key before interrupting workers
-        pool.shutdown();
-        entitySink.clear();
+        boolean workersQuiesced = pool.shutdown();
+        entitySink.clear(workersQuiesced);
         installer.clear();
         PathWeaver.LOG.info("PathWeaver stats: dispatched={}, installed={}, discarded={}{}.",
             dispatched.get(), installedCount(), discardedCount(), outcomeBreakdown());
