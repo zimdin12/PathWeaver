@@ -24,7 +24,7 @@ At startup PathWeaver scans every loaded mod for mixins into pathfinding code. I
 
 Failing closed is better than running unaudited code on a worker thread and corrupting a world. The consequence is that PathWeaver only does something once the mods in your pack that touch pathfinding have each been individually audited. Two of the biggest have been:
 
-- **The Fabric API that PathWeaver itself requires.** It bundles `fabric-content-registries-v0`, which injects into a method the walk search calls for every block. That alone used to deny Walk on *every* stock install. It is now allowed while no mod has registered a land path-type provider — the condition that makes the injection inert — and denies permanently the moment one registers, including cancelling a search already in flight. Fabric API also bundles `fabric-events-interaction-v0`, whose exemption rests on an inventory of calls from ten pinned worker-side classes. That is a bounded sample, not an exhaustive proof that no worker route reaches those methods, so it rests on a bounded sample rather than a proof.
+- **The Fabric API that PathWeaver itself requires.** It bundles `fabric-content-registries-v0`, which injects into a method the walk search calls for every block. That alone used to deny Walk on *every* stock install. It is now allowed while no mod has registered a land path-type provider — the condition that makes the injection inert — and denies permanently the moment one registers, including cancelling a search already in flight. Fabric API also bundles `fabric-events-interaction-v0`, whose exemption rests on an inventory of calls from ten pinned worker-side classes. That is a bounded sample, not an exhaustive proof that no worker route reaches those methods.
 - **Lithium**, which ships in most performance modpacks, and **Diagonal Blocks** (Diagonal Fences/Walls/Windows). Their pathfinding mixins are pinned by hash and checked at startup: the audited classes are rejected if they write a field on the search path, and Diagonal Blocks is additionally required never to reach the unsynchronised shape caches. That is a bounded mechanical check, not a whole-program proof — [COMPATIBILITY.md](COMPATIBILITY.md) states exactly what each verifier inspects. They are allowed at the default tier; see below for the trade.
 
 Mods that just mark a block dangerous — "mobs should avoid my spikes" — are handled generically, with no per-mod entry: their rule is asked for every answer it can give and frozen before any worker sees it. That rests on such a rule being a pure function of the block state, which the API's shape encourages but does not enforce, so it rests on an assumption rather than a proof. A rule that *receives* the surrounding world normally switches Walk back to synchronous, because its answers cannot be precomputed. Farmer's Delight's lit stove is the one exception: it receives the world and provably never reads it, so an exact audit of that artifact lets its answers be frozen too. That audit is bounded evidence, not a proof.
@@ -48,10 +48,11 @@ Two numbers from the same 222-mod pack, because only quoting the flattering one 
 | `UNSAFE` | **187 of 187** (0.3.0 managed 163) |
 | `AUDITED` — the shipped default | **0 of 187** |
 
-The second number is not a regression and 0.4.0 does not improve it. Six mods in that pack — balm,
-carpet, expandability, ferritecore, scalablelux and sereneseasons — mix into pathfinding-adjacent
-code, so the scan denies every movement family and the mod does nothing. That has been true since
-0.3.0 and remains the honest ceiling on heavily-modded packs: **what limits PathWeaver is other mods
+The second number is not a regression and 0.4.0 does not improve it. Nine mods in that pack — balm,
+carpet, expandability, ferritecore, scalablelux, sereneseasons, terrain_slabs, vehicleupgrade and
+yungscavebiomes — mix into pathfinding-adjacent code, so the scan denies every movement family and the mod does nothing — and from 0.4.0 it says exactly
+that at world start, naming them. That has been true since 0.3.0 and remains the honest ceiling on
+heavily-modded packs: **what limits PathWeaver is other mods
 touching block state, not which mobs it can handle.**
 
 Where the scan denies nothing — a lean pack, Fabric API and Lithium — the default admits everything,
