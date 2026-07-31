@@ -94,14 +94,15 @@ weeks ago on a differently loaded machine:
 
 | | v0.3.0 (published artifact) | v0.4.0 |
 |---|---|---|
-| Asynchronous mean | 50.04 / 50.04 ms | **50.02 / 50.03 ms** |
-| Asynchronous p99 | 377 / 372 ms | 383 / 358 ms |
+| Asynchronous mean | 50.04 / 50.04 ms | **50.05 / 50.06 ms** |
+| Asynchronous p99 | 377 / 372 ms | 381 / 381 ms |
 | Searches dispatched | 55,266 / 54,424 | 55,793 / 57,717 |
-| Installed | 83.4% / 82.8% | 83.5% / 84.9% |
+| Installed | 83.4% / 82.8% | 82.6% / 81.8% |
 
 **The two versions are indistinguishable, and that is the answer.** Hoisting the prologue and
-epilogue onto the server thread cost nothing measurable — four hundredths of a millisecond, well
-inside run-to-run noise. It is also worth being blunt about what that means in the other direction:
+epilogue onto the server thread cost nothing measurable — two hundredths of a millisecond, well
+inside run-to-run noise, and the asynchronous arm landed between 50.02 and 50.06 ms across three
+separate sweeps of both versions. It is also worth being blunt about what that means in the other direction:
 **0.4.0 is not faster than 0.3.0.** This workload is 1024 zombies, which only exercises the walk
 search, and 0.3.0 already handled that completely. What 0.4.0 buys is the mob families 0.3.0 could
 not touch at all, not more speed on the ones it could.
