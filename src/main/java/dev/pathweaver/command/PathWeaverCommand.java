@@ -64,15 +64,13 @@ public final class PathWeaverCommand {
             + ", failed=" + report.decision().failed()
             + ", deniedFamilies=" + report.decision().denied().size());
 
-        if (report.decision().denied().isEmpty()) {
-            say(source, "  §ano movement family is denied — searches can run off-thread");
-        } else {
-            List<String> denied = new ArrayList<>();
-            for (Class<?> family : report.decision().denied()) denied.add(family.getSimpleName());
-            say(source, "  §cdenied: " + String.join(", ", denied)
-                + " — those searches run on the server thread");
-            say(source, "  §7raise the compatibility risk setting, or check the startup log for the "
-                + "mods responsible");
+        // Report what the tier DID with the scan, not what the scan found. The unsafe tier waives
+        // every denial, and printing the raw decision there told an operator that all six families
+        // were synchronous while the server was in fact dispatching all six and installing
+        // thousands of paths. A diagnostic that contradicts the running mod is worse than none.
+        for (String line : scanSummary(report.decision().denied(),
+                config.bypassesCompatibilityScan())) {
+            say(source, line);
         }
         say(source, "  workers: " + runtime.pool().threads()
             + "   maxInFlight: " + runtime.pool().maxInFlight());
@@ -90,6 +88,36 @@ public final class PathWeaverCommand {
         }
         say(source, "  §7Only the amber rows are wasted work. A search that proves no route exists "
             + "succeeded, and a mob that stopped moving is the mob behaving normally.");
+    }
+
+
+    /**
+     * What the tier DID with the scan, which is not always what the scan found.
+     *
+     * <p>Extracted so it can be tested without a server. Printing the raw scan decision told an
+     * operator on the unsafe tier that all six movement families were synchronous, while that same
+     * server was dispatching all six and installing thousands of paths. A diagnostic that
+     * contradicts the running mod is worse than no diagnostic, and this is the second time that has
+     * happened here, so the rule is now pinned by a test rather than by care.
+     */
+    static List<String> scanSummary(java.util.Collection<Class<?>> deniedFamilies, boolean waived) {
+        List<String> denied = new ArrayList<>();
+        for (Class<?> family : deniedFamilies) denied.add(family.getSimpleName());
+        if (denied.isEmpty()) {
+            return List.of("  §ano movement family is denied — searches can run off-thread");
+        }
+        if (waived) {
+            return List.of(
+                "  §e" + denied.size() + " family/families were denied by the scan and are running "
+                    + "anyway, because the tier is Unsafe",
+                "  §7waived: " + String.join(", ", denied),
+                "  §7That is what Unsafe means: uninspected mod code is running on worker threads. "
+                    + "Keep backups.");
+        }
+        return List.of(
+            "  §cdenied: " + String.join(", ", denied) + " — those searches run on the server thread",
+            "  §7raise the compatibility risk setting, or check the startup log for the mods "
+                + "responsible");
     }
 
     /**
@@ -135,8 +163,13 @@ public final class PathWeaverCommand {
             + "mobs whose evaluator a mod replaced, and — below the unsafe tier — mob classes mods "
             + "added. The compatibility risk setting governs which mods may have touched "
             + "pathfinding, not which searches are safe to move.");
-        say(source, "  §7Built and inspected " + types + " mob types in " + elapsedMillis
-            + " ms of one tick. This command is a diagnostic, not something to run on a timer.");
+        // Measured at 213 ms on a 222-mod pack: four ticks' budget spent inside one tick. Reporting
+        // the number was not enough -- an operator who sees a hitch needs to be told this caused it.
+        boolean costly = elapsedMillis >= 50;
+        say(source, (costly ? "  §e" : "  §7") + "Built and inspected " + types + " mob types in "
+            + elapsedMillis + " ms of one tick"
+            + (costly ? ", which is longer than a tick — expect a visible hitch" : "")
+            + ". This command is a diagnostic, not something to run on a timer.");
     }
 
     private static MobEligibility.Verdict verdictFor(Mob mob, boolean moddedAllowed) {

@@ -29,25 +29,37 @@ public final class MobEligibility {
      */
     public static Verdict of(Class<?> mobClass, Class<?> evaluatorClass, boolean moddedAllowed) {
         boolean originOk = MobOriginGate.isAllowed(mobClass, moddedAllowed);
-        boolean evaluatorOk = evaluatorClass != null && SafetyGate.isAllowed(evaluatorClass);
-
-        if (evaluatorOk && originOk) return new Verdict(true, ELIGIBLE);
-        if (!originOk && !evaluatorOk) {
-            return new Verdict(false, "added by a mod, and its evaluator is not a vanilla one");
-        }
-        if (!originOk) {
-            return new Verdict(false, "added by a mod (enable \"Also speed up mobs added by mods\")");
-        }
         if (evaluatorClass == null) {
             return new Verdict(false, "navigates without a node evaluator");
         }
-        // Both remaining cases are an evaluator refusal, and they are worth telling apart: one is a
-        // mod having replaced pathfinding, the other is this mod being unable to rebuild it.
-        if (!EvaluatorCloner.canClone(evaluatorClass)) {
-            return new Verdict(false, "uses " + evaluatorClass.getSimpleName()
-                + ", which has no constructor shape we can rebuild");
+        boolean evaluatorOk = SafetyGate.isAllowed(evaluatorClass);
+        if (evaluatorOk && originOk) return new Verdict(true, ELIGIBLE);
+
+        String origin = originOk ? null : "added by a mod";
+        String evaluator = evaluatorOk ? null : evaluatorReason(evaluatorClass);
+        if (origin != null && evaluator != null) return new Verdict(false, origin + ", and " + evaluator);
+        if (origin != null) {
+            return new Verdict(false, origin + " (enable \"Also speed up mobs added by mods\")");
         }
-        return new Verdict(false, "uses " + evaluatorClass.getSimpleName()
-            + ", which is not a vanilla evaluator or is denied by the compatibility scan");
+        return new Verdict(false, evaluator);
+    }
+
+    /**
+     * Why one evaluator was refused, told apart rather than lumped together.
+     *
+     * <p>These send an operator to three different places, and running this on a real pack produced
+     * the sentence "uses WalkNodeEvaluator, which is not a vanilla evaluator" -- about the most
+     * vanilla evaluator there is. The mob was refused because six mods had mixed into pathfinding
+     * and the scan denied the family, which is a fact about their modlist, not about the zombie.
+     */
+    private static String evaluatorReason(Class<?> evaluatorClass) {
+        String name = evaluatorClass.getSimpleName();
+        if (!SafetyGate.isEvaluatorAllowed(evaluatorClass)) {
+            return "uses " + name + ", which is not a vanilla evaluator";
+        }
+        if (!EvaluatorCloner.canClone(evaluatorClass)) {
+            return "uses " + name + ", which has no constructor shape we can rebuild";
+        }
+        return "uses " + name + ", whose family the compatibility scan denied";
     }
 }
