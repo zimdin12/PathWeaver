@@ -34,11 +34,45 @@ public final class PathWeaverThread {
     private static final ThreadLocal<net.minecraft.util.RandomSource> WORKER_RANDOM =
         ThreadLocal.withInitial(net.minecraft.util.RandomSource::create);
 
+    /**
+     * Set on the MAIN thread while it runs an off-thread search's prologue.
+     *
+     * <p>{@code NodeEvaluator.prepare} constructs the search's {@code PathfindingContext}, and that
+     * constructor grabs the level's shared {@code PathTypeCache}. Isolating it keyed on
+     * {@link #isWorker()} alone, which was correct while {@code prepare} ran on the worker — and
+     * silently wrong the moment 0.4.0 moved it to the main thread, because the context was then
+     * built around the shared cache and handed to a worker that writes through it.
+     *
+     * <p>What decides isolation is which thread will <em>use</em> the context, not which thread
+     * happens to build it.
+     */
+    private static final ThreadLocal<Boolean> PREPARING_FOR_WORKER =
+        ThreadLocal.withInitial(() -> Boolean.FALSE);
+
     private PathWeaverThread() {}
 
     /** True only while a PathWeaver worker is executing a search Callable. */
     public static boolean isWorker() {
         return WORKER.get();
+    }
+
+    /**
+     * True when the search this code is serving will run off the main thread — either because a
+     * worker is running it now, or because the main thread is preparing it for one.
+     *
+     * <p>This is the condition every shared-state isolation decision must use.
+     */
+    public static boolean searchRunsOffThread() {
+        return WORKER.get() || PREPARING_FOR_WORKER.get();
+    }
+
+    /** Scope the prologue the main thread runs on a worker's behalf. Always paired in a finally. */
+    public static void enterAsyncPrologue() {
+        PREPARING_FOR_WORKER.set(Boolean.TRUE);
+    }
+
+    public static void exitAsyncPrologue() {
+        PREPARING_FOR_WORKER.set(Boolean.FALSE);
     }
 
     /** The calling worker's own randomness. Never call from the main thread; use the mob's own. */

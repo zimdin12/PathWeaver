@@ -37,10 +37,14 @@ public class PathfindingContextMixin {
         require = 1
     )
     private PathTypeCache pathweaver$isolateCache(ServerLevel serverLevel) {
-        if (PathWeaverThread.isWorker()) {
+        // Asks whether the search will run off-thread, not whether this thread is a worker. Since
+        // 0.4.0 the main thread builds this context on a worker's behalf, and keying on the running
+        // thread handed that worker the shared cache to write through -- defeating this mixin
+        // entirely while it still looked present and correct.
+        if (PathWeaverThread.searchRunsOffThread()) {
             // Thread-confined, per-search cache: recompute from the read-only region, never touch shared state.
             return new PathTypeCache();
         }
-        return serverLevel.getPathTypeCache(); // main thread: unchanged vanilla behaviour.
+        return serverLevel.getPathTypeCache(); // ordinary synchronous search: unchanged vanilla behaviour.
     }
 }

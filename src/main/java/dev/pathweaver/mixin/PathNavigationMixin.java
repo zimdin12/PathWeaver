@@ -392,7 +392,15 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // finishing a half-started evaluator would write zeroed malus values onto the mob
             // permanently. An unbalanced onPathfindingDone is the milder failure, and vanilla itself
             // leaves that pair unbalanced whenever getStart() returns null.
-            freshEval.prepare(region, theMob);
+            // Scoped so the context this builds is isolated from the level's shared PathTypeCache:
+            // the worker about to use it writes through that cache, and PathfindingContextMixin
+            // decides by asking whether the search runs off-thread, not which thread is running.
+            dev.pathweaver.async.PathWeaverThread.enterAsyncPrologue();
+            try {
+                freshEval.prepare(region, theMob);
+            } finally {
+                dev.pathweaver.async.PathWeaverThread.exitAsyncPrologue();
+            }
             sink.armEpilogue(submittedKey, freshEval);
 
             // Keep moving on the current path this tick; the async result installs next tick.

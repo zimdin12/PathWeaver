@@ -58,20 +58,24 @@ class PathfindingContextIsolationContractTest {
             annotationValue(at, "target"));
         assertEquals(1, annotationValue(redirectAnnotation, "require"));
 
-        int workerReads = 0;
+        int offThreadChecks = 0;
         int freshCaches = 0;
         int vanillaCacheCalls = 0;
         for (AbstractInsnNode insn : method.instructions) {
             if (insn instanceof MethodInsnNode call
                     && call.owner.equals("dev/pathweaver/async/PathWeaverThread")
-                    && call.name.equals("isWorker")) workerReads++;
+                    && call.name.equals("searchRunsOffThread")) offThreadChecks++;
             if (insn instanceof TypeInsnNode type && type.getOpcode() == org.objectweb.asm.Opcodes.NEW
                     && type.desc.equals("net/minecraft/world/level/pathfinder/PathTypeCache")) freshCaches++;
             if (insn instanceof MethodInsnNode call
                     && call.owner.equals("net/minecraft/server/level/ServerLevel")
                     && call.name.equals("getPathTypeCache")) vanillaCacheCalls++;
         }
-        assertEquals(1, workerReads);
+        // Must ask whether the SEARCH runs off-thread, not whether THIS thread is a worker. Since
+        // 0.4.0 the main thread builds this context on a worker's behalf, so a thread-identity check
+        // silently handed that worker the shared cache while this mixin still looked correct.
+        assertEquals(1, offThreadChecks,
+            "isolation must key on the search's destination, not on the calling thread");
         assertEquals(1, freshCaches);
         assertEquals(1, vanillaCacheCalls,
             "non-worker path must preserve the original ServerLevel cache call");

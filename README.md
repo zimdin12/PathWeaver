@@ -64,7 +64,9 @@ This is still a synthetic burst with all other mob AI stripped out. It shows wha
 
 ### Swimming, measured separately
 
-Every table above uses zombies, which exercises only `WalkNodeEvaluator`. `SwimNodeEvaluator` is the other family PathWeaver accelerates, so it was measured on its own: 1024 cod in a flooded maze, same shipped configuration, same paired method.
+Every table above uses zombies, which exercises only `WalkNodeEvaluator`. `SwimNodeEvaluator` was measured on its own: 1024 cod in a flooded maze, same shipped configuration, same paired method.
+
+From 0.4.0 there are six eligible families rather than two, and **only these two have been benchmarked.** Flying, amphibious, frog and creaking searches are proven to dispatch and to return the mob's pathfinding costs — there is a game test that spawns a bee and a drowned and checks exactly that — but nobody has measured what they are worth. Do not read the numbers below as covering them.
 
 | | Synchronous | With PathWeaver |
 |---|---|---|

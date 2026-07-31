@@ -14,6 +14,8 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator;
 import net.minecraft.world.level.pathfinder.FlyNodeEvaluator;
 import net.minecraft.world.level.pathfinder.NodeEvaluator;
+import net.minecraft.world.level.pathfinder.PathTypeCache;
+import net.minecraft.world.level.pathfinder.PathfindingContext;
 import net.minecraft.world.level.pathfinder.PathType;
 
 /**
@@ -147,7 +149,52 @@ public final class NewEvaluatorFamilyRoutingGameTest {
                 "the amphibious request did not create a worker registration");
             check(PathWeaverRuntime.get().entitySink().isRegistered(flyer.getId()),
                 "the flying request did not create a worker registration");
+
+            assertPrologueIsolatesTheSharedCache();
             stage = 1;
+        }
+
+        /**
+         * The prologue builds the search's context on the main thread, and that constructor grabs
+         * the level's shared {@code PathTypeCache} unless something substitutes a confined one. The
+         * worker then writes through whatever it got.
+         *
+         * <p>Nothing else in this suite would notice the isolation lapsing: the search still returns
+         * a correct path. It just corrupts a structure that synchronous mobs read too, silently and
+         * probabilistically. So both directions are asserted — confined inside the prologue scope
+         * the dispatch path uses, and still shared outside it, because breaking ordinary synchronous
+         * pathfinding to fix this would be its own regression.
+         */
+        private void assertPrologueIsolatesTheSharedCache() {
+            Object shared = helper.getLevel().getPathTypeCache();
+
+            dev.pathweaver.async.PathWeaverThread.enterAsyncPrologue();
+            Object confined;
+            try {
+                confined = cacheOf(new PathfindingContext(helper.getLevel(), amphibian));
+            } finally {
+                dev.pathweaver.async.PathWeaverThread.exitAsyncPrologue();
+            }
+            check(confined != null && confined != shared,
+                "a context built for a worker took the level's SHARED PathTypeCache; the worker "
+                    + "would write through it while synchronous mobs read it");
+
+            Object synchronousCache = cacheOf(new PathfindingContext(helper.getLevel(), amphibian));
+            check(synchronousCache == shared,
+                "an ordinary synchronous search stopped using the level's shared cache");
+        }
+
+        private Object cacheOf(PathfindingContext context) {
+            for (Field field : PathfindingContext.class.getDeclaredFields()) {
+                if (!PathTypeCache.class.isAssignableFrom(field.getType())) continue;
+                try {
+                    field.setAccessible(true);
+                    return field.get(context);
+                } catch (ReflectiveOperationException | RuntimeException unreadable) {
+                    throw helper.assertionException("could not read the context's path-type cache");
+                }
+            }
+            throw helper.assertionException("PathfindingContext no longer holds a PathTypeCache");
         }
 
         private void awaitInstalls() {
