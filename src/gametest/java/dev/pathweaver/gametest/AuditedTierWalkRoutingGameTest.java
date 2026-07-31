@@ -187,11 +187,16 @@ public final class AuditedTierWalkRoutingGameTest {
 
     private static long counter(String name) {
         try {
-            Field field = PathWeaverRuntime.class.getDeclaredField(name);
-            field.setAccessible(true);
-            return ((AtomicLong) field.get(PathWeaverRuntime.get())).get();
-        } catch (ReflectiveOperationException e) {
-            throw new AssertionError("could not inspect PathWeaverRuntime." + name, e);
+            // Public accessors, not reflection: these counters are part of the runtime's API now,
+            // and reaching past it meant a field rename broke three game tests at once.
+            return switch (name) {
+                case "dispatched" -> PathWeaverRuntime.get().dispatchedCount();
+                case "installed" -> PathWeaverRuntime.get().installedCount();
+                case "discarded" -> PathWeaverRuntime.get().discardedCount();
+                default -> throw new AssertionError("unknown PathWeaver counter: " + name);
+            };
+        } catch (RuntimeException e) {
+            throw new AssertionError("could not read PathWeaverRuntime." + name, e);
         }
     }
 }

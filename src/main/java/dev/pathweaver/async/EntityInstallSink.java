@@ -104,7 +104,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     public boolean supersede(int entityId) {
         Registration registration = inFlight.get(entityId);
         if (registration == null || !inFlight.remove(entityId, registration)) return false;
-        finishDiscard(registration);
+        finishDiscard(registration, RequestOutcome.SUPERSEDED);
         return true;
     }
 
@@ -113,14 +113,14 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         Registration registration = inFlight.get(entityId);
         if (registration == null || registration.navigation() != navigation
                 || !inFlight.remove(entityId, registration)) return false;
-        finishDiscard(registration);
+        finishDiscard(registration, RequestOutcome.NAVIGATION_STOPPED);
         return true;
     }
 
-    private void finishDiscard(Registration registration) {
+    private void finishDiscard(Registration registration, RequestOutcome reason) {
         rollbackOptimisticTarget(registration);
         finishCallback(registration);
-        dev.pathweaver.PathWeaverRuntime.get().markDiscarded();
+        dev.pathweaver.PathWeaverRuntime.get().markOutcome(reason);
     }
 
     /**
@@ -234,7 +234,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
             try {
                 registration.navigation().pathweaver$install(path);
                 failUntilTick.remove(key.entityId());
-                dev.pathweaver.PathWeaverRuntime.get().markInstalled();
+                dev.pathweaver.PathWeaverRuntime.get().markOutcome(RequestOutcome.INSTALLED);
             } catch (Throwable installFailure) {
                 // Installation calls vanilla moveTo, which foreign mixins can inject into, so a
                 // throw here may leave a new or partially-applied path behind. Restoring only the
@@ -242,7 +242,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
                 // Abort clears the path and restores the target together.
                 abortFailedInstall(registration);
                 failUntilTick.put(key.entityId(), currentTick + FAIL_COOLDOWN_TICKS);
-                dev.pathweaver.PathWeaverRuntime.get().markDiscarded();
+                dev.pathweaver.PathWeaverRuntime.get().markOutcome(RequestOutcome.INSTALL_FAILED);
                 if (installFailureLogged.compareAndSet(false, true)) {
                     try {
                         PathWeaver.LOG.warn("Async path installation failed; the request was discarded "
@@ -258,10 +258,10 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     }
 
     @Override
-    public void discard(RequestKey key) {
+    public void discard(RequestKey key, RequestOutcome reason) {
         Registration registration = matching(key);
         if (registration != null && inFlight.remove(key.entityId(), registration)) {
-            finishDiscard(registration);
+            finishDiscard(registration, reason);
         }
     }
 
@@ -269,7 +269,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     public void noPath(RequestKey key) {
         Registration registration = matching(key);
         if (registration != null && inFlight.remove(key.entityId(), registration)) {
-            finishDiscard(registration);
+            finishDiscard(registration, RequestOutcome.NO_PATH);
         }
     }
 
@@ -277,7 +277,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     public void failed(RequestKey key, Throwable failure) {
         Registration registration = matching(key);
         if (registration != null && inFlight.remove(key.entityId(), registration)) {
-            finishDiscard(registration);
+            finishDiscard(registration, RequestOutcome.SEARCH_FAILED);
             failUntilTick.put(key.entityId(), currentTick + FAIL_COOLDOWN_TICKS);
         }
     }
@@ -288,7 +288,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     public void clear() {
         for (Registration registration : inFlight.values().toArray(Registration[]::new)) {
             if (inFlight.remove(registration.key().entityId(), registration)) {
-                finishDiscard(registration);
+                finishDiscard(registration, RequestOutcome.SERVER_RESET);
             }
         }
         failUntilTick.clear();

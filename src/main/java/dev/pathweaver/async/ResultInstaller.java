@@ -10,9 +10,20 @@ public class ResultInstaller {
     public interface InstallSink {
         boolean isStale(RequestKey key, long dispatchTick, double x, double y, double z);
         void install(RequestKey key, Path path);
-        void discard(RequestKey key);
-        default void noPath(RequestKey key) { discard(key); }
-        default void failed(RequestKey key, Throwable failure) { discard(key); }
+
+        /**
+         * End this request without installing anything.
+         *
+         * <p>The reason is required rather than defaulted. Every caller knows exactly why it is
+         * discarding, and the one number this used to produce was unreadable precisely because that
+         * knowledge was thrown away at the call site.
+         */
+        void discard(RequestKey key, RequestOutcome reason);
+
+        default void noPath(RequestKey key) { discard(key, RequestOutcome.NO_PATH); }
+        default void failed(RequestKey key, Throwable failure) {
+            discard(key, RequestOutcome.SEARCH_FAILED);
+        }
     }
 
     private record Result(RequestKey key, long dispatchTick, PathOutcome outcome,
@@ -39,7 +50,7 @@ public class ResultInstaller {
         Result result;
         while ((result = queue.poll()) != null) {
             if (result.discardOnly()) {
-                sink.discard(result.key());
+                sink.discard(result.key(), RequestOutcome.HANDOFF_FAILED);
                 continue;
             }
             switch (result.outcome().status()) {
@@ -48,7 +59,7 @@ public class ResultInstaller {
                 case SUCCESS -> {
                     if (sink.isStale(result.key(), result.dispatchTick(),
                             result.x(), result.y(), result.z())) {
-                        sink.discard(result.key());
+                        sink.discard(result.key(), RequestOutcome.ARRIVED_STALE);
                     } else {
                         sink.install(result.key(), result.outcome().path());
                     }

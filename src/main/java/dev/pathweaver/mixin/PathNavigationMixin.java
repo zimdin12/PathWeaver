@@ -371,7 +371,8 @@ public abstract class PathNavigationMixin implements PWNavigation {
                 rt.installer()::enqueueDiscard));
 
             if (!accepted) {
-                sink.discard(requestKey); // pool saturated -> let vanilla run synchronously
+                // Nothing reached a worker, so this is an admission statistic rather than waste.
+                sink.discard(requestKey, dev.pathweaver.async.RequestOutcome.POOL_SATURATED);
                 return;
             }
             rt.markDispatched();
@@ -409,7 +410,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
             cir.setReturnValue(this.path);
             authorizeSearch = true;
         } catch (Throwable t) {
-            if (registered) sink.discard(requestKey);
+            if (registered) sink.discard(requestKey, dev.pathweaver.async.RequestOutcome.SETUP_FAILED);
             // No cir.cancel(): fall through so vanilla computes the path synchronously this tick.
         } finally {
             // Every main-thread exit releases an accepted worker. Only a fully completed setup opens

@@ -91,7 +91,7 @@ class EntityInstallSinkTest {
         for (Route route : List.of(
                 new Route("noPath", (sink, key) -> sink.noPath(key)),
                 new Route("failed", (sink, key) -> sink.failed(key, new IllegalStateException("x"))),
-                new Route("discard", (sink, key) -> sink.discard(key)),
+                new Route("discard", (sink, key) -> sink.discard(key, RequestOutcome.ARRIVED_STALE)),
                 new Route("supersede", (sink, key) -> sink.supersede(key.entityId())))) {
             EntityInstallSink sink = new EntityInstallSink();
             FakeNav nav = new FakeNav();
@@ -432,7 +432,7 @@ class EntityInstallSinkTest {
             () -> sink.register(key(1L, 11L, 20), duplicate));
 
         assertTrue(sink.isRegistered(20));
-        sink.discard(acceptedKey);
+        sink.discard(acceptedKey, RequestOutcome.ARRIVED_STALE);
         assertEquals(1, accepted.dones);
         assertEquals(0, duplicate.dones);
     }

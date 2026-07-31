@@ -2,6 +2,7 @@ package dev.pathweaver.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import dev.pathweaver.PathWeaverRuntime;
+import dev.pathweaver.async.RequestOutcome;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.gate.ForeignMixinScanner;
 import dev.pathweaver.gate.MobOriginGate;
@@ -75,11 +76,20 @@ public final class PathWeaverCommand {
         }
         say(source, "  workers: " + runtime.pool().threads()
             + "   maxInFlight: " + runtime.pool().maxInFlight());
-        say(source, "  since server start: dispatched=" + runtime.dispatchedCount()
+        long dispatched = runtime.dispatchedCount();
+        say(source, "  since server start: dispatched=" + dispatched
             + ", installed=" + runtime.installedCount()
             + ", discarded=" + runtime.discardedCount());
-        say(source, "  §7discarded counts results that stopped being wanted, including every mob "
-            + "that simply stopped moving. It is not a failure count.");
+        for (RequestOutcome outcome : RequestOutcome.values()) {
+            long count = runtime.outcomeCount(outcome);
+            if (count == 0L) continue;
+            String share = dispatched > 0L
+                ? String.format(" (%.1f%%)", 100.0 * count / dispatched) : "";
+            say(source, (outcome.isDiscard() ? "    §e" : "    §a") + count + "§r  "
+                + outcome.description() + "§7" + share);
+        }
+        say(source, "  §7Only the amber rows are wasted work. A search that proves no route exists "
+            + "succeeded, and a mob that stopped moving is the mob behaving normally.");
     }
 
     private static void mobs(CommandSourceStack source) {

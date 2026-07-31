@@ -27,19 +27,67 @@ public final class PathWeaverRuntime {
     private volatile boolean running;
 
     private final java.util.concurrent.atomic.AtomicLong dispatched = new java.util.concurrent.atomic.AtomicLong();
-    private final java.util.concurrent.atomic.AtomicLong installed = new java.util.concurrent.atomic.AtomicLong();
-    private final java.util.concurrent.atomic.AtomicLong discarded = new java.util.concurrent.atomic.AtomicLong();
     private final java.util.concurrent.atomic.AtomicLong serverEpoch = new java.util.concurrent.atomic.AtomicLong();
     private final java.util.concurrent.atomic.AtomicLong requestTokens = new java.util.concurrent.atomic.AtomicLong();
 
+    /**
+     * One counter per way a request can end, rather than one bucket labelled "discarded".
+     *
+     * <p>Indexed by ordinal so recording an outcome is a single atomic increment on the main thread's
+     * completion path, with no map lookup and no allocation.
+     */
+    private final java.util.concurrent.atomic.AtomicLongArray outcomes =
+        new java.util.concurrent.atomic.AtomicLongArray(
+            dev.pathweaver.async.RequestOutcome.values().length);
+
     /** Read-only counter access for the in-game diagnostic. */
     public long dispatchedCount() { return dispatched.get(); }
-    public long installedCount() { return installed.get(); }
-    public long discardedCount() { return discarded.get(); }
+
+    public long outcomeCount(dev.pathweaver.async.RequestOutcome outcome) {
+        return outcomes.get(outcome.ordinal());
+    }
+
+    public long installedCount() {
+        return outcomeCount(dev.pathweaver.async.RequestOutcome.INSTALLED);
+    }
+
+    /**
+     * Every outcome that produced nothing usable.
+     *
+     * <p>Deliberately excludes searches that proved no route exists. Counting those here is what made
+     * the old single number unreadable, and it is the number the mod page quotes.
+     */
+    public long discardedCount() {
+        long total = 0L;
+        for (dev.pathweaver.async.RequestOutcome outcome : dev.pathweaver.async.RequestOutcome.values()) {
+            if (outcome.isDiscard()) total += outcomeCount(outcome);
+        }
+        return total;
+    }
+
+    /**
+     * Every non-zero outcome, so the shutdown line explains its own totals.
+     *
+     * <p>"discarded=41028" invites exactly one wrong conclusion, that 41028 searches were wasted.
+     * Naming the causes shows how many of them were mobs arriving and stopping, which is the mod
+     * working rather than failing.
+     */
+    private String outcomeBreakdown() {
+        StringBuilder detail = new StringBuilder();
+        for (dev.pathweaver.async.RequestOutcome outcome : dev.pathweaver.async.RequestOutcome.values()) {
+            long count = outcomeCount(outcome);
+            if (count == 0L || outcome == dev.pathweaver.async.RequestOutcome.INSTALLED) continue;
+            detail.append(detail.isEmpty() ? " [" : ", ")
+                .append(outcome.description()).append('=').append(count);
+        }
+        return detail.isEmpty() ? "" : detail.append(']').toString();
+    }
 
     public void markDispatched() { dispatched.incrementAndGet(); }
-    public void markInstalled() { installed.incrementAndGet(); }
-    public void markDiscarded() { discarded.incrementAndGet(); }
+
+    public void markOutcome(dev.pathweaver.async.RequestOutcome outcome) {
+        outcomes.incrementAndGet(outcome.ordinal());
+    }
 
     private PathWeaverRuntime() {}
 
@@ -63,8 +111,7 @@ public final class PathWeaverRuntime {
         installer.clear();
         pool.start(c.resolvedPoolThreads(), c.maxInFlight);
         dispatched.set(0);
-        installed.set(0);
-        discarded.set(0);
+        for (int i = 0; i < outcomes.length(); i++) outcomes.set(i, 0L);
         resetWasteReportingForTests();
         running = true;
         PathWeaver.LOG.info("PathWeaver runtime started: epoch={}, {} worker thread(s), maxInFlight={}.",
@@ -90,8 +137,8 @@ public final class PathWeaverRuntime {
         pool.shutdown();
         entitySink.clear();
         installer.clear();
-        PathWeaver.LOG.info("PathWeaver stats: dispatched={}, installed={}, discarded={} (async pathfinding).",
-            dispatched.get(), installed.get(), discarded.get());
+        PathWeaver.LOG.info("PathWeaver stats: dispatched={}, installed={}, discarded={}{}.",
+            dispatched.get(), installedCount(), discardedCount(), outcomeBreakdown());
     }
 
     /**
@@ -201,7 +248,7 @@ public final class PathWeaverRuntime {
         if (tick - lastWasteCheckTick < WASTE_SAMPLE_INTERVAL_TICKS) return;
         lastWasteCheckTick = tick;
         long dispatchedNow = dispatched.get();
-        long installedNow = installed.get();
+        long installedNow = installedCount();
         long windowDispatched = dispatchedNow - lastWasteDispatched;
         long windowInstalled = installedNow - lastWasteInstalled;
         lastWasteDispatched = dispatchedNow;
@@ -239,7 +286,7 @@ public final class PathWeaverRuntime {
         lastWasteCheckTick = 0L;
         consecutiveWastedWindows = 0;
         lastWasteDispatched = dispatched.get();
-        lastWasteInstalled = installed.get();
+        lastWasteInstalled = installedCount();
         wasteReported = false;
     }
 

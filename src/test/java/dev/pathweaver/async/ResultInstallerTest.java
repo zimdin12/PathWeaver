@@ -21,7 +21,11 @@ class ResultInstallerTest {
             return stale.contains(key);
         }
         public void install(RequestKey key, Path path) { installed.add(key); }
-        public void discard(RequestKey key) { discarded.add(key); }
+        final List<RequestOutcome> reasons = new ArrayList<>();
+        public void discard(RequestKey key, RequestOutcome reason) {
+            discarded.add(key);
+            reasons.add(reason);
+        }
         public void noPath(RequestKey key) { noPaths.add(key); }
         public void failed(RequestKey key, Throwable failure) { failures.add(key); }
     }

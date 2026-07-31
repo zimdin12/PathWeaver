@@ -62,7 +62,7 @@ class PathWeaverRuntimeTest {
             runtime.resetWasteReportingForTests();
             for (int i = 0; i < 1000; i++) {
                 runtime.markDispatched();
-                if (i % 10 != 0) runtime.markInstalled();       // 90% installed
+                if (i % 10 != 0) runtime.markOutcome(dev.pathweaver.async.RequestOutcome.INSTALLED);       // 90% installed
             }
             runtime.reportIfMostResultsAreWasted(interval);
             assertFalse(runtime.wasteReported(), "90% installed is healthy, not a footgun");
@@ -72,7 +72,7 @@ class PathWeaverRuntimeTest {
             runtime.resetWasteReportingForTests();
             for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE * 2; i++) runtime.markDispatched();
             runtime.reportIfMostResultsAreWasted(interval);            // bad
-            for (int i = 0; i < 1000; i++) { runtime.markDispatched(); runtime.markInstalled(); }
+            for (int i = 0; i < 1000; i++) { runtime.markDispatched(); runtime.markOutcome(dev.pathweaver.async.RequestOutcome.INSTALLED); }
             runtime.reportIfMostResultsAreWasted(interval * 2L);       // good -> streak resets
             for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE * 2; i++) runtime.markDispatched();
             runtime.reportIfMostResultsAreWasted(interval * 3L);       // bad again, but only one
@@ -86,7 +86,7 @@ class PathWeaverRuntimeTest {
             runtime.resetWasteReportingForTests();
             for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE * 2; i++) runtime.markDispatched();
             runtime.reportIfMostResultsAreWasted(interval);            // bad
-            for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE - 1; i++) runtime.markInstalled();
+            for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE - 1; i++) runtime.markOutcome(dev.pathweaver.async.RequestOutcome.INSTALLED);
             runtime.reportIfMostResultsAreWasted(interval * 2L);       // too quiet to judge
             for (int i = 0; i < PathWeaverRuntime.WASTE_MIN_SAMPLE * 2; i++) runtime.markDispatched();
             runtime.reportIfMostResultsAreWasted(interval * 3L);       // bad, but not consecutive
