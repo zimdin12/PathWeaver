@@ -22,7 +22,7 @@ At startup PathWeaver scans every loaded mod for mixins into pathfinding code. I
 
 Failing closed is better than running unaudited code on a worker thread and corrupting a world. The consequence is that PathWeaver only does something once the mods in your pack that touch pathfinding have each been individually audited. Two of the biggest have been:
 
-- **The Fabric API that PathWeaver itself requires.** It bundles `fabric-content-registries-v0`, which injects into a method the walk search calls for every block. That alone used to deny Walk on *every* stock install. It is now allowed while no mod has registered a land path-type provider — the condition that makes the injection inert — and denies permanently the moment one registers, including cancelling a search already in flight. Fabric API also bundles `fabric-events-interaction-v0`, whose exemption rests on an inventory of calls from six pinned worker-side classes. That is a bounded sample, not an exhaustive proof that no worker route reaches those methods, so **it is honoured at `AUDITED` only** — which is why `STRICT` is inert on a stock install.
+- **The Fabric API that PathWeaver itself requires.** It bundles `fabric-content-registries-v0`, which injects into a method the walk search calls for every block. That alone used to deny Walk on *every* stock install. It is now allowed while no mod has registered a land path-type provider — the condition that makes the injection inert — and denies permanently the moment one registers, including cancelling a search already in flight. Fabric API also bundles `fabric-events-interaction-v0`, whose exemption rests on an inventory of calls from ten pinned worker-side classes. That is a bounded sample, not an exhaustive proof that no worker route reaches those methods, so **it is honoured at `AUDITED` only** — which is why `STRICT` is inert on a stock install.
 - **Lithium**, which ships in most performance modpacks, and **Diagonal Blocks** (Diagonal Fences/Walls/Windows). Their pathfinding mixins are pinned by hash and checked at startup: the audited classes are rejected if they write a field on the search path, and Diagonal Blocks is additionally required never to reach the unsynchronised shape caches. That is a bounded mechanical check, not a whole-program proof — [COMPATIBILITY.md](COMPATIBILITY.md) states exactly what each verifier inspects. Allowing them requires setting `compatibilityTier` to `AUDITED`; see below for the trade.
 
 Mods that just mark a block dangerous — "mobs should avoid my spikes" — are handled generically, with no per-mod entry: their rule is asked for every answer it can give and frozen before any worker sees it. That rests on such a rule being a pure function of the block state, which the API's shape encourages but does not enforce, so it is honoured at `AUDITED` rather than `STRICT`. A rule that *receives* the surrounding world normally switches Walk back to synchronous, because its answers cannot be precomputed. Farmer's Delight's lit stove is the one exception: it receives the world and provably never reads it, so an exact audit of that artifact lets its answers be frozen too. That audit is honoured at `AUDITED`, not at `STRICT`.
@@ -45,29 +45,31 @@ Average tick rate is not what players notice — a server sitting at "20 TPS" st
 
 ### Measured on the configuration you would actually get
 
-This is the one benchmark that used **no harness intervention at all**: stock Fabric API, Lithium loaded, `compatibilityTier=AUDITED`, shipped limits (`maxInFlight=256`, `poolThreads=0`; path reuse off, which is the shipped default). The gate opened on its own. The only difference between arms is the master switch. 1024 zombies in a walled maze, all retargeted every 6 ticks; **four pairs, interleaved and order-reversed, across two builds** (0.2.3 and the released 0.3.0).
+This benchmark uses **no harness intervention at all**: stock Fabric API, Lithium loaded, `compatibilityTier=AUDITED`, shipped limits (`maxInFlight=256`, `poolThreads=0`; path reuse off, which is the shipped default). The gate opened on its own. The only difference between arms is the master switch. 1024 zombies in a walled maze, all retargeted every 6 ticks; two pairs, interleaved and order-reversed so machine drift cannot masquerade as an effect, **on the exact jar in this release**.
 
-| | Synchronous (n=4) | With PathWeaver (n=4) |
+| | Synchronous (n=2) | With PathWeaver (n=2) |
 |---|---|---|
-| Tick interval, mean | 78–96 ms | **49–50 ms** |
-| Tick interval, p99 | 726–1096 ms | **338–390 ms** |
-| Effective tick rate | 10.4–12.7 TPS | **20.0 TPS** |
-| Main-thread cost per request | 421–516 µs | **164–222 µs** |
+| Tick interval, mean | 88.5–92.1 ms | **49.97–50.00 ms** |
+| Tick interval, p99 | 832–878 ms | **367–373 ms** |
+| Effective tick rate | 10.9–11.3 TPS | **20.0 TPS** |
+| Main-thread cost per request | 480–500 µs | **195–202 µs** |
 
-Mean tick time fell **about 40%** — median 40.1%, mean 41.2%, range 36.2–48.2% across the four pairs — with no overlap: every async run beat every synchronous run.
+Mean tick time fell **43.5% and 45.7%**; p99 fell **55–58%**. No overlap: both async runs beat both synchronous ones.
 
-**Read the spread, not the headline.** The async arm is strikingly stable (49–50 ms in all four runs, across two builds), while the *synchronous* baseline swings 78–96 ms depending on ambient machine load. A single pair therefore over- or under-states the gain by several points; an earlier revision of this table quoted 44.8% because it happened to be paired against the heaviest sync run. Quote the range.
+**Read the spread, not the headline.** The asynchronous arm is remarkably stable — 49.97 and 50.00 ms, and every async run measured during this release landed within a couple of milliseconds of that — while the *synchronous* baseline swings between 87 and 108 ms with ambient machine load. Essentially all the variation in the percentage comes from the baseline rather than from the mod, so a single pair over- or under-states the gain by several points. Quote the range.
+
+**These are not comparable to the figures published for 0.3.0.** During 0.4.0's development the mixin that isolates Minecraft's shared path-type cache from workers silently stopped applying, and a search reusing that already-populated shared cache runs faster than one filling a private cache. Every figure here was re-measured after that was fixed, on the exact release artifact rather than a close relative of it.
 
 **A caveat this file used to state incorrectly.** Earlier versions said *13.6–20.6% of dispatched searches were not installed in time*, which implied workers were returning results too late to be wanted. 0.4.0 splits the outcome counter by cause, and the measurement says otherwise:
 
 | Outcome | Pair 1 | Pair 2 |
 |---|---|---|
-| Installed | 60,549 | 60,784 |
-| Cancelled before the result landed | 14,686 | 16,193 |
+| Installed | 65,113 | 65,450 |
+| Cancelled before the result landed | 13,773 | 14,044 |
 | **Rejected as stale on arrival** | **0** | **0** |
-| Admission refused (ran synchronously instead) | 78,958 | 77,171 |
+| Admission refused (ran synchronously instead) | 75,227 | 74,586 |
 
-So about **80% of dispatched searches install**, and the rest were **cancelled by the mob changing its mind, not delivered late** — in this workload every mob is retargeted every 6 ticks, and cancelling a navigation is what that does. Not one result was ever rejected for arriving too late.
+So about **82% of dispatched searches install**, and the rest were **cancelled by the mob changing its mind, not delivered late** — in this workload every mob is retargeted every 6 ticks, and cancelling a navigation is what that does. Not one result was ever rejected for arriving too late.
 
 The number worth watching is the last row: at the shipped `maxInFlight=256`, **admission refused more requests than it accepted.** Those are not wasted — they run synchronously on the tick exactly as they would without this mod — but it does mean the in-flight limit, not worker speed, is the binding constraint under a burst this heavy.
 
@@ -187,7 +189,7 @@ You can also edit `config/pathweaver.json`. **The exact keys differ between vers
 - **`STRICT`** (default) only runs off-thread where a worker provably cannot observe the other mod's change at all.
 - **`AUDITED`** additionally allows mods cleared by bounded evidence rather than by proof. It is what most packs need, including any pack with Fabric API. Four different mechanisms sit behind it, and they are not equally strong — [COMPATIBILITY.md](COMPATIBILITY.md) states each one:
   - **Lithium and Diagonal Blocks**: no field-write opcode in the audited classes on the search path, plus per-mod structural conditions. That check does not model array stores, mutations inside methods those classes call, or effects reached through helpers, so it means no worker write was *found* — it lowers the risk of worker-side corruption rather than excluding it.
-  - **Fabric API's interaction module**: an inventory of direct calls from six pinned worker-side classes, which is a sample rather than an exhaustive proof that no worker route reaches the injected methods.
+  - **Fabric API's interaction module**: an inventory of direct calls from ten pinned worker-side classes, which is a sample rather than an exhaustive proof that no worker route reaches the injected methods.
   - **Mods that mark blocks dangerous**: an assumption that such a rule is a pure function of block state, which the API's shape encourages but does not enforce.
   - **Farmer's Delight's stove**: one artifact's bytecode, read to show the world and position it receives are never loaded, plus a runtime check that nothing has transformed that class.
 

@@ -36,7 +36,7 @@ import java.util.Set;
 /**
  * Bounded negative-reachability evidence for Fabric Events Interaction on MC 26.1.2.
  *
- * <p>Not a proof: the check inventories direct {@code BlockStateBase} calls from six pinned
+ * <p>Not a proof: the check inventories direct {@code BlockStateBase} calls from ten pinned
  * worker-side classes. It does not traverse the whole worker call graph, and it does not build a
  * reverse callsite inventory for the two injected methods. Exact hashes keep that sample stable
  * against drift rather than making it exhaustive, which is why the exemption requires
@@ -189,7 +189,7 @@ final class FabricInteractionCompatibility {
      *
      * <p>This was previously treated as a structural non-reachability proof and honoured at
      * {@link CompatibilityTier#STRICT}. It is not one. The check inventories direct
-     * {@code BlockStateBase} invocations from six pinned worker-side classes, which is a bounded
+     * {@code BlockStateBase} invocations from ten pinned worker-side classes, which is a bounded
      * sample: it does not traverse the full worker call graph through helpers, synthetic accessors
      * and virtual evaluator routes, and it does not establish a whole-game reverse inventory of
      * callsites for {@code useItemOn} and {@code useWithoutItem}. Exact hashes make that sample
