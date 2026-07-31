@@ -5,9 +5,9 @@
   "text.autoconfig.pathweaver.category.repath": "Repath and result validity",
   "text.autoconfig.pathweaver.option.enabled": "Enabled",
   "text.autoconfig.pathweaver.option.compatibilityTier": "Compatibility risk",
-  "text.autoconfig.pathweaver.option.compatibilityTier.STRICT": "Strict (usually does nothing)",
-  "text.autoconfig.pathweaver.option.compatibilityTier.AUDITED": "Audited (recommended)",
-  "text.autoconfig.pathweaver.option.allowModdedMobAsync": "Also speed up mobs added by mods (unsafe)",
+  "text.autoconfig.pathweaver.option.compatibilityTier.STRICT": "Strict (inert)",
+  "text.autoconfig.pathweaver.option.compatibilityTier.AUDITED": "Audited (default)",
+  "text.autoconfig.pathweaver.option.allowModdedMobAsync": "Speed up mod-added mobs (unsafe)",
   "text.autoconfig.pathweaver.option.poolThreads": "Worker threads (0 = automatic)",
   "text.autoconfig.pathweaver.option.maxInFlight": "Maximum searches queued or running at once",
   "text.autoconfig.pathweaver.option.repathToleranceBlocks": "Reuse a valid path if the target moved less than (blocks)",
@@ -38,6 +38,6 @@
   "text.autoconfig.pathweaver.option.maxResultAgeTicks.@Tooltip[0]": "Leave at default. How long a finished search stays usable after it completes.",
   "text.autoconfig.pathweaver.option.maxResultAgeTicks.@Tooltip[1]": "Measured at 10 and 200 ticks with no difference outside noise.",
   "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip[2]": "Avoids searches rather than moving them off-thread. Measured at 0, 1 and 4 with no difference outside noise.",
-  "text.autoconfig.pathweaver.option.compatibilityTier.UNSAFE": "Unsafe (no compatibility checks)",
+  "text.autoconfig.pathweaver.option.compatibilityTier.UNSAFE": "Unsafe (no checks)",
   "text.autoconfig.pathweaver.option.compatibilityTier.@Tooltip[5]": "No tier moves flying or amphibious mobs off-thread: those searches write to the mob and would race regardless."
 }
