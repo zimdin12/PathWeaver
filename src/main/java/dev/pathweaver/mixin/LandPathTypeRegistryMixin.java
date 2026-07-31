@@ -78,6 +78,11 @@ abstract class LandPathTypeRegistryMixin {
     private static void pathweaver$keepWorkerOutOfLiveProviderMap(
             Block block,
             CallbackInfoReturnable<LandPathTypeRegistry.PathTypeProvider> cir) {
+        // isWorker(), not searchRunsOffThread(): provider lookups happen in getPathType during the
+        // search itself, never in the prologue the main thread runs on a worker's behalf. The
+        // prologue only builds a PathfindingContext, which resolves no path types. If that ever
+        // changes, this needs the destination-based check for the same reason the cache isolation
+        // did -- a main-thread lookup would reach the live provider map on a worker's behalf.
         if (!PathWeaverThread.isWorker()) return;
         FabricLandPathRegistryLatch.recordWorkerProviderLookupBypass();
         // Serve the frozen answer for certified blocks. Returning null here would mean "no rule
