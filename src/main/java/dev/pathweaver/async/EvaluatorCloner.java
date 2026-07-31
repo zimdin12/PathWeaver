@@ -31,6 +31,15 @@ import net.minecraft.world.level.pathfinder.NodeEvaluator;
  * <p>Anything else is refused, and refusal means that mob keeps pathing synchronously. Guessing at a
  * constructor whose arguments we do not understand would produce an evaluator configured differently
  * from the one the mob actually uses, and a subtly wrong path is worse than a synchronous one.
+ *
+ * <p><strong>What a rebuild does not carry over.</strong> Only the constructor argument and the four
+ * traversal flags {@code NodeEvaluator} exposes are reproduced. A vanilla evaluator holds nothing
+ * else, so for the six allowlisted classes the rebuild is complete. A third-party evaluator admitted
+ * at the unsafe tier may hold configuration this knows nothing about — a field set after
+ * construction, a reference to its mod's own settings — and that state is silently absent from the
+ * copy the worker searches with. The result is a path computed under different rules than the mob's
+ * own evaluator would have used: not a crash, not a race, just a quietly different answer. It is
+ * part of what "unsafe" is buying, and it is the failure mode least likely to be noticed.
  */
 public final class EvaluatorCloner {
     private EvaluatorCloner() {}

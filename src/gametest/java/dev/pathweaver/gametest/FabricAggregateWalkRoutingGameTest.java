@@ -43,6 +43,7 @@ public final class FabricAggregateWalkRoutingGameTest {
         private final boolean oldEnabled;
         private final boolean oldModded;
         private final int oldTolerance;
+        private final int oldMaxResultAge;
         private final CompatibilityTier oldTier;
         private Mob mob;
         private PathNavigation navigation;
@@ -59,6 +60,7 @@ public final class FabricAggregateWalkRoutingGameTest {
             this.oldEnabled = cfg.enabled;
             this.oldModded = cfg.allowModdedMobAsync;
             this.oldTolerance = cfg.repathToleranceBlocks;
+            this.oldMaxResultAge = cfg.maxResultAgeTicks;
             this.oldTier = cfg.compatibilityTier;
         }
 
@@ -112,6 +114,12 @@ public final class FabricAggregateWalkRoutingGameTest {
             navigation = mob.getNavigation();
             cfg.enabled = true;
             cfg.allowModdedMobAsync = false;
+        // Raised for the same reason as in PathNavigationRoutingGameTest: the shipped 40-tick
+        // result age is two seconds, and a cold JVM's first worker round trip does not reliably
+        // beat it. A result that misses it is discarded as stale and the mob never asks again, so
+        // a test polling for an install waits for something that can no longer happen. Staleness
+        // itself is covered by EntityInstallSinkTest.
+            cfg.maxResultAgeTicks = 1200;
             cfg.repathToleranceBlocks = 0;
 
             long dispatchBefore = counter("dispatched");
@@ -271,6 +279,7 @@ public final class FabricAggregateWalkRoutingGameTest {
             cfg.enabled = oldEnabled;
             cfg.allowModdedMobAsync = oldModded;
             cfg.repathToleranceBlocks = oldTolerance;
+            cfg.maxResultAgeTicks = oldMaxResultAge;
             cfg.compatibilityTier = oldTier;
         }
 

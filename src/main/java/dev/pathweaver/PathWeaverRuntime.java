@@ -107,7 +107,12 @@ public final class PathWeaverRuntime {
         running = false;
         long epoch = serverEpoch.incrementAndGet();
         PathWeaverConfig c = PathWeaverConfig.get();
-        entitySink.clear();
+        // clear(false): do not run epilogues here. Startup normally follows a stop that already
+        // drained them, so this map is empty -- but pool.start() replaces a generation with
+        // shutdownNow(), which does not wait, so on any path that skipped a clean stop a worker
+        // could still be running. Asserting quiescence we have not established is exactly the
+        // mistake that put an NPE inside a worker at server stop.
+        entitySink.clear(false);
         installer.clear();
         pool.start(c.resolvedPoolThreads(), c.maxInFlight);
         dispatched.set(0);

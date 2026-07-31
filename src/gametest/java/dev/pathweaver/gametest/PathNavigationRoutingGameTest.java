@@ -50,11 +50,21 @@ public final class PathNavigationRoutingGameTest {
         boolean oldEnabled = cfg.enabled;
         boolean oldModdedMobOverride = cfg.allowModdedMobAsync;
         int oldTolerance = cfg.repathToleranceBlocks;
+        int oldMaxResultAge = cfg.maxResultAgeTicks;
         Set<Class<?>> oldDenials;
         synchronized (SafetyGate.deniedBySafety) {
             oldDenials = Set.copyOf(SafetyGate.deniedBySafety);
         }
+        // The shipped 40-tick result age is two seconds, and this suite kept failing about one clean
+        // build in five because a cold JVM's first worker round trip does not always beat it. When it
+        // does not, the result is discarded as stale and the mob never asks again -- so the test polls
+        // for an install that can no longer happen, and widening the poll deadline (which is what was
+        // tried before) cannot help. Raising the age bound removes the race without weakening
+        // anything: this test asserts routing semantics, and staleness has its own dedicated
+        // coverage in EntityInstallSinkTest.
+        cfg.maxResultAgeTicks = 1200;
         Runnable teardown = () -> {
+            cfg.maxResultAgeTicks = oldMaxResultAge;
             restore(cfg, oldEnabled, oldModdedMobOverride, oldTolerance);
             synchronized (SafetyGate.deniedBySafety) {
                 SafetyGate.deniedBySafety.clear();
@@ -469,7 +479,15 @@ public final class PathNavigationRoutingGameTest {
                 if (ready.getAsBoolean()) {
                     onReady.run();
                 } else if (helper.getTick() >= deadline) {
-                    throw helper.assertionException(timeoutMessage);
+                    // Say what the counters were doing. A bare "did not install" cost a full
+                    // investigation to attribute once already: the request had been dispatched and
+                    // then discarded as stale, which reads identically to "still waiting" unless
+                    // the numbers are in the message.
+                    throw helper.assertionException(timeoutMessage
+                        + " [dispatched=" + runtimeCounter("dispatched")
+                        + ", installed=" + runtimeCounter("installed")
+                        + ", discarded=" + runtimeCounter("discarded")
+                        + ", maxResultAgeTicks=" + PathWeaverConfig.get().maxResultAgeTicks + "]");
                 } else {
                     pollUntil(helper, deadline, ready, timeoutMessage, teardown, onReady);
                 }

@@ -219,7 +219,7 @@ You can also edit `config/pathweaver.json`. **The exact keys differ between vers
   - **Farmer's Delight's stove**: one artifact's bytecode, read to show the world and position it receives are never loaded, plus a runtime check that nothing has transformed that class.
 
   All of them also add live block reads, so a search running while the world changes can return a worse path. Path quality under live mutation has not been measured.
-- **`UNSAFE`** ignores the scan completely. This runs unaudited third-party code on a worker thread, which is the exact thing the scan exists to prevent. Failures are not limited to bad paths. Keep backups.
+- **`UNSAFE`** ignores the scan completely. It also admits third-party evaluator subclasses, which are rebuilt from their constructor plus the four traversal flags vanilla exposes. A mod's evaluator may hold configuration beyond that — a field set after construction, a reference to its own settings — and none of it is copied, so the worker searches under different rules than the mob's own evaluator would use. That is a quietly different path rather than a crash, and it is the failure mode least likely to be noticed. This runs unaudited third-party code on a worker thread, which is the exact thing the scan exists to prevent. Failures are not limited to bad paths. Keep backups.
 
 `allowModdedMobAsync` is an advanced, genuinely unsafe override. It bypasses only the vanilla-origin mob check; every other gate still applies. Do not enable it unless you accept running unaudited mod code on a worker thread.
 
