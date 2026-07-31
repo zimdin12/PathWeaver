@@ -20,7 +20,7 @@ import java.util.Set;
  *
  * <p>Lithium is the single largest reason PathWeaver does nothing on real servers: it ships in most
  * performance modpacks and rewrites the code a worker reads. It is deliberately <em>not</em> a
- * {@link CompatibilityTier#STRICT} exemption, because the other exempt mods are exempt on the
+ * a structural-proof exemption, because the other exempt mods are exempt on the
  * grounds that a worker provably cannot observe their change at all, and that is not true here.
  *
  * <p>What the audit does establish, from the bytecode rather than from documentation:

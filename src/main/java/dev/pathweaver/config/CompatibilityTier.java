@@ -7,22 +7,16 @@ import me.shedaniel.clothconfig2.gui.entries.SelectionListEntry;
  *
  * <p>PathWeaver refuses to run a search off-thread when another mod has modified the code that
  * search executes, because it cannot verify what that code does on a worker. That rule is why the
- * mod is inert on most modpacks. This setting decides how much of that refusal to keep, and the
- * ordering is deliberate: each tier is a strict superset of the one before it.
+ * mod is inert on most modpacks. This setting decides how much of that refusal to keep.
  *
- * <p>The tiers are not "how likely is it to break" — they are "what kind of evidence exists".
+ * <p>There were three tiers. The strictest honoured only structural proofs, and the exemption
+ * covering Fabric API's own interaction module rests on a bounded call sample rather than a proof —
+ * so it denied every install that contained Fabric API, which this mod requires. It could not do
+ * anything on any pack that has ever existed, and a setting that is inert everywhere is not a
+ * safety option, it is noise. What remains is an honest binary: run where there is evidence, or run
+ * regardless.
  */
 public enum CompatibilityTier implements SelectionListEntry.Translatable {
-    /**
-     * Only run off-thread where a worker provably cannot observe the foreign change at all.
-     *
-     * <p>Every exemption at this tier rests on a structural proof: the modified method is not
-     * reachable from the worker's entry point, or the modification is inert unless something is
-     * registered that we check for and re-check at install time. Verified against exact artifact
-     * bytes, so an unexpected build denies rather than assuming.
-     */
-    STRICT,
-
     /**
      * Also allow mods whose bytecode has been audited to perform no shared-state writes on the
      * search path, but which do add reads a worker cannot be proven to see consistently.
@@ -32,9 +26,8 @@ public enum CompatibilityTier implements SelectionListEntry.Translatable {
      * mid-search, and can hit a concurrent-modification exception. That is contained: the affected
      * search is discarded rather than installed, and that mob is forced synchronous for a short
      * cooldown, so the fallback is on later requests rather than a synchronous retry of this one.
-     * Lithium is the mod that matters here — it
-     * ships in most performance packs, and at {@link #STRICT} its presence alone keeps PathWeaver
-     * switched off.
+     * Lithium is the mod that matters here — it ships in most performance packs, and without this
+     * audit its presence alone would keep PathWeaver switched off.
      *
      * <p>Pinned to exact artifact bytes; a different build of an audited mod is not audited.
      */
@@ -58,9 +51,15 @@ public enum CompatibilityTier implements SelectionListEntry.Translatable {
      */
     UNSAFE;
 
-    /** True when audited-but-not-proven-inert exemptions may be honoured. */
+    /**
+     * True when audited-but-not-proven-inert exemptions may be honoured, which both tiers do.
+     *
+     * <p>Kept rather than deleted: the value is frozen at scan time and read through
+     * {@code ActiveCompatibilityPolicy}, which answers false until the scan publishes a tier. That
+     * is the fail-closed property, and it belongs to the freezing, not to any particular tier.
+     */
     public boolean allowsAudited() {
-        return this != STRICT;
+        return true;
     }
 
     /** True when the compatibility scan is bypassed outright. */

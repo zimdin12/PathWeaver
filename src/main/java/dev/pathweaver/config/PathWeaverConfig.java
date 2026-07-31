@@ -47,16 +47,18 @@ public class PathWeaverConfig implements ConfigData {
     /**
      * How much risk to accept from mods that modify pathfinding. See {@link CompatibilityTier}.
      *
-     * <p>Defaults to {@link CompatibilityTier#AUDITED} rather than {@link CompatibilityTier#STRICT}.
-     * {@code STRICT} admits only structural proofs, and the exemption covering Fabric API's own
-     * interaction module is a bounded call-sample rather than a proof — so on any pack containing
-     * Fabric API, which PathWeaver itself requires, {@code STRICT} denies everything and the mod does
-     * nothing at all. Shipping that as the default means shipping a mod that appears broken on
-     * install. {@code AUDITED} is the weaker evidence standard, and it is the one that describes what
-     * this mod can actually demonstrate today; it is stated plainly in the settings screen and the
-     * README rather than hidden behind a reassuring word.
+     * <p>Defaults to {@link CompatibilityTier#AUDITED}, which is now the most conservative tier that
+     * exists. A stricter one was removed in 0.4.0: it honoured only structural proofs, and the
+     * exemption covering Fabric API's own interaction module is a bounded call sample rather than a
+     * proof, so it denied every install containing Fabric API — which this mod requires. It could
+     * not do anything on any pack that has ever existed.
+     *
+     * <p>{@code AUDITED} is the weaker evidence standard, and it is the one that describes what this
+     * mod can actually demonstrate today. On a heavily-modded pack it will usually still refuse, and
+     * the startup log now says so in those words rather than leaving the operator to infer it from
+     * silence.
      */
-    @ConfigEntry.Gui.Tooltip(count = 6)
+    @ConfigEntry.Gui.Tooltip(count = 5)
     @ConfigEntry.Category("general")
     @ConfigEntry.Gui.RequiresRestart
     @ConfigEntry.Gui.EnumHandler(option = ConfigEntry.Gui.EnumHandler.EnumDisplayOption.DROPDOWN)

@@ -188,7 +188,7 @@ final class FabricInteractionCompatibility {
      * Evidence for the Fabric interaction module, honoured above the strict tier only.
      *
      * <p>This was previously treated as a structural non-reachability proof and honoured at
-     * {@link CompatibilityTier#STRICT}. It is not one. The check inventories direct
+     * a structural proof. It is not one. The check inventories direct
      * {@code BlockStateBase} invocations from ten pinned worker-side classes, which is a bounded
      * sample: it does not traverse the full worker call graph through helpers, synthetic accessors
      * and virtual evaluator routes, and it does not establish a whole-game reverse inventory of

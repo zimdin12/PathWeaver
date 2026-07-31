@@ -36,7 +36,7 @@ import java.util.Map;
  *
  * <p>So this is a bounded assumption about how the Fabric API is meant to be used — that a static
  * provider is a pure function of block state — and not a structural proof. It is therefore honoured
- * above {@link dev.pathweaver.config.CompatibilityTier#STRICT} only, which is the tier that admits
+ * above a structural proof only, which is the tier that admits
  * evidence rather than proof. Lithium already caches path types per block state eagerly at startup,
  * so a provider that is not stable is already misbehaving on any pack running Lithium; that makes
  * the assumption reasonable, not verified.

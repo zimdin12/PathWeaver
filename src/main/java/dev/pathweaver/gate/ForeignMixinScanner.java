@@ -449,6 +449,19 @@ public final class ForeignMixinScanner {
         return false;
     }
 
+    /**
+     * Mod ids whose mixins caused a denial, in the order an operator should read them.
+     *
+     * <p>Collected while the per-config warnings are emitted. Those warnings appear during early
+     * mixin scanning, hundreds of lines before a world loads, which is why nobody ever reads them —
+     * the world-start verdict repeats the conclusion at the moment it becomes relevant.
+     */
+    public static List<String> blockingModIds() {
+        return blockingModIds;
+    }
+
+    private static volatile List<String> blockingModIds = List.of();
+
     public static ScanReport lastScanReport() {
         return lastScanReport;
     }
@@ -725,16 +738,19 @@ public final class ForeignMixinScanner {
         lastScanReport = new ScanReport(decision, active, auditedEvidence);
         scanCompleted = true;
         SafetyGate.replaceDenials(decision.denied());
+        java.util.SortedSet<String> blockers = new java.util.TreeSet<>();
         for (ActiveConfig config : active) {
             Set<Class<?>> denied = denialsForConfig(config,
                 exactFabricSwimClaimShape(config, swimEvidence), auditedEvidence);
             if (!denied.isEmpty()) {
+                blockers.add(config.modId());
                 PathWeaver.LOG.warn("Mod '{}' config '{}' targets sensitive pathfinding code{}; "
                         + "forcing {} to sync pathing.",
                     config.modId(), config.configName(),
                     config.pluginContributed() ? " (plugin-expanded)" : "", denied);
             }
         }
+        blockingModIds = List.copyOf(blockers);
         for (String failure : decision.diagnostics()) {
             PathWeaver.LOG.warn("Foreign-mixin scan failure (fail-closed): {}", failure);
         }
@@ -747,7 +763,7 @@ public final class ForeignMixinScanner {
             PathWeaver.LOG.warn("and that denial has been IGNORED at your request. Path searches will");
             PathWeaver.LOG.warn("now run on worker threads alongside the mods listed above, whose code");
             PathWeaver.LOG.warn("has not been audited for thread safety. Use worlds you can afford to");
-            PathWeaver.LOG.warn("lose, and keep backups. Set compatibilityTier=STRICT to undo.");
+            PathWeaver.LOG.warn("lose, and keep backups. Set compatibilityTier=AUDITED to undo.");
             PathWeaver.LOG.warn("==================================================================");
         }
         PathWeaver.LOG.info("Foreign-mixin scan complete: scanned={}, failed={}, deniedFamilies={}.",

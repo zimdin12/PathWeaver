@@ -122,6 +122,7 @@ public final class PathWeaverRuntime {
         PathWeaver.LOG.info("PathWeaver runtime started: epoch={}, {} worker thread(s), maxInFlight={}.",
             epoch, pool.threads(), pool.maxInFlight());
         warnAboutSelfDefeatingSettings(c);
+        reportWhetherItIsDoingAnything(c);
         PathWeaver.LOG.info("Mob-origin CodeSource probe: Mob={}, Zombie={}, moddedBypass={}.",
             MobOriginGate.isAllowed(Mob.class, false), MobOriginGate.isAllowed(Zombie.class, false),
             c.moddedMobAsyncAllowed());
@@ -134,6 +135,53 @@ public final class PathWeaverRuntime {
                         : "allowed by compatibilityTier=UNSAFE")
                     : "synchronous");
         }
+    }
+
+
+    /**
+     * Say, at world start, whether this mod is going to do anything at all — and if not, what to do.
+     *
+     * <p>The scan already logs a line per offending mod, but those appear during early mixin
+     * scanning, hundreds of lines before a world loads, in a format that reads like a warning about
+     * the other mod rather than a statement that PathWeaver is switched off. The result was a mod
+     * that installs, does nothing, and never says so. On a heavily-modded pack that is the normal
+     * outcome, not an edge case, and it is the single most common thing an operator needs to know.
+     *
+     * <p>Deliberately at {@code WARN} when inert. It is not an error — failing closed is the design
+     * — but "you installed something that is doing nothing" is worth interrupting for.
+     */
+    private void reportWhetherItIsDoingAnything(PathWeaverConfig c) {
+        if (!c.enabled) {
+            PathWeaver.LOG.warn("PathWeaver is disabled in the config; pathfinding is fully vanilla.");
+            return;
+        }
+        java.util.List<String> blockers = dev.pathweaver.gate.ForeignMixinScanner.blockingModIds();
+        int denied = dev.pathweaver.gate.SafetyGate.deniedBySafety.size();
+        int eligible = dev.pathweaver.gate.SafetyGate.allowlisted().size() - denied;
+
+        if (denied == 0) {
+            PathWeaver.LOG.info("PathWeaver is ACTIVE: all {} movement families can path off-thread"
+                + "{}.", eligible, blockers.isEmpty() ? "" : " (waived: " + blockers.size() + " mod(s))");
+            return;
+        }
+        PathWeaver.LOG.warn("======================== PathWeaver ========================");
+        PathWeaver.LOG.warn("PathWeaver is doing NOTHING on this pack. All {} movement", denied);
+        PathWeaver.LOG.warn("families are running on the server thread, exactly as vanilla.");
+        if (!blockers.isEmpty()) {
+            PathWeaver.LOG.warn("");
+            PathWeaver.LOG.warn("{} mod(s) modify pathfinding code and have not been audited:",
+                blockers.size());
+            PathWeaver.LOG.warn("  {}", String.join(", ", blockers));
+        }
+        PathWeaver.LOG.warn("");
+        PathWeaver.LOG.warn("This is the safe default: unverified code is not run on worker");
+        PathWeaver.LOG.warn("threads. On a heavily-modded pack it usually means no benefit.");
+        PathWeaver.LOG.warn("");
+        PathWeaver.LOG.warn("To run anyway, set compatibilityTier=UNSAFE in the settings screen");
+        PathWeaver.LOG.warn("or config/pathweaver.json, then restart. That runs the mods above");
+        PathWeaver.LOG.warn("on worker threads unchecked, so back up your world first.");
+        PathWeaver.LOG.warn("Run /pathweaver status in game for the same answer at any time.");
+        PathWeaver.LOG.warn("============================================================");
     }
 
     public void onServerStopping(MinecraftServer server) {

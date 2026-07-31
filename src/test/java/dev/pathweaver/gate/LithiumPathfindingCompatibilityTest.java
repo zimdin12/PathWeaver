@@ -98,9 +98,14 @@ class LithiumPathfindingCompatibilityTest {
     }
 
     @Test
-    void tierOrderingIsStrictlyIncreasing() {
-        assertFalse(CompatibilityTier.STRICT.allowsAudited());
-        assertFalse(CompatibilityTier.STRICT.bypassesScan());
+    void thereAreExactlyTwoTiersAndTheyDifferOnlyInWhetherTheScanIsEnforced() {
+        // STRICT was removed rather than deprecated. It honoured only structural proofs, and the
+        // exemption covering Fabric API's own interaction module is a bounded call sample, so it
+        // denied every install containing Fabric API -- which this mod requires. A tier that cannot
+        // do anything on any pack that has ever existed is not a safety option.
+        assertEquals(2, CompatibilityTier.values().length,
+            "expected exactly AUDITED and UNSAFE: " + java.util.Arrays.toString(CompatibilityTier.values()));
+
         assertTrue(CompatibilityTier.AUDITED.allowsAudited());
         assertFalse(CompatibilityTier.AUDITED.bypassesScan(),
             "AUDITED must still enforce the scan for everything it has not audited");

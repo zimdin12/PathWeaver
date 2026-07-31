@@ -39,7 +39,7 @@ import java.util.Set;
  * than silently inheriting this finding.
  *
  * <p>Like Lithium, this is a {@link CompatibilityTier#AUDITED} exemption rather than a
- * {@link CompatibilityTier#STRICT} one: no worker write is possible, but the override adds live
+ * a structural-proof one: no worker write is possible, but the override adds live
  * block reads, so a search racing a block change can return a worse path.
  */
 final class DiagonalBlocksCompatibility {

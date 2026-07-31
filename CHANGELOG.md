@@ -2,8 +2,9 @@
 
 ## 0.4.0 — Every vanilla mob, and counters that mean something
 
-_The tier named `ALL` below is called `UNSAFE` from this release. Entries for 0.3.0 and earlier keep
-the old name deliberately: they describe what those versions actually shipped._
+_There are two tiers from this release: `Audited` (default) and `Unsafe`. The tier named `ALL` in
+older entries is `Unsafe`, and `Strict` no longer exists. Entries for 0.3.0 and earlier keep the old
+names deliberately: they describe what those versions actually shipped._
 
 ### Added
 
@@ -18,6 +19,13 @@ the old name deliberately: they describe what those versions actually shipped._
 - `/pathweaver status` and `/pathweaver mobs`, answering in-game which mob types can path off-thread
   and, for each one that cannot, why. Diagnosing that previously meant building a throwaway probe
   against the mod's internals.
+- **PathWeaver now says at world start whether it is going to do anything.** The scan already logged a
+  line per offending mod, but those appear during early mixin scanning, hundreds of lines before a
+  world loads, phrased as a warning about the other mod rather than a statement that this one is
+  switched off. The result was a mod that installs, does nothing, and never mentions it. On a
+  heavily-modded pack that is the normal outcome, not an edge case. When inert, the log now names the
+  mods responsible, says plainly that every movement family is running on the server thread exactly as
+  vanilla, and gives the one-line override. Measured on a 222-mod pack: nine mods named.
 
 ### Fixed
 
@@ -47,6 +55,15 @@ the old name deliberately: they describe what those versions actually shipped._
   this one.
 - Game tests read the runtime's counters through public accessors instead of reflecting into a
   private field, which is why renaming that field broke three of them at once.
+
+### Removed
+
+- **The `Strict` tier is gone.** It honoured only structural proofs, and the exemption covering Fabric
+  API's own interaction module is a bounded call sample rather than a proof — so it denied every
+  install containing Fabric API, which this mod requires. It could not do anything on any pack that
+  has ever existed. A setting that is inert everywhere is not a safety option. Configs holding it
+  migrate to `Audited`, which is now the most conservative tier, and the migration says so in the log
+  because it is still a loosening.
 
 ### Introduced and fixed during this release (never shipped)
 
