@@ -85,6 +85,31 @@ Mean tick time fell **43.5% and 45.7%**; p99 fell **55–58%**. No overlap: both
 
 **These are not comparable to the figures published for 0.3.0.** During 0.4.0's development the mixin that isolates Minecraft's shared path-type cache from workers silently stopped applying, and a search reusing that already-populated shared cache runs faster than one filling a private cache. Every figure here was re-measured after that was fixed, on the exact release artifact rather than a close relative of it.
 
+### Profiled on a real modpack, with spark
+
+The tables above are a synthetic burst in a four-mod environment. This is the same question asked
+the way a server admin would ask it: spark, on a 222-mod pack, 220 mixed mobs (zombies, skeletons,
+spiders, bees, drowned) retargeted every 6 ticks across a pillared arena, two 45-second profiles.
+Profiles were saved locally rather than uploaded, so the pack's composition stays on the machine.
+
+| | Server-thread time in pathfinding |
+|---|---|
+| PathWeaver off | 5,572 ms of 45,000 — **12.38%** |
+| PathWeaver on | 2,216 ms of 45,000 — **4.92%** |
+
+**Pathfinding's share of the server thread fell by 60%**, with 7,262 searches dispatched and 96.3%
+installed over the profiled window.
+
+What remains on the server thread with the mod on is mostly `PathNavigation.createPath` (1,872 ms) —
+the dispatch itself: building the region, cloning the evaluator, running the search's prologue. That
+is the cost this design deliberately keeps on the tick, and it is what the synchronous arm's 3,664 ms
+in `moveTo` becomes. The mod does not make pathfinding free; it moves the search and leaves the
+setup.
+
+This run used `UNSAFE`, because that pack denies every family at the shipped default — see the
+eligibility table above. On a pack where the scan denies nothing, the same effect is available at
+the default.
+
 ### 0.3.0 against 0.4.0, same machine, adjacent runs
 
 0.4.0 moves each search's setup and teardown onto the server thread. That is work added back to the
