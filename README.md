@@ -74,16 +74,18 @@ Average tick rate is not what players notice — a server sitting at "20 TPS" st
 
 This benchmark uses **no harness intervention at all**: stock Fabric API, Lithium loaded, `compatibilityTier=AUDITED`, shipped limits (`maxInFlight=256`, `poolThreads=0`; path reuse off, which is the shipped default). The gate opened on its own. The only difference between arms is the master switch. 1024 zombies in a walled maze, all retargeted every 6 ticks; two pairs, interleaved and order-reversed so machine drift cannot masquerade as an effect, **on the exact jar in this release**.
 
-| | Synchronous (n=2) | With PathWeaver (n=2) |
+| | Synchronous | With PathWeaver |
 |---|---|---|
-| Tick interval, mean | 88.5–92.1 ms | **49.97–50.00 ms** |
-| Tick interval, p99 | 832–878 ms | **367–373 ms** |
-| Effective tick rate | 10.9–11.3 TPS | **20.0 TPS** |
+| Tick interval, mean | 88.5–96.6 ms | **50.0–50.3 ms** |
+| Tick interval, p99 | 832–958 ms | **367–383 ms** |
+| Effective tick rate | 10.4–11.3 TPS | **20.0 TPS** |
 | Main-thread cost per request | 480–500 µs | **195–202 µs** |
 
-Mean tick time fell **43.5% and 45.7%**; p99 fell **55–58%**. No overlap: both async runs beat both synchronous ones.
+Mean tick time fell **43.5% to 48.2%**; p99 fell **55–61%**. No overlap: every async run beat every synchronous one.
 
-**Read the spread, not the headline.** The asynchronous arm is remarkably stable — 49.97 and 50.00 ms, and every async run measured during this release landed within a couple of milliseconds of that — while the *synchronous* baseline swings between 87 and 108 ms with ambient machine load. Essentially all the variation in the percentage comes from the baseline rather than from the mod, so a single pair over- or under-states the gain by several points. Quote the range.
+**One run is excluded from that range and it is worth saying why.** A synchronous arm came in at 149 ms rather than the usual 88–97, which would make the same asynchronous result read as a 66% reduction. Nothing about the mod changed between those runs — the machine was busier. Quoting it would be picking the flattering sample, which is exactly the mistake an earlier revision of this file made when it published 44.8%.
+
+**Read the spread, not the headline.** The asynchronous arm is remarkably stable — every asynchronous run measured for this release, across three separate sweeps of two versions, landed between 50.0 and 50.3 ms — while the *synchronous* baseline swings between 87 and 108 ms with ambient machine load. Essentially all the variation in the percentage comes from the baseline rather than from the mod, so a single pair over- or under-states the gain by several points. Quote the range.
 
 **These are not comparable to the figures published for 0.3.0.** During 0.4.0's development the mixin that isolates Minecraft's shared path-type cache from workers silently stopped applying, and a search reusing that already-populated shared cache runs faster than one filling a private cache. Every figure here was re-measured after that was fixed, on the exact release artifact rather than a close relative of it.
 
