@@ -336,11 +336,17 @@ public final class PathNavigationRoutingGameTest {
         cfg.enabled = true;
         cfg.allowModdedMobAsync = false;
 
+        // Sealed on all four sides. Left open, the water drains within a tick and the delayed check
+        // below finds a cod sitting on dry stone -- at which point vanilla correctly refuses to
+        // produce a swim path, moveTo returns false, and the failure reads as though the gate or the
+        // dispatch were broken. It failed about one clean build in five that way, and the diagnostic
+        // that finally caught it just said inWater=false.
         for (int x = 0; x <= 8; x++) {
             for (int z = 7; z <= 11; z++) {
                 helper.setBlock(x, 1, z, Blocks.STONE);
-                helper.setBlock(x, 2, z, Blocks.WATER);
-                helper.setBlock(x, 3, z, Blocks.WATER);
+                boolean wall = x == 0 || x == 8 || z == 7 || z == 11;
+                helper.setBlock(x, 2, z, wall ? Blocks.STONE : Blocks.WATER);
+                helper.setBlock(x, 3, z, wall ? Blocks.STONE : Blocks.WATER);
             }
         }
         Mob swimmer = helper.spawnWithNoFreeWill(EntityType.COD, 1, 2, 8);
@@ -348,14 +354,43 @@ public final class PathNavigationRoutingGameTest {
         check(helper, nodeEvaluator(navigation).getClass() == SwimNodeEvaluator.class,
             "live proof requires the exact SwimNodeEvaluator class, not a subclass or Amphibious");
 
-        helper.runAfterDelay(1, () -> {
+        // Wait for the cod to actually be waterborne rather than assuming it is after one tick.
+        //
+        // A fixed one-tick delay failed roughly one clean build in five, always with inWater=false:
+        // a water-bound navigation refuses to path at all when its mob is not in water, so moveTo
+        // returned false and the failure read as though the gate or the dispatch were broken. It was
+        // neither. Sealing the pool cut the rate but did not remove it, because the real defect is
+        // that the test asserted a precondition instead of establishing one. What this proves is
+        // async routing for a swimming mob; being in water is a precondition, and waiting for it is
+        // correct test design rather than a weakened assertion.
+        pollUntilWaterborne(helper, swimmer, teardown, () -> {
             try {
                 proveRuntimeCacheIsolation(helper, swimmer);
                 long beforeDispatch = runtimeCounter("dispatched");
                 long beforeInstall = runtimeCounter("installed");
                 BlockPos target = helper.absolutePos(new BlockPos(6, 2, 8));
-                check(helper, navigation.moveTo(target.getX() + 0.5, target.getY(),
-                    target.getZ() + 0.5, 1.0), "test-cleared exact Swim movement must be accepted");
+                boolean swimAccepted = navigation.moveTo(target.getX() + 0.5, target.getY(),
+                    target.getZ() + 0.5, 1.0);
+                // This fails on roughly one clean build in five and the bare message says nothing
+                // about why. Everything that could plausibly make moveTo return false is reported
+                // here rather than guessed at afterwards.
+                check(helper, swimAccepted, "test-cleared exact Swim movement must be accepted"
+                    + " [allowedSwim=" + SafetyGate.isAllowed(SwimNodeEvaluator.class)
+                    + ", deniedNow=" + SafetyGate.deniedBySafety.size()
+                    + ", alive=" + swimmer.isAlive()
+                    + ", inWater=" + swimmer.isInWater()
+                    + ", removed=" + swimmer.isRemoved()
+                    + ", enabled=" + cfg.enabled
+                    + ", registered=" + PathWeaverRuntime.get().entitySink().isRegistered(swimmer.getId())
+                    + ", dispatchedDelta=" + (runtimeCounter("dispatched") - beforeDispatch)
+                    + ", path=" + (navigation.getPath() == null ? "null"
+                        : navigation.getPath().getNodeCount() + " nodes")
+                    + ", pos=" + swimmer.blockPosition() + ", target=" + target
+                    + ", blockAtMob=" + helper.getLevel().getBlockState(swimmer.blockPosition())
+                    + ", fluidAtMob=" + helper.getLevel().getFluidState(swimmer.blockPosition())
+                    + ", blockAtTarget=" + helper.getLevel().getBlockState(target)
+                    + ", exactY=" + swimmer.getY()
+                    + "]");
                 check(helper, PathWeaverRuntime.get().entitySink().isRegistered(swimmer.getId()),
                     "test-cleared exact Swim must create a real worker registration");
                 check(helper, runtimeCounter("dispatched") == beforeDispatch + 1,
@@ -470,6 +505,47 @@ public final class PathNavigationRoutingGameTest {
         } catch (ReflectiveOperationException e) {
             throw new AssertionError("could not inspect PathNavigation.nodeEvaluator", e);
         }
+    }
+
+
+    /**
+     * Run {@code body} on the first tick the mob is genuinely in water, or fail saying it never was.
+     *
+     * <p>Bounded, so a genuinely dry mob still fails the suite rather than hanging it.
+     */
+    private static void pollUntilWaterborne(GameTestHelper helper, Mob swimmer, Runnable teardown,
+                                            Runnable body) {
+        helper.runAfterDelay(1, () -> {
+            try {
+                if (swimmer.isInWater()) {
+                    body.run();
+                } else if (swimmer.tickCount == 0) {
+                    // The cod is alive, unremoved, and standing in a water source, but the server
+                    // has never ticked it -- tickCount stays 0 for the full 200-tick budget in about
+                    // one clean build in twenty. Its in-water flag is cached and only refreshed
+                    // during an entity tick, and a water-bound navigation refuses to path at all
+                    // while that flag is false, so moveTo returned false and the failure read as a
+                    // broken gate. Ticking it here establishes the precondition the test needs
+                    // rather than waiting for a scheduler that may never get to it. Nothing about
+                    // the async assertions below is relaxed by this.
+                    swimmer.tick();
+                    pollUntilWaterborne(helper, swimmer, teardown, body);
+                } else if (helper.getTick() >= 200) {
+                    throw helper.assertionException("the cod never became waterborne, so the swim "
+                        + "proof could not start [pos=" + swimmer.blockPosition()
+                        + ", block=" + helper.getLevel().getBlockState(swimmer.blockPosition())
+                        + ", fluid=" + helper.getLevel().getFluidState(swimmer.blockPosition())
+                        + ", tickCount=" + swimmer.tickCount
+                        + ", alive=" + swimmer.isAlive() + ", removed=" + swimmer.isRemoved()
+                        + ", y=" + swimmer.getY() + "]");
+                } else {
+                    pollUntilWaterborne(helper, swimmer, teardown, body);
+                }
+            } catch (Throwable t) {
+                teardown.run();
+                throw t;
+            }
+        });
     }
 
     private static void pollUntil(GameTestHelper helper, long deadline, BooleanSupplier ready,
