@@ -85,6 +85,31 @@ Mean tick time fell **43.5% and 45.7%**; p99 fell **55–58%**. No overlap: both
 
 **These are not comparable to the figures published for 0.3.0.** During 0.4.0's development the mixin that isolates Minecraft's shared path-type cache from workers silently stopped applying, and a search reusing that already-populated shared cache runs faster than one filling a private cache. Every figure here was re-measured after that was fixed, on the exact release artifact rather than a close relative of it.
 
+### 0.3.0 against 0.4.0, same machine, adjacent runs
+
+0.4.0 moves each search's setup and teardown onto the server thread. That is work added back to the
+tick to buy four more mob families, and the obvious question is what it cost. Both artifacts were run
+through the identical sweep back to back, rather than comparing today's numbers to figures published
+weeks ago on a differently loaded machine:
+
+| | v0.3.0 (published artifact) | v0.4.0 |
+|---|---|---|
+| Asynchronous mean | 50.04 / 50.04 ms | **50.02 / 50.03 ms** |
+| Asynchronous p99 | 377 / 372 ms | 383 / 358 ms |
+| Searches dispatched | 55,266 / 54,424 | 55,793 / 57,717 |
+| Installed | 83.4% / 82.8% | 83.5% / 84.9% |
+
+**The two versions are indistinguishable, and that is the answer.** Hoisting the prologue and
+epilogue onto the server thread cost nothing measurable — four hundredths of a millisecond, well
+inside run-to-run noise. It is also worth being blunt about what that means in the other direction:
+**0.4.0 is not faster than 0.3.0.** This workload is 1024 zombies, which only exercises the walk
+search, and 0.3.0 already handled that completely. What 0.4.0 buys is the mob families 0.3.0 could
+not touch at all, not more speed on the ones it could.
+
+The percentage reductions differ between the two columns (46.5%/46.1% against 44.5%/45.7%) purely
+because the *synchronous* baselines differed by a couple of milliseconds. That is the spread warned
+about above, visible in a controlled comparison.
+
 **A caveat this file used to state incorrectly.** Earlier versions said *13.6–20.6% of dispatched searches were not installed in time*, which implied workers were returning results too late to be wanted. 0.4.0 splits the outcome counter by cause, and the measurement says otherwise:
 
 | Outcome | Pair 1 | Pair 2 |
