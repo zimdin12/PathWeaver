@@ -37,6 +37,31 @@ Foreign-mixin scan complete: scanned=…, failed=…, deniedFamilies=…
 
 `deniedFamilies=0` means PathWeaver is active. Any other value means it is partly or wholly inactive, and the preceding lines name each mod responsible.
 
+## How many of your mobs are actually eligible
+
+Two numbers from the same 222-mod pack, because only quoting the flattering one would be misleading:
+
+| Tier | Eligible mob types |
+|---|---|
+| `UNSAFE` | **187 of 187** (0.3.0 managed 163) |
+| `AUDITED` — the shipped default | **0 of 187** |
+
+The second number is not a regression and 0.4.0 does not improve it. Six mods in that pack — balm,
+carpet, expandability, ferritecore, scalablelux and sereneseasons — mix into pathfinding-adjacent
+code, so the scan denies every movement family and the mod does nothing. That has been true since
+0.3.0 and remains the honest ceiling on heavily-modded packs: **what limits PathWeaver is other mods
+touching block state, not which mobs it can handle.**
+
+Where the scan denies nothing — a lean pack, Fabric API and Lithium — the default admits everything,
+which is the configuration the benchmark below runs in.
+
+What 0.4.0 changed is the first row. The 24 types that were ineligible at the widest tier are now
+eligible: 12 amphibious, 8 flying, the frog's and the creaking's bespoke evaluators, and both spiders,
+which use stormiespiders' `AdvancedWalkNodeProcessor` — the first third-party evaluator this mod has
+ever actually dispatched.
+
+Run **`/pathweaver mobs`** for the same breakdown on your own pack.
+
 ## What we measured
 
 **The short version: PathWeaver's benefit is fewer tick spikes, not a higher average TPS.**
