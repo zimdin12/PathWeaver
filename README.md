@@ -12,7 +12,9 @@ See the [version-exact compatibility matrix](COMPATIBILITY.md) for audited verdi
 
 Minecraft runs mob A* path searches on the server thread. PathWeaver runs eligible ones on a small worker pool instead, so a server that is falling behind because of pathfinding can keep up.
 
-It only touches the exact vanilla `WalkNodeEvaluator` and `SwimNodeEvaluator` searches. Flying mobs, amphibious mobs and evaluator subclasses always stay synchronous. Mob classes added by mods also stay synchronous unless you opt in, either with `allowModdedMobAsync` or by choosing `compatibilityTier=ALL`, which implies it. It does not move entity ticking, collision, or AI goals off-thread.
+It touches every concrete vanilla evaluator: walking, swimming, flying, amphibious, and the frog's and creaking's. Third-party evaluator subclasses stay synchronous unless you choose `compatibilityTier=UNSAFE`. Mob classes added by mods also stay synchronous unless you opt in, either with `allowModdedMobAsync` or by choosing `UNSAFE`, which implies it. It does not move entity ticking, collision, or AI goals off-thread.
+
+Flying and amphibious mobs were excluded before 0.4.0, and the stated reason was wrong in an instructive way. Their evaluators do write to the live mob — but only in `prepare()` and `done()`, never in the search between them. Those two calls now run on the main thread, so the exclusion is gone rather than worked around.
 
 ## Will it actually do anything?
 
@@ -76,7 +78,7 @@ Mean tick time did not move, and that is the honest result rather than a disappo
 
 ### On a real modpack
 
-The four-mod environment isolates the effect but says nothing about a pack where 300+ mods transform the same classes. The same release jar, same load, on a **371-mod server-side derivative of a real pack** at `compatibilityTier=ALL`:
+The four-mod environment isolates the effect but says nothing about a pack where 300+ mods transform the same classes. The same release jar, same load, on a **371-mod server-side derivative of a real pack** at `compatibilityTier=ALL` (the tier now named `UNSAFE`):
 
 | Pair | Synchronous | With PathWeaver | p99 | Effective TPS |
 |---|---|---|---|---|
@@ -175,17 +177,19 @@ You can also edit `config/pathweaver.json`. **The exact keys differ between vers
   - **Farmer's Delight's stove**: one artifact's bytecode, read to show the world and position it receives are never loaded, plus a runtime check that nothing has transformed that class.
 
   All of them also add live block reads, so a search running while the world changes can return a worse path. Path quality under live mutation has not been measured.
-- **`ALL`** ignores the scan completely. This runs unaudited third-party code on a worker thread, which is the exact thing the scan exists to prevent. Failures are not limited to bad paths. Keep backups.
+- **`UNSAFE`** ignores the scan completely. This runs unaudited third-party code on a worker thread, which is the exact thing the scan exists to prevent. Failures are not limited to bad paths. Keep backups.
 
 `allowModdedMobAsync` is an advanced, genuinely unsafe override. It bypasses only the vanilla-origin mob check; every other gate still applies. Do not enable it unless you accept running unaudited mod code on a worker thread.
 
-`compatibilityTier=ALL` implies `allowModdedMobAsync`, because the origin gate is a compatibility check like any other. Leaving it armed under "ignore every check" kept most of a heavily-modded pack's mobs synchronous while the log reported that nothing was being checked. The separate flag remains the way to reach that bypass from `STRICT` or `AUDITED`.
+`compatibilityTier=UNSAFE` implies `allowModdedMobAsync`, because the origin gate is a compatibility check like any other. Leaving it armed under "ignore every check" kept most of a heavily-modded pack's mobs synchronous while the log reported that nothing was being checked. The separate flag remains the way to reach that bypass from `STRICT` or `AUDITED`.
 
 ## What is unproven
 
 - **Only the saturated-burst case has been measured at shipped defaults.** Realistic mob counts, mixed workloads and ordinary play remain unmeasured.
 - **No benefit measured at realistic mob counts or with mixed workloads.** The benchmark was almost entirely pathfinding, with all other mob AI stripped out.
-- **Path correctness is proven only in a static world.** Five Walk and Swim cases produced node-for-node identical paths to a synchronous oracle with the world held still, plus a 128-mob soak.
+- **Path correctness is proven only in a static world, and only for two of the six families.** Five Walk and Swim cases produced node-for-node identical paths to a synchronous oracle with the world held still, plus a 128-mob soak. **Flying, amphibious, frog and creaking searches have no equivalence evidence at all** — they became eligible in 0.4.0 and that oracle comparison has not been re-run for them. Their prologue and epilogue are argued safe from bytecode, not demonstrated by measurement.
+- **Flying searches deliberately do not reproduce vanilla's start node.** A worker draws its start candidate from thread-confined randomness instead of the mob's own, so an async flying search can begin from a different candidate than the synchronous one would have. Vanilla chooses that candidate arbitrarily, so both are valid — but they are not identical, and a path-equivalence test for flying mobs would have to compare reachability rather than nodes.
+- **The amphibious malus window is real.** Its evaluator's costs are applied to the mob at dispatch and restored at install, so for roughly one tick the mob carries search costs it would not have carried under vanilla. Only pathfinding is known to read them; nothing was measured to confirm nothing else does.
 - **Under live block changes we found no failures but did not check path quality.** Across 66,144 searches in three mod sets there was no crash, no search failure and no worker-pool failure. We did **not** compare the paths produced while blocks were changing, so stale or wrong paths during world mutation are simply not measured.
 - **Repath reuse has never shown a measurable benefit** in any run. It appears harmless; treat it as unproven, not as a speed-up.
 - **Mob behaviour under load.** Async paths install at least one tick later than synchronous ones. Nothing we ran checked whether mobs behave the same when a thousand of them are served asynchronously.

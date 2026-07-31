@@ -1,8 +1,66 @@
 # Changelog
 
+## 0.4.0 — Every vanilla mob, and counters that mean something
+
+_The tier named `ALL` below is called `UNSAFE` from this release. Entries for 0.3.0 and earlier keep
+the old name deliberately: they describe what those versions actually shipped._
+
+### Added
+
+- **Flying and amphibious mobs now path off-thread, along with the frog's and creaking's evaluators.
+  All six concrete vanilla evaluators are eligible.** The old exclusion said these evaluators mutate
+  the live mob during a search. They mutate it — but only in `prepare()` and `done()`, never in the
+  search between them: all five of the amphibious evaluator's `setPathfindingMalus` calls sit in
+  those two methods, and the flying evaluator's single `Mob.getRandom()` read is in start-node
+  selection. So the two ends now run on the main thread and the search keeps running on a worker. The
+  frog's and creaking's evaluators came along unchanged, touching the mob only through
+  `getBoundingBox`.
+- `/pathweaver status` and `/pathweaver mobs`, answering in-game which mob types can path off-thread
+  and, for each one that cannot, why. Diagnosing that previously meant building a throwaway probe
+  against the mod's internals.
+
+### Fixed
+
+- **The unsafe tier's evaluator-subclass waiver had never dispatched a single search.** The safety
+  gate admitted third-party subclasses; a table of callback counts then rejected them on exact class
+  identity, and a third check — the evaluator rebuilder — rejected them again. Every admitted
+  subclass built a region, cloned an evaluator, submitted to the pool, counted a dispatch, and
+  unwound to a synchronous search, invisibly, because the fallback is correct. The table is gone: the
+  epilogue is now the evaluator's own `done()`, and the rebuilder resolves a constructor shape rather
+  than naming classes.
+- **A foreign mixin into `WalkNodeEvaluator` denied only walking mobs.** Flying, amphibious, frog and
+  creaking evaluators all execute Walk's code, so they kept dispatching through exactly the code the
+  scan had objected to. Denials now match by inheritance.
+- **`discarded` was counting successful searches as waste.** It conflated at least eight outcomes,
+  including searches that ran to completion and correctly proved no route exists. Each outcome is now
+  counted separately, and the shutdown line and `/pathweaver status` report the breakdown. This also
+  explains why the adaptive admission controller attempted during 0.3.0 could never converge: it
+  steered on a ratio that mobs stopping normally held above target regardless of the admission bound.
+- Documentation claims falsified by the 0.3.0 tier rename, including a README line stating that
+  evaluator subclasses always stay synchronous and a compatibility-matrix line calling `STRICT` the
+  default. Historical measurement records keep the tier name they were measured under.
+
+### Changed
+
+- The modded-mob toggle is labelled unsafe again and no longer refers to a tier name that does not
+  exist. It waives exactly one gate, the mob-origin check; the unsafe tier waives three and includes
+  this one.
+- Game tests read the runtime's counters through public accessors instead of reflecting into a
+  private field, which is why renaming that field broke three of them at once.
+
+### Known gaps
+
+- **The four newly eligible families have no path-equivalence evidence.** The static-world oracle
+  comparison covers Walk and Swim only and has not been re-run. Their safety is argued from bytecode.
+- **Flying searches deliberately do not reproduce vanilla's start node**, because a worker draws from
+  thread-confined randomness rather than the mob's. Vanilla picks that candidate arbitrarily, so both
+  are valid, but they are not identical.
+- **Amphibious mobs carry their search costs for roughly one tick** rather than only during the
+  search, because the malus is applied at dispatch and restored at install.
+
 ## 0.3.0 — Compatibility tiers, audited exemptions, and the first shipped-config benchmark
 
-_Not yet published. The audits below are version-exact; see COMPATIBILITY.md._
+_Published to Modrinth as `YT7oDxzQ`. The audits below are version-exact; see COMPATIBILITY.md._
 
 ### Added
 
