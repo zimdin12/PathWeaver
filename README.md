@@ -58,7 +58,18 @@ Mean tick time fell **about 40%** — median 40.1%, mean 41.2%, range 36.2–48.
 
 **Read the spread, not the headline.** The async arm is strikingly stable (49–50 ms in all four runs, across two builds), while the *synchronous* baseline swings 78–96 ms depending on ambient machine load. A single pair therefore over- or under-states the gain by several points; an earlier revision of this table quoted 44.8% because it happened to be paired against the heaviest sync run. Quote the range.
 
-**The caveat that matters: at the shipped in-flight limit, 13.6–20.6% of dispatched searches were not installed within the capture window.** The harness records dispatches and installs and then halts, so it does not observe whether a straggler landed afterwards; read these as work not used in time, not as proven-discarded. Under this much load roughly one search in six is not making it back before it is wanted, which is the default doing real work at saturation rather than a tuned value.
+**A caveat this file used to state incorrectly.** Earlier versions said *13.6–20.6% of dispatched searches were not installed in time*, which implied workers were returning results too late to be wanted. 0.4.0 splits the outcome counter by cause, and the measurement says otherwise:
+
+| Outcome | Pair 1 | Pair 2 |
+|---|---|---|
+| Installed | 60,549 | 60,784 |
+| Cancelled before the result landed | 14,686 | 16,193 |
+| **Rejected as stale on arrival** | **0** | **0** |
+| Admission refused (ran synchronously instead) | 78,958 | 77,171 |
+
+So about **80% of dispatched searches install**, and the rest were **cancelled by the mob changing its mind, not delivered late** — in this workload every mob is retargeted every 6 ticks, and cancelling a navigation is what that does. Not one result was ever rejected for arriving too late.
+
+The number worth watching is the last row: at the shipped `maxInFlight=256`, **admission refused more requests than it accepted.** Those are not wasted — they run synchronously on the tick exactly as they would without this mod — but it does mean the in-flight limit, not worker speed, is the binding constraint under a burst this heavy.
 
 This is still a synthetic burst with all other mob AI stripped out. It shows what happens when pathfinding alone overloads the server; it is not a measurement of ordinary play.
 
@@ -87,7 +98,9 @@ The four-mod environment isolates the effect but says nothing about a pack where
 | 1 | 99.4 ms | **49.9 ms** (−49.8%) | 893 → **353 ms** | 10.1 → **20.0** |
 | 2 | 90.9 ms | **61.5 ms** (−32.3%) | 815 → **449 ms** | 11.0 → **16.3** |
 
-Mean reduction **41%**, which lands on the same number as the isolated environment. But the spread is much wider, and the reason is visible in how much work went unused: **13.4% of dispatches were not installed within the capture window in the first pair, and 38.0% in the second**. On a busy pack the workers contend with everything else the pack is doing, so more results arrive too late to be wanted. The second pair could not reach 20 TPS at all.
+Mean reduction **41%**, which lands on the same number as the isolated environment. But the spread is much wider, and the difference shows up as work that went unused: **13.4% of dispatches were not installed within the capture window in the first pair, and 38.0% in the second.** The second pair could not reach 20 TPS at all.
+
+These two pairs predate the split outcome counter, so "not installed" here is the old conflated number and its causes were never separated. In the four-mod environment, where they have been separated, the same figure turned out to be cancellations rather than late arrivals. Do not assume that carries over to a busy pack — it has not been measured there.
 
 Take from this that the *shape* of the win holds at pack scale — large p99 reduction, no overlap between arms — while the *size* of it is less predictable than the isolated benchmark suggests.
 
