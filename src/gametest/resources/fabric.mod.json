@@ -13,8 +13,7 @@
     ],
     "fabric-gametest": [
       "dev.pathweaver.gametest.PathNavigationRoutingGameTest",
-      "dev.pathweaver.gametest.AuditedCompatibilityRoutingGameTest",
-      "dev.pathweaver.gametest.NewEvaluatorFamilyRoutingGameTest"
+      "dev.pathweaver.gametest.AuditedCompatibilityRoutingGameTest"
     ]
   },
   "depends": {

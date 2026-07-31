@@ -46,8 +46,7 @@ public final class NewEvaluatorFamilyRoutingGameTest {
     public void flyingAndAmphibiousMobsDispatchAndGetTheirMalusBack(GameTestHelper helper) {
         Scenario[] scenario = new Scenario[1];
         helper.onEachTick(() -> {
-            // Let the registered routing tests finish with the shared config and gate first.
-            if (helper.getTick() < 480) return;
+            if (helper.getTick() < 40) return;
             if (scenario[0] == null) scenario[0] = new Scenario(helper);
             scenario[0].tick();
         });
@@ -67,7 +66,6 @@ public final class NewEvaluatorFamilyRoutingGameTest {
         private long installBefore;
         private int stage;
         private boolean cleaned;
-        private java.util.Set<Class<?>> oldDenials = java.util.Set.of();
 
         Scenario(GameTestHelper helper) {
             this.helper = helper;
@@ -88,13 +86,13 @@ public final class NewEvaluatorFamilyRoutingGameTest {
         }
 
         private void begin() {
-            // This JVM's own test mixin config targets pathfinding, so the scan denies every family
-            // here by design. Clearing the denials isolates what this test is about — whether the
-            // allowlist admits these two families at all — from what the scan decided about this
-            // particular JVM. The sibling routing tests do the same for the same reason.
+            // This harness declares no mixin config, so nothing is denied and nothing here needs to
+            // touch the shared denial set. That matters: mutating it concurrently with the long
+            // routing test is what made the default gate flaky when this test lived there.
             synchronized (SafetyGate.deniedBySafety) {
-                oldDenials = java.util.Set.copyOf(SafetyGate.deniedBySafety);
-                SafetyGate.deniedBySafety.clear();
+                check(SafetyGate.deniedBySafety.isEmpty(),
+                    "this harness must deny nothing; it declares no sensitive mixin: "
+                        + SafetyGate.deniedBySafety);
             }
             check(SafetyGate.isAllowed(FlyNodeEvaluator.class),
                 "the flying evaluator must be admitted once its randomness is thread-confined");
@@ -201,7 +199,7 @@ public final class NewEvaluatorFamilyRoutingGameTest {
             boolean settled = !PathWeaverRuntime.get().entitySink().isRegistered(amphibian.getId())
                 && !PathWeaverRuntime.get().entitySink().isRegistered(flyer.getId());
             if (!settled) {
-                if (helper.getTick() >= 940) {
+                if (helper.getTick() >= 800) {
                     throw helper.assertionException("a new-family request never reached a terminal "
                         + "state; installed=" + (counter("installed") - installBefore));
                 }
@@ -226,10 +224,6 @@ public final class NewEvaluatorFamilyRoutingGameTest {
             cfg.enabled = oldEnabled;
             cfg.allowModdedMobAsync = oldModded;
             cfg.repathToleranceBlocks = oldTolerance;
-            synchronized (SafetyGate.deniedBySafety) {
-                SafetyGate.deniedBySafety.clear();
-                SafetyGate.deniedBySafety.addAll(oldDenials);
-            }
         }
 
         private void check(boolean condition, String message) {

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "pathweaver_gametest_new_family",
+  "version": "1.0.0",
+  "name": "PathWeaver New Evaluator Family Game Test",
+  "environment": "server",
+  "entrypoints": {
+    "fabric-gametest": [
+      "dev.pathweaver.gametest.NewEvaluatorFamilyRoutingGameTest"
+    ]
+  },
+  "depends": {
+    "fabric-gametest-api-v1": "*",
+    "pathweaver": "*"
+  }
+}

@@ -203,6 +203,34 @@ tasks.named("processGametestResources") {
 // The M1 Rabbit worker probe is itself a sensitive PathNavigation mixin. The aggregate-Fabric
 // stock-gate witness therefore runs in a second, explicit harness with no test mixins; otherwise
 // the observer changes the production scanner decision it is meant to measure.
+// The flying/amphibious witness runs alone.
+//
+// It was briefly registered in the default harness and made that gate flaky: game tests share one
+// server, one PathWeaverConfig and one SafetyGate denial set, and a fourth test mutating those
+// concurrently with the 1400-tick routing test broke it in two different places on clean builds.
+// Two clean builds passed without it and two failed with it, so this is not cold-start noise.
+//
+// Like the aggregate harness, this one declares no mixin config, so the scan denies nothing and the
+// test needs no denial mutation at all -- the coupling is removed rather than merely scheduled
+// around.
+if (providers.gradleProperty("newFamilyHarness").isPresent()) {
+    tasks.register("prepareNewFamilyGameTestHarness") {
+        dependsOn tasks.named("processGametestResources")
+        outputs.upToDateWhen { false }
+        doLast {
+            copy {
+                from file("src/gametest/newFamilyResources/fabric.mod.json")
+                into layout.buildDirectory.dir("resources/gametest")
+            }
+            delete layout.buildDirectory.file(
+                "resources/gametest/pathweaver-gametest.mixins.json")
+        }
+    }
+    tasks.named("runGameTest") {
+        dependsOn tasks.named("prepareNewFamilyGameTestHarness")
+    }
+}
+
 if (providers.gradleProperty("fabricAggregateHarness").isPresent()) {
     tasks.register("prepareFabricAggregateGameTestHarness") {
         dependsOn tasks.named("processGametestResources")
