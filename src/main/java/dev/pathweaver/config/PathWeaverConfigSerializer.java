@@ -78,6 +78,7 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
                 throw new IllegalArgumentException("unsupported configVersion " + version);
             }
 
+            migrateRenamedTier(current);
             validateCurrentFieldTypes(current);
             migrateCompatibilityTier(current);
             current.remove("asyncEnabled");
@@ -142,7 +143,7 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
     /**
      * Carry the retired {@code overrideCompatibilityScan} boolean onto the tier it became.
      *
-     * <p>{@code true} was an explicit all-or-nothing bypass and maps to {@link CompatibilityTier#ALL},
+     * <p>{@code true} was an explicit all-or-nothing bypass and maps to {@link CompatibilityTier#UNSAFE},
      * because mapping a deliberate loosening onto a stricter tier would silently override a choice
      * the operator made.
      *
@@ -160,7 +161,24 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
         raw.remove("overrideCompatibilityScan");
         if (raw.has("compatibilityTier")) return;
         raw.addProperty("compatibilityTier",
-            (override ? CompatibilityTier.ALL : new PathWeaverConfig().compatibilityTier).name());
+            (override ? CompatibilityTier.UNSAFE : new PathWeaverConfig().compatibilityTier).name());
+    }
+
+    /**
+     * Configs written before the tier was renamed persist {@code ALL}.
+     *
+     * <p>It was renamed because it did not mean all: the tier waives every question about other
+     * mods' code, but never the two vanilla evaluators that write to the mob mid-search. Rejecting
+     * the old spelling would fail closed on upgrade and silently switch the mod off for exactly the
+     * operators who had opted furthest in, so it is rewritten in place instead.
+     */
+    private static void migrateRenamedTier(JsonObject raw) {
+        if (!raw.has("compatibilityTier")) return;
+        JsonElement element = raw.get("compatibilityTier");
+        if (element instanceof JsonPrimitive primitive && primitive.isString()
+                && "ALL".equals(primitive.getAsString())) {
+            raw.addProperty("compatibilityTier", CompatibilityTier.UNSAFE.name());
+        }
     }
 
     private static void strictOptionalEnum(JsonObject raw, String key) {

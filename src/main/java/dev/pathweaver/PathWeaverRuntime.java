@@ -79,7 +79,7 @@ public final class PathWeaverRuntime {
                 c.moddedMobAsyncAllowed()
                     ? (c.allowModdedMobAsync
                         ? "explicitly allowed (unsafe override)"
-                        : "allowed by compatibilityTier=ALL (unsafe)")
+                        : "allowed by compatibilityTier=UNSAFE")
                     : "synchronous");
         }
     }

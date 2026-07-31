@@ -244,7 +244,7 @@ public final class FabricAggregateWalkRoutingGameTest {
             // denials stayed as they were, which let a session started at ALL keep dispatching
             // after being saved to STRICT. Assert the write is inert rather than that it works.
             CompatibilityTier previousTier = cfg.compatibilityTier;
-            cfg.compatibilityTier = CompatibilityTier.ALL;
+            cfg.compatibilityTier = CompatibilityTier.UNSAFE;
             try {
                 navigation.stop();
                 long beforeAll = counter("dispatched");

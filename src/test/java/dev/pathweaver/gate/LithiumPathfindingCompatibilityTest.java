@@ -104,8 +104,8 @@ class LithiumPathfindingCompatibilityTest {
         assertTrue(CompatibilityTier.AUDITED.allowsAudited());
         assertFalse(CompatibilityTier.AUDITED.bypassesScan(),
             "AUDITED must still enforce the scan for everything it has not audited");
-        assertTrue(CompatibilityTier.ALL.allowsAudited());
-        assertTrue(CompatibilityTier.ALL.bypassesScan());
+        assertTrue(CompatibilityTier.UNSAFE.allowsAudited());
+        assertTrue(CompatibilityTier.UNSAFE.bypassesScan());
     }
 
     /**

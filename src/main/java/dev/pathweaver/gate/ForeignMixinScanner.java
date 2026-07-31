@@ -734,7 +734,7 @@ public final class ForeignMixinScanner {
             Set<Class<?>> overridden = Set.copyOf(SafetyGate.deniedBySafety);
             SafetyGate.replaceDenials(Set.of());
             PathWeaver.LOG.warn("=========================== PathWeaver ===========================");
-            PathWeaver.LOG.warn("compatibilityTier=ALL. The compatibility scan denied {}", overridden);
+            PathWeaver.LOG.warn("compatibilityTier=UNSAFE. The compatibility scan denied {}", overridden);
             PathWeaver.LOG.warn("and that denial has been IGNORED at your request. Path searches will");
             PathWeaver.LOG.warn("now run on worker threads alongside the mods listed above, whose code");
             PathWeaver.LOG.warn("has not been audited for thread safety. Use worlds you can afford to");

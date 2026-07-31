@@ -120,7 +120,7 @@ class PathWeaverConfigSerializerTest {
 
     @Test void retiredOverrideTrueBecomesTheAllTier() throws Exception {
         assertTier("{\"configVersion\":2,\"enabled\":true,\"overrideCompatibilityScan\":true}",
-            CompatibilityTier.ALL);
+            CompatibilityTier.UNSAFE);
     }
 
     /**
@@ -142,8 +142,18 @@ class PathWeaverConfigSerializerTest {
     @Test void absentTierTakesTheShippedDefaultAndNothingWider() throws Exception {
         CompatibilityTier shipped = new PathWeaverConfig().compatibilityTier;
         assertTier("{\"configVersion\":2,\"enabled\":true}", shipped);
-        assertNotSame(CompatibilityTier.ALL, shipped,
+        assertNotSame(CompatibilityTier.UNSAFE, shipped,
             "a missing tier must never inherit the tier that disables every check");
+    }
+
+    /**
+     * The tier was renamed because "ALL" claimed a completeness it never had. Rejecting the old
+     * spelling would fail closed on upgrade, switching the mod off for the operators who had opted
+     * furthest in -- the opposite of what they asked for.
+     */
+    @Test void theRetiredAllSpellingMigratesToUnsafeRatherThanFailingClosed() throws Exception {
+        assertTier("{\"configVersion\":2,\"enabled\":true,\"compatibilityTier\":\"ALL\"}",
+            CompatibilityTier.UNSAFE);
     }
 
     /** An unreadable tier must fail closed, not silently fall back to a permissive value. */
@@ -163,7 +173,7 @@ class PathWeaverConfigSerializerTest {
         serializer.serialize(migrated);
         String saved = Files.readString(path);
         assertFalse(saved.contains("overrideCompatibilityScan"), saved);
-        assertEquals(CompatibilityTier.ALL,
+        assertEquals(CompatibilityTier.UNSAFE,
             new PathWeaverConfigSerializer(path).deserialize().compatibilityTier);
     }
 

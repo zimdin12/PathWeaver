@@ -56,7 +56,7 @@ public class PathWeaverConfig implements ConfigData {
      * this mod can actually demonstrate today; it is stated plainly in the settings screen and the
      * README rather than hidden behind a reassuring word.
      */
-    @ConfigEntry.Gui.Tooltip(count = 5)
+    @ConfigEntry.Gui.Tooltip(count = 6)
     @ConfigEntry.Category("general")
     @ConfigEntry.Gui.RequiresRestart
     @ConfigEntry.Gui.EnumHandler(option = ConfigEntry.Gui.EnumHandler.EnumDisplayOption.DROPDOWN)
@@ -137,7 +137,7 @@ public class PathWeaverConfig implements ConfigData {
     /**
      * True when a mob defined by a mod may path off-thread.
      *
-     * <p>{@link CompatibilityTier#ALL} implies this. The origin gate is a compatibility check like
+     * <p>{@link CompatibilityTier#UNSAFE} implies this. The origin gate is a compatibility check like
      * any other — it refuses mod-defined mob classes because their navigation overrides have not
      * been inspected — so leaving it armed under "ignore every check" kept most of a heavily-modded
      * pack's mobs synchronous while reporting that nothing was being checked. The dedicated flag is

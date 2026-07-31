@@ -44,12 +44,19 @@ public enum CompatibilityTier implements SelectionListEntry.Translatable {
      * Ignore the compatibility scan entirely and run off-thread regardless of what modified
      * pathfinding.
      *
+     * <p>Named for what it does rather than for everything it might be assumed to do. It waives the
+     * compatibility scan and the evaluator allowlist for third-party subclasses, which is every
+     * question about <em>other mods'</em> code. It does not waive the two vanilla evaluators that
+     * write to the mob during a search — flying and amphibious stay synchronous here too, because
+     * that is a race with zero mods installed and no setting can make it safe. Calling this tier
+     * "all" implied a completeness it does not have.
+     *
      * <p>This runs unaudited third-party code on a worker thread, which is the exact thing the
      * scan exists to prevent. Nothing here has been proven about thread-safety, and a failure mode
      * is not limited to a bad path — it can be a crash or a corrupted world. For experimentation
      * on worlds you can afford to lose. Keep backups.
      */
-    ALL;
+    UNSAFE;
 
     /** True when audited-but-not-proven-inert exemptions may be honoured. */
     public boolean allowsAudited() {
@@ -58,7 +65,7 @@ public enum CompatibilityTier implements SelectionListEntry.Translatable {
 
     /** True when the compatibility scan is bypassed outright. */
     public boolean bypassesScan() {
-        return this == ALL;
+        return this == UNSAFE;
     }
 
     /**
