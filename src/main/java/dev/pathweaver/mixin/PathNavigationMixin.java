@@ -395,11 +395,11 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // Scoped so the context this builds is isolated from the level's shared PathTypeCache:
             // the worker about to use it writes through that cache, and PathfindingContextMixin
             // decides by asking whether the search runs off-thread, not which thread is running.
-            dev.pathweaver.async.PathWeaverThread.enterAsyncPrologue();
+            boolean outerPrologue = dev.pathweaver.async.PathWeaverThread.enterAsyncPrologue();
             try {
                 freshEval.prepare(region, theMob);
             } finally {
-                dev.pathweaver.async.PathWeaverThread.exitAsyncPrologue();
+                dev.pathweaver.async.PathWeaverThread.exitAsyncPrologue(outerPrologue);
             }
             sink.armEpilogue(submittedKey, freshEval);
 

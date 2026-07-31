@@ -66,13 +66,24 @@ public final class PathWeaverThread {
         return WORKER.get() || PREPARING_FOR_WORKER.get();
     }
 
-    /** Scope the prologue the main thread runs on a worker's behalf. Always paired in a finally. */
-    public static void enterAsyncPrologue() {
+    /**
+     * Scope the prologue the main thread runs on a worker's behalf. Always paired in a finally.
+     *
+     * <p>Saves and restores rather than sets and clears. A prologue calls {@code onPathfindingStart}
+     * on the live mob, which a mod may override, and an override that starts another mob navigating
+     * would nest a second prologue inside the first. Clearing the flag on the inner exit would leave
+     * the outer search building shared-cache-backed state again — the same silent failure this flag
+     * exists to prevent, reachable only through third-party code and therefore only in the packs
+     * least likely to report it.
+     */
+    public static boolean enterAsyncPrologue() {
+        boolean previous = PREPARING_FOR_WORKER.get();
         PREPARING_FOR_WORKER.set(Boolean.TRUE);
+        return previous;
     }
 
-    public static void exitAsyncPrologue() {
-        PREPARING_FOR_WORKER.set(Boolean.FALSE);
+    public static void exitAsyncPrologue(boolean previous) {
+        PREPARING_FOR_WORKER.set(previous);
     }
 
     /** The calling worker's own randomness. Never call from the main thread; use the mob's own. */

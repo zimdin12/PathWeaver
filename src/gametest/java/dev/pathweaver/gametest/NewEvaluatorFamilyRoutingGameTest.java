@@ -168,12 +168,12 @@ public final class NewEvaluatorFamilyRoutingGameTest {
         private void assertPrologueIsolatesTheSharedCache() {
             Object shared = helper.getLevel().getPathTypeCache();
 
-            dev.pathweaver.async.PathWeaverThread.enterAsyncPrologue();
+            boolean outer = dev.pathweaver.async.PathWeaverThread.enterAsyncPrologue();
             Object confined;
             try {
                 confined = cacheOf(new PathfindingContext(helper.getLevel(), amphibian));
             } finally {
-                dev.pathweaver.async.PathWeaverThread.exitAsyncPrologue();
+                dev.pathweaver.async.PathWeaverThread.exitAsyncPrologue(outer);
             }
             check(confined != null && confined != shared,
                 "a context built for a worker took the level's SHARED PathTypeCache; the worker "
