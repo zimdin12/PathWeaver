@@ -193,13 +193,40 @@ public final class PathWeaverCommand {
 
     private static MobEligibility.Verdict verdictFor(Mob mob, boolean moddedAllowed) {
         try {
-            NodeEvaluator evaluator = evaluatorOf(mob.getNavigation());
+            PathNavigation navigation = mob.getNavigation();
+            NodeEvaluator evaluator = evaluatorOf(navigation);
             return MobEligibility.of(mob.getClass(),
-                evaluator == null ? null : evaluator.getClass(), moddedAllowed);
+                evaluator == null ? null : evaluator.getClass(),
+                pathFinderOf(navigation), moddedAllowed);
         } catch (Throwable failed) {
             return new MobEligibility.Verdict(false,
                 "could not be inspected (" + failed.getClass().getSimpleName() + ")");
         }
+    }
+
+    /**
+     * The PathFinder the navigation really holds, read from the field dispatch checks.
+     *
+     * <p>Returns null when it cannot be read, which {@link MobEligibility} treats as "not inspected"
+     * rather than as a refusal — a diagnostic that cannot see a field should not invent a verdict.
+     */
+    private static Class<?> pathFinderOf(PathNavigation navigation) {
+        for (Class<?> type = navigation.getClass(); type != null; type = type.getSuperclass()) {
+            for (Field field : type.getDeclaredFields()) {
+                if (!net.minecraft.world.level.pathfinder.PathFinder.class
+                        .isAssignableFrom(field.getType())) {
+                    continue;
+                }
+                try {
+                    field.setAccessible(true);
+                    Object value = field.get(navigation);
+                    return value == null ? null : value.getClass();
+                } catch (ReflectiveOperationException | RuntimeException unreadable) {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     /** Read the evaluator the search would really use, rather than guessing from the mob type. */

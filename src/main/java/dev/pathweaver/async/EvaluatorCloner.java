@@ -82,10 +82,33 @@ public final class EvaluatorCloner {
     };
 
     private static Rebuilder resolve(Class<?> type) {
+        // Throwable, not Exception. getDeclaredConstructors()/getDeclaredFields() throw
+        // NoClassDefFoundError -- an Error, not an exception -- when a parameter or field type comes
+        // from a soft dependency the user did not install. ClassValue.get propagates it, and this is
+        // reached from SafetyGate.isAllowed BEFORE the dispatch path's protective try, so the Error
+        // left the safety gate and killed the entity tick. A gate whose failure mode is a server
+        // crash is worse than the risk it screens for; an unresolvable evaluator simply cannot be
+        // rebuilt, which is already a refusal.
+        try {
+            return resolveOrThrow(type);
+        } catch (Throwable unresolvable) {
+            return null;
+        }
+    }
+
+    private static Rebuilder resolveOrThrow(Class<?> type) {
         Constructor<?> noArgs = declaredConstructor(type);
-        if (noArgs != null) return src -> (NodeEvaluator) noArgs.newInstance();
+        // Only when nothing else needs configuring. A subclass that keeps its own state and also
+        // offers a convenience no-arg constructor would otherwise be rebuilt with that constructor's
+        // defaults rather than the mob's actual settings -- so the async search would use one
+        // configuration and every synchronous fallback another, for the same mob.
+        if (noArgs != null && !hasUnaccountedState(type)) {
+            return src -> (NodeEvaluator) noArgs.newInstance();
+        }
 
         Constructor<?>[] all = type.getDeclaredConstructors();
+        Constructor<?> match = null;
+        Field matchSource = null;
         for (Constructor<?> candidate : all) {
             if (candidate.getParameterCount() != 1) continue;
             Class<?> parameter = candidate.getParameterTypes()[0];
@@ -95,15 +118,44 @@ public final class EvaluatorCloner {
                 : soleFieldOfType(type, parameter);
             if (source == null) continue;
 
-            try {
-                candidate.setAccessible(true);
-                source.setAccessible(true);
-            } catch (RuntimeException inaccessible) {
-                continue;
-            }
-            return src -> (NodeEvaluator) candidate.newInstance(source.get(src));
+            // Refuse ambiguity the same way soleMatch already refuses it for fields.
+            // getDeclaredConstructors() has no specified order, so with two resolvable single-argument
+            // constructors the winner could differ between JVM runs -- and the loser's field would be
+            // left at its default, cached in the ClassValue for the rest of the process.
+            if (match != null) return null;
+            match = candidate;
+            matchSource = source;
         }
-        return null;
+        if (match == null) return noArgs == null ? null : src -> (NodeEvaluator) noArgs.newInstance();
+
+        try {
+            match.setAccessible(true);
+            matchSource.setAccessible(true);
+        } catch (RuntimeException inaccessible) {
+            return null;
+        }
+        final Constructor<?> chosen = match;
+        final Field chosenSource = matchSource;
+        return src -> (NodeEvaluator) chosen.newInstance(chosenSource.get(src));
+    }
+
+    /**
+     * Whether the class declares instance state below {@code NodeEvaluator} that a no-arg rebuild
+     * would silently default.
+     *
+     * <p>The copied flags ({@code canPassDoors} and friends) live on {@code NodeEvaluator} and above,
+     * so anything declared below it is state this cloner does not carry across.
+     */
+    private static boolean hasUnaccountedState(Class<?> type) {
+        for (Class<?> level = type; level != null && level != NodeEvaluator.class;
+                level = level.getSuperclass()) {
+            for (Field field : level.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) continue;
+                if (field.isSynthetic()) continue;   // the implicit outer reference of an inner class
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Constructor<?> declaredConstructor(Class<?> type) {

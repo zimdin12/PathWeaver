@@ -31,19 +31,20 @@ class CertifiedLandProvidersTest {
      * asserted in {@code FabricAggregateWalkRoutingGameTest}, which runs inside a real server, so
      * skipping here never leaves the behaviour unverified.
      */
+    /**
+     * These need real {@code Blocks}. They used to boot them here behind an
+     * {@code Assumptions.assumeTrue}, which meant that when an earlier test class poisoned
+     * {@code Blocks}' static initialiser, all seven of these skipped and the suite still reported
+     * green. Booting is now a session-level concern
+     * ({@link dev.pathweaver.testsupport.MinecraftBootstrapListener}) that runs before any test class
+     * is loaded, and this asserts rather than assumes: if the registries are missing, these tests are
+     * unverified and must say so in red.
+     */
     @BeforeAll
     static void bootMinecraftRegistries() {
-        boolean booted;
-        try {
-            net.minecraft.SharedConstants.tryDetectVersion();
-            net.minecraft.server.Bootstrap.bootStrap();
-            Blocks.STONE.getStateDefinition().getPossibleStates();
-            booted = true;
-        } catch (Throwable unavailable) {
-            booted = false;
-        }
-        Assumptions.assumeTrue(booted,
-            "Minecraft block registries unavailable in this JVM; covered by the live game test");
+        dev.pathweaver.testsupport.MinecraftBootstrapListener.bootOnce();
+        assertFalse(Blocks.STONE.getStateDefinition().getPossibleStates().isEmpty(),
+            "block registries are empty, so nothing below is actually being certified");
     }
 
     @BeforeEach

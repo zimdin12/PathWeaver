@@ -68,6 +68,35 @@ class ForeignMixinScannerTest {
         assertEquals(1, decision.failed());
     }
 
+    @Test void noTierMayWaiveDenialsThatCameFromAFailedScan() {
+        // The tier waives what the scan found. It must not waive the scan being unable to look.
+        //
+        // Before this rule existed, the UNSAFE branch cleared the denial set unconditionally --
+        // and decide() converts any failure into a blanket denial, so every fail-closed path in the
+        // scanner terminated in ALLOW on a stock install. Worse than the wrong answer was the
+        // reporting: blockingModIds() is built only from configs that were read successfully, so the
+        // warning block whose entire purpose is to name what you are running unaudited would have
+        // named nothing at all, because the cause was a malfunction rather than a mod.
+        ForeignMixinScanner.ScanDecision failed = ForeignMixinScanner.decide(
+            List.of(), List.of("unreadable fabric.mod.json"));
+        assertEquals(1, failed.failed());
+        assertFalse(ForeignMixinScanner.tierMayWaiveDenials(failed),
+            "a scan that failed cannot be waived by any tier, including UNSAFE");
+
+        ForeignMixinScanner.ScanDecision clean = ForeignMixinScanner.decide(
+            List.of(config("ferritecore")), List.of());
+        assertEquals(0, clean.failed());
+        assertEquals(SafetyGate.allowlisted(), clean.denied(), "this fixture must really deny");
+        assertTrue(ForeignMixinScanner.tierMayWaiveDenials(clean),
+            "an ordinary denial is exactly what the tier exists to waive");
+    }
+
+    private static ForeignMixinScanner.ActiveConfig config(String modId) {
+        return new ForeignMixinScanner.ActiveConfig(modId, "1.0.0", modId + ".mixins.json",
+            Set.of(new ForeignMixinScanner.TargetClaim(modId + ".SomeMixin",
+                "net.minecraft.world.level.pathfinder.PathFinder")), false);
+    }
+
     @Test void activePluginTargetsAreEvaluatedLikeStaticMixins() {
         ForeignMixinScanner.ActiveConfig pluginConfig = new ForeignMixinScanner.ActiveConfig(
             "foreign", "1.0", "foreign.mixins.json",

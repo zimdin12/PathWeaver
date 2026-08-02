@@ -117,6 +117,46 @@
   admitted — a stale home position only shifts the 1024-block cutoff against a slightly old anchor —
   but that is a judgement, and stating it as the absence of a read was wrong.
 
+### Fixed (the safety gate)
+
+- **A scan *failure* is no longer waivable by the tier.** `decide` converts any failure into a blanket
+  denial of every family, and the `Unsafe` branch cleared the denial set unconditionally — so an
+  unreadable `fabric.mod.json`, two mods claiming one config name, Mixin internals drifting, or a
+  declared config that never prepared all terminated in ALLOW on a stock install. Thirteen
+  fail-closed paths, every one of them ending in "run anyway". The reporting made it worse: the
+  warning block names mods from configs that were read *successfully*, so a pack denied purely by a
+  scanner malfunction would have been told nothing was responsible. The tier waives what the scan
+  found; it does not waive the scan being unable to look.
+- **`EvaluatorCloner` no longer guesses between constructors, and no longer prefers a no-arg
+  constructor over the mob's actual configuration.** `getDeclaredConstructors()` has no specified
+  order, so a third-party evaluator with two resolvable single-argument constructors could be rebuilt
+  differently between JVM runs, with the loser's field left at its default and the result cached for
+  the process lifetime. Ambiguity is now refused, the same way field ambiguity already was. Separately,
+  a subclass keeping its own state *and* offering a convenience no-arg constructor was rebuilt with
+  that constructor's defaults — so an async search used one configuration and every synchronous
+  fallback another, for the same mob.
+- **`canClone` can no longer throw out of the safety gate.** `getDeclaredConstructors()` and
+  `getDeclaredFields()` raise `NoClassDefFoundError` — an `Error`, not an exception — when a parameter
+  or field type comes from a soft dependency the user did not install. It propagated through
+  `ClassValue`, past `SafetyGate.isAllowed`, and out of the entity tick, before the dispatch path's
+  protective `try`. A gate whose failure mode is a server crash is worse than the risk it screens for.
+
+### Known limitation (documented, not fixed)
+
+- **`SHARED_PATHFINDING_TARGETS` is incomplete, and its javadoc no longer claims otherwise.** It
+  listed `PathNavigationRegion` but not the tail of the block read — `LevelChunk`,
+  `LevelChunkSection`, `PalettedContainer`, `BlockGetter`. On an ordinary performance pack that is not
+  hypothetical: Lithium `@Overwrite`s `LevelChunk.getBlockState`, Lithium and FerriteCore both replace
+  `PalettedContainer`'s threading detector, and ServerCore mixes into `BlockGetter` through a config
+  whose bytes this project already pins — so the audit read the file and looked past the target.
+
+  Adding those classes was tried and measured: it makes `AUDITED` deny every family on any pack
+  containing Lithium, because Lithium's chunk mixins sit outside its pinned pathfinding exemption.
+  That is the gate working correctly, and it is a product decision rather than a bug fix, so it is
+  recorded rather than half-done. The shipped default waives this list wholesale, so the gap changes
+  nothing out of the box; it matters to an operator who chose `AUDITED` believing it covered the whole
+  read path, which is precisely why the completeness claim had to go.
+
 ### Notes
 
 - **Reviewed and deliberately NOT changed:** the supersede at `recomputePath`'s `canUpdatePath()`

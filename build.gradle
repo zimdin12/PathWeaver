@@ -36,7 +36,9 @@ dependencies {
     testRuntimeOnly("com.terraformersmc:modmenu:${mod_menu_version}") { transitive false }
 
     testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"
-    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+    // Compile-time too, not just runtime: MinecraftBootstrapListener implements
+    // LauncherSessionListener so Minecraft's registries boot before the first test class is loaded.
+    testImplementation "org.junit.platform:junit-platform-launcher:1.10.2"
     // Exact audited artifacts used by compatibility fingerprint/ASM-shape tests.
     testRuntimeOnly "maven.modrinth:servercore:1.5.19+26.1.2"
     testRuntimeOnly "maven.modrinth:rabbit-pathfinding-fix:1.3.0"
@@ -240,6 +242,29 @@ java {
 
 test {
     useJUnitPlatform()
+
+    // Fail the build on a skipped test.
+    //
+    // CertifiedLandProvidersTest booted Minecraft's registries in its own @BeforeAll behind an
+    // Assumptions.assumeTrue, so that a JVM without them would skip rather than go red. Run alone it
+    // passed 7/7; run in the suite it skipped 7/7, because an earlier class had already poisoned
+    // Blocks' static initialiser -- and the suite reported success either way, for as long as anyone
+    // had been quoting the test count. A skip that nobody reads is indistinguishable from coverage.
+    //
+    // If a genuine skip is ever needed, this has to be relaxed deliberately, which is the point.
+    def skipped = []
+    afterTest { desc, result ->
+        if (result.resultType.toString() == 'SKIPPED') {
+            skipped << "${desc.className}.${desc.name}"
+        }
+    }
+    doLast {
+        if (!skipped.isEmpty()) {
+            throw new GradleException("${skipped.size()} test(s) were skipped, which this build "
+                + "treats as a failure because a silent skip already cost this project seven "
+                + "tests: " + skipped.join(", "))
+        }
+    }
 }
 
 // The harness blocks below overwrite the generated game-test manifest in place. Gradle would

@@ -102,6 +102,46 @@ class MobEligibilityTest {
         }
     }
 
+    /**
+     * The diagnostic must refuse a mod-supplied PathFinder, because dispatch does.
+     *
+     * <p>This is the second time a gate was added to dispatch and not to this class. The first was
+     * the evaluator-subclass check; this one arrived with the PathFinder identity gate and made
+     * `/pathweaver mobs` able to call a mob eligible that dispatch declines — which is worse than no
+     * diagnostic, because the README points at this command as the way to reproduce the eligibility
+     * numbers it publishes.
+     */
+    @Test
+    void aModSuppliedPathFinderIsRefusedJustAsDispatchRefusesIt() {
+        MobEligibility.Verdict vanilla = MobEligibility.of(
+            Mob.class, WalkNodeEvaluator.class,
+            net.minecraft.world.level.pathfinder.PathFinder.class, false);
+        assertTrue(vanilla.eligible(), "a stock navigation must stay eligible: " + vanilla.reason());
+
+        MobEligibility.Verdict modded = MobEligibility.of(
+            Mob.class, WalkNodeEvaluator.class, ForeignPathFinder.class, false);
+        assertFalse(modded.eligible(),
+            "dispatch requires the exact vanilla PathFinder, so this diagnostic must too");
+        assertTrue(modded.reason().contains("PathFinder"),
+            "the reason must say what was wrong, not just refuse: " + modded.reason());
+    }
+
+    /** Null means "not inspected", which must not be reported as a refusal. */
+    @Test
+    void anUninspectedPathFinderIsNotTreatedAsARefusal() {
+        MobEligibility.Verdict verdict =
+            MobEligibility.of(Mob.class, WalkNodeEvaluator.class, null, false);
+        assertTrue(verdict.eligible(),
+            "a field this diagnostic could not read must not invent a refusal: " + verdict.reason());
+    }
+
+    private static final class ForeignPathFinder
+            extends net.minecraft.world.level.pathfinder.PathFinder {
+        ForeignPathFinder() {
+            super(new WalkNodeEvaluator(), 1);
+        }
+    }
+
     /** No no-arg constructor and an argument matching no field, so it cannot be rebuilt. */
     private static final class UnbuildableEvaluator extends WalkNodeEvaluator {
         UnbuildableEvaluator(String unmatched) {

@@ -66,6 +66,14 @@ class ActiveCompatibilityPolicyTest {
             if (!touchesTier) continue;
             assertEquals(boolean.class, method.getReturnType(),
                 "non-private tier surface must be read-only: " + method.getName());
+            // No input, so nothing can hand this surface a tier to adopt -- that is the whole point.
+            // A pure predicate over a ScanDecision is exempt: it answers a question ABOUT a decision
+            // and cannot carry a tier in or set one. tierMayWaiveDenials is the case, and it needed
+            // to stay non-private to be testable, since the rule it encodes (a failed scan is not
+            // waivable by any tier) is exactly the kind that goes wrong silently.
+            boolean pureDecisionPredicate = method.getParameterCount() == 1
+                && method.getParameterTypes()[0] == ForeignMixinScanner.ScanDecision.class;
+            if (pureDecisionPredicate) continue;
             assertEquals(0, method.getParameterCount(),
                 "non-private tier surface must take no input: " + method.getName());
         }

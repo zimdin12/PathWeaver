@@ -59,13 +59,32 @@ public final class ForeignMixinScanner {
      * them invalidates every eligible evaluator, because the worker would then run modified code
      * whose thread-safety we cannot audit.
      *
-     * <p>This must cover the whole worker-reachable surface, not just pathfinder entry points.
-     * Lithium, for example, rewrites {@code PathNavigationRegion.getBlockState} and adds cached
-     * path-type metadata to shared {@code BlockStateBase} objects. Its audited implementation does
-     * not write that cache from workers, but it still adds live section/palette reads whose stale
-     * decisions and concurrent-resize exception exposure require an explicit risk-tier decision.
-     * The search-scratch types are listed for the same reason: a mixin that adds shared state to
-     * {@code BinaryHeap}, {@code Node}, {@code Path} or {@code Target} breaks the per-search
+     * <p><strong>This list is INCOMPLETE, and known to be.</strong> It used to claim it "must cover
+     * the whole worker-reachable surface"; it does not, and an enumeration maintained by hand cannot,
+     * so the claim was removed rather than the gap quietly left under it.
+     *
+     * <p>What is missing is the tail of the block read. {@code PathNavigationRegion} is listed, and
+     * {@code getBlockState} does not stop there — it continues into {@code LevelChunk},
+     * {@code LevelChunkSection} and {@code PalettedContainer}, none of which are here. On an ordinary
+     * performance pack that is not hypothetical: Lithium {@code @Overwrite}s
+     * {@code LevelChunk.getBlockState}, Lithium and FerriteCore both replace
+     * {@code PalettedContainer}'s threading detector, ScalableLux mixes into {@code LevelChunk} and
+     * {@code ChunkAccess}, and ServerCore mixes into {@code BlockGetter} — the last through a config
+     * whose bytes this project already pins in {@code AuditedMixinCompatibility}, so the audit read
+     * the file and looked past the target.
+     *
+     * <p>Adding those classes was tried and is a product decision, not a bug fix: it makes
+     * {@code AUDITED} deny every family on any pack containing Lithium, because Lithium's chunk
+     * mixins are outside its pinned pathfinding exemption. That is the gate working correctly and it
+     * would take the audited tier from "usually refuses" to "always refuses" until those mixins are
+     * audited too. It is recorded here and in COMPATIBILITY.md rather than half-done.
+     *
+     * <p>The shipped default waives this list wholesale, so the gap changes nothing out of the box.
+     * It matters only for an operator who chose {@code AUDITED} believing it covers the whole read
+     * path — which is exactly why the completeness claim had to go.
+     *
+     * <p>The search-scratch types are listed for a different reason: a mixin that adds shared state
+     * to {@code BinaryHeap}, {@code Node}, {@code Path} or {@code Target} breaks the per-search
      * isolation the design depends on.
      */
     private static final Set<String> SHARED_PATHFINDING_TARGETS = Set.of(
@@ -417,6 +436,22 @@ public final class ForeignMixinScanner {
      * Freeze the tier for the process. Private on purpose: the compiler enforces that the only
      * caller is the scan below, whatever else shares the package at runtime.
      */
+    /**
+     * Whether {@code compatibilityTier} is allowed to waive this decision's denials.
+     *
+     * <p>It is not, if the scan failed. {@code decide} turns any failure into a blanket denial of
+     * every family, so clearing denials unconditionally also cleared "the scanner could not tell what
+     * is installed" -- an unreadable {@code fabric.mod.json}, two mods claiming one config name,
+     * Mixin internals drifting, a declared config that never prepared. Every fail-closed path in this
+     * class terminated in ALLOW on a stock install once {@code UNSAFE} became the shipped default.
+     *
+     * <p>The tier waives what the scan <em>found</em>. It does not waive the scan being unable to
+     * look. Those are different requests and only one of them was ever made.
+     */
+    static boolean tierMayWaiveDenials(ScanDecision decision) {
+        return decision.failed() == 0;
+    }
+
     private static synchronized void freezeActiveTier(boolean allowsAudited, boolean bypassesScan) {
         if (tierFrozen) return;
         tierAllowsAudited = allowsAudited;
@@ -807,7 +842,29 @@ public final class ForeignMixinScanner {
         for (String failure : decision.diagnostics()) {
             PathWeaver.LOG.warn("Foreign-mixin scan failure (fail-closed): {}", failure);
         }
-        if (ActiveCompatibilityPolicy.bypassesScan()
+        // A scan FAILURE is not waivable by the tier, only a scan DENIAL is.
+        //
+        // decide() converts any failure into a blanket denial of every family (see the
+        // `!failures.isEmpty()` branch), so before this distinction existed, clearing the denial set
+        // here also cleared "the scanner could not tell what is installed" -- an unreadable
+        // fabric.mod.json, two mods claiming one config name, Mixin internals drifting, a declared
+        // config that never prepared. Those are the thirteen fail-closed paths this class is built
+        // around, and every one of them terminated in ALLOW on a stock install once UNSAFE became
+        // the shipped default.
+        //
+        // "Run other mods' unaudited pathfinding code anyway" is a coherent thing to ask for and is
+        // what the tier advertises. "Run even though the check malfunctioned" is a different request
+        // that nobody made, and it fails in the worst possible way: the WARN block below would name
+        // no mods at all, because blockingModIds() is built from configs that were successfully
+        // read, so the operator is told nothing is responsible.
+        if (!tierMayWaiveDenials(decision)) {
+            PathWeaver.LOG.warn("=========================== PathWeaver ===========================");
+            PathWeaver.LOG.warn("The compatibility scan FAILED ({} error(s), listed above), so it", decision.failed());
+            PathWeaver.LOG.warn("cannot say what is installed. Every movement family stays");
+            PathWeaver.LOG.warn("synchronous. compatibilityTier does NOT waive this: the tier waives");
+            PathWeaver.LOG.warn("what the scan found, not the scan being unable to look.");
+            PathWeaver.LOG.warn("==================================================================");
+        } else if (ActiveCompatibilityPolicy.bypassesScan()
                 && !SafetyGate.deniedBySafety.isEmpty()) {
             Set<Class<?>> overridden = Set.copyOf(SafetyGate.deniedBySafety);
             SafetyGate.replaceDenials(Set.of());

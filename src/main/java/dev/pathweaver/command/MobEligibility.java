@@ -28,9 +28,26 @@ public final class MobEligibility {
      * @param evaluatorClass the evaluator the mob's navigation really holds, or null if it has none
      */
     public static Verdict of(Class<?> mobClass, Class<?> evaluatorClass, boolean moddedAllowed) {
+        return of(mobClass, evaluatorClass, null, moddedAllowed);
+    }
+
+    /**
+     * @param pathFinderClass the PathFinder the navigation really holds, or null when not inspected
+     */
+    public static Verdict of(Class<?> mobClass, Class<?> evaluatorClass, Class<?> pathFinderClass,
+                             boolean moddedAllowed) {
         boolean originOk = MobOriginGate.isAllowed(mobClass, moddedAllowed);
         if (evaluatorClass == null) {
             return new Verdict(false, "navigates without a node evaluator");
+        }
+        // Dispatch builds its own vanilla PathFinder and so refuses a mod-supplied one outright.
+        // Omitting that here let this diagnostic call a mob eligible that dispatch would decline --
+        // exactly the drift the class comment says cannot be allowed to happen, reintroduced by a
+        // gate added later. The rule is not restated: the same exact-class comparison is used.
+        if (pathFinderClass != null
+                && pathFinderClass != net.minecraft.world.level.pathfinder.PathFinder.class) {
+            return new Verdict(false, "navigates with " + pathFinderClass.getSimpleName()
+                + ", a mod-supplied PathFinder rather than the vanilla one");
         }
         boolean evaluatorOk = SafetyGate.isAllowed(evaluatorClass);
         if (evaluatorOk && originOk) return new Verdict(true, ELIGIBLE);
