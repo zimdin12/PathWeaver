@@ -25,6 +25,20 @@ import org.junit.jupiter.api.Test;
  */
 class EpilogueLifecycleTest {
 
+    /** A gate a worker was authorized through: its evaluator may be in use right now. */
+    private static SearchStartGate opened() {
+        SearchStartGate gate = new SearchStartGate();
+        gate.open();
+        return gate;
+    }
+
+    /** A gate that was cancelled before any worker could read the evaluator. */
+    private static SearchStartGate cancelled() {
+        SearchStartGate gate = new SearchStartGate();
+        gate.cancel();
+        return gate;
+    }
+
     private static class CountingEvaluator extends WalkNodeEvaluator {
         int dones;
 
@@ -67,7 +81,7 @@ class EpilogueLifecycleTest {
             RequestKey requestKey = key(1L, 1);
             sink.setTick(100L);
             sink.register(requestKey, nav, RequestTarget.of(java.util.Set.of(), 0, false, 0, 0.0F));
-            sink.armEpilogue(requestKey, evaluator);
+            sink.armEpilogue(requestKey, evaluator, opened());
 
             route.run().accept(sink, requestKey);
 
@@ -88,7 +102,7 @@ class EpilogueLifecycleTest {
         EntityInstallSink sink = new EntityInstallSink();
         CountingEvaluator evaluator = new CountingEvaluator();
         RequestKey requestKey = key(2L, 2);
-        sink.armEpilogue(requestKey, evaluator);
+        sink.armEpilogue(requestKey, evaluator, opened());
 
         sink.runEpilogue(requestKey);
         sink.runEpilogue(requestKey);
@@ -110,11 +124,11 @@ class EpilogueLifecycleTest {
         sink.setTick(100L);
 
         sink.register(firstKey, nav, RequestTarget.of(java.util.Set.of(), 0, false, 0, 0.0F));
-        sink.armEpilogue(firstKey, first);
+        sink.armEpilogue(firstKey, first, opened());
         sink.supersede(7);
 
         sink.register(secondKey, nav, RequestTarget.of(java.util.Set.of(), 0, false, 0, 0.0F));
-        sink.armEpilogue(secondKey, second);
+        sink.armEpilogue(secondKey, second, opened());
 
         sink.runEpilogue(firstKey);
         assertEquals(1, first.dones, "the superseded request's own evaluator must be finished");
@@ -133,7 +147,7 @@ class EpilogueLifecycleTest {
         // boundary; racing one does.
         EntityInstallSink sink = new EntityInstallSink();
         CountingEvaluator stillInUse = new CountingEvaluator();
-        sink.armEpilogue(key(9L, 9), stillInUse);
+        sink.armEpilogue(key(9L, 9), stillInUse, opened());
 
         sink.clear(false);
 
@@ -141,6 +155,31 @@ class EpilogueLifecycleTest {
             "an evaluator a worker may still own must not be finished from the main thread");
         sink.runEpilogue(key(9L, 9));
         assertEquals(0, stillInUse.dones, "the abandoned epilogue must not resurface later either");
+    }
+
+    @Test
+    void aHardStopStillFinishesEpiloguesNoWorkerEverStarted() {
+        // The abandonment above was over-broad. It dropped every owed epilogue, including ones whose
+        // gate was never opened -- and a gate that was cancelled means no worker was ever authorized
+        // to read that evaluator, so there is nothing to race.
+        //
+        // Dropping those is not a lost optimisation. AmphibiousNodeEvaluator.prepare() sets the mob's
+        // WALKABLE cost to 6.0 and WATER_BORDER to 4.0 and only done() restores them, so an abandoned
+        // epilogue leaves a drowned or axolotl carrying search-time costs for as long as it stays
+        // loaded. That outlives the shutdown the abandonment was protecting, which makes it the more
+        // damaging of the two failures.
+        EntityInstallSink sink = new EntityInstallSink();
+        CountingEvaluator neverStarted = new CountingEvaluator();
+        CountingEvaluator maybeRunning = new CountingEvaluator();
+        sink.armEpilogue(key(1L, 1), neverStarted, cancelled());
+        sink.armEpilogue(key(2L, 2), maybeRunning, opened());
+
+        sink.clear(false);
+
+        assertEquals(1, neverStarted.dones,
+            "no worker was authorized through this gate, so the mob must get its costs back");
+        assertEquals(0, maybeRunning.dones,
+            "an authorized gate still means a worker may be inside the search; do not race it");
     }
 
     @Test
@@ -152,10 +191,10 @@ class EpilogueLifecycleTest {
         CountingEvaluator registered = new CountingEvaluator();
         FakeNav nav = new FakeNav();
         sink.setTick(100L);
-        sink.armEpilogue(key(1L, 11), orphan);
+        sink.armEpilogue(key(1L, 11), orphan, opened());
         RequestKey live = key(2L, 12);
         sink.register(live, nav, RequestTarget.of(java.util.Set.of(), 0, false, 0, 0.0F));
-        sink.armEpilogue(live, registered);
+        sink.armEpilogue(live, registered, opened());
 
         sink.clear();
 
@@ -173,7 +212,7 @@ class EpilogueLifecycleTest {
                 throw new IllegalStateException("a mod's onPathfindingDone threw");
             }
         };
-        sink.armEpilogue(requestKey, throwing);
+        sink.armEpilogue(requestKey, throwing, opened());
 
         sink.runEpilogue(requestKey);
         sink.runEpilogue(requestKey);

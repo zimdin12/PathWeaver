@@ -47,4 +47,20 @@ public final class SearchStartGate {
     public void cancel() {
         if (state.compareAndSet(WAITING, CANCELLED)) release.countDown();
     }
+
+    /**
+     * Whether a worker was ever authorized to read this search's evaluator.
+     *
+     * <p>Used at server stop to decide which owed epilogues are safe to run when the pool did not go
+     * quiet. {@code false} means no worker can be inside the search: it was either cancelled before
+     * the barrier lifted, or the barrier was never lifted at all. Those evaluators are untouched, so
+     * their {@code done()} can still restore the mob's pathfinding costs instead of being abandoned.
+     *
+     * <p>{@code true} does not mean a worker is still running — only that one may be, which is all
+     * that can be known cheaply from here. Those stay abandoned, because racing {@code done()}
+     * against a live search is the failure this whole mechanism exists to prevent.
+     */
+    public boolean authorizedSearch() {
+        return state.get() == OPEN;
+    }
 }

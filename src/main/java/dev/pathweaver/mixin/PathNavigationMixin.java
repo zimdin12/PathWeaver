@@ -454,7 +454,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
             } finally {
                 dev.pathweaver.async.PathWeaverThread.exitAsyncPrologue(outerPrologue);
             }
-            sink.armEpilogue(submittedKey, freshEval);
+            sink.armEpilogue(submittedKey, freshEval, requestStartGate);
 
             // Keep moving on the current path this tick; the async result installs next tick.
             this.pathweaver$acceptedDeferred = true;

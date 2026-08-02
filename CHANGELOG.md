@@ -103,6 +103,15 @@
   tier waiving it was defensible as an explicit opt-in and is weaker as the shipped default, so it is
   at least no longer silent. Certification already covers the audited providers, so this fires only
   for genuinely unknown ones.
+- **A hard server stop no longer abandons every owed epilogue.** `clear(false)` dropped all of them
+  when the worker pool failed to quiesce, on the grounds that running `done()` against a live search
+  is worse than leaking. True for searches a worker actually entered — and over-broad for the rest.
+  The gate is now carried with the owed epilogue, so a request whose `SearchStartGate` was never
+  opened (no worker was ever authorised to read that evaluator, so nothing can be raced) still runs
+  its `done()`. The leak this closes is not cosmetic: `AmphibiousNodeEvaluator.prepare()` sets the
+  mob's `WALKABLE` cost to 6.0 and `WATER_BORDER` to 4.0, and only `done()` restores them, so an
+  abandoned epilogue left a drowned or axolotl carrying search-time costs for as long as it stayed
+  loaded — outliving the shutdown the abandonment was protecting.
 - Corrected a `SafetyGate` claim that the frog's and creaking's evaluators touch the mob solely
   through `getBoundingBox`. The creaking's reads `SynchedEntityData` via `getHomePos()`. It is still
   admitted — a stale home position only shifts the 1024-block cutoff against a slightly old anchor —

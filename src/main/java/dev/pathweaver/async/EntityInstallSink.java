@@ -34,8 +34,20 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
      * navigation-scoped field would then run the epilogue against the *new* request's evaluator while
      * the old one silently kept the mob's search costs forever.
      */
-    private final Map<RequestKey, net.minecraft.world.level.pathfinder.NodeEvaluator> epilogues =
-        new ConcurrentHashMap<>();
+    private final Map<RequestKey, OwedEpilogue> epilogues = new ConcurrentHashMap<>();
+
+    /**
+     * An owed {@code done()} plus the gate that says whether a worker ever reached its evaluator.
+     *
+     * <p>The gate is carried so a hard stop can still run the epilogues it is safe to run. Without
+     * it, {@code clear(false)} had to abandon every owed epilogue, and an abandoned one is not a lost
+     * optimisation: {@code AmphibiousNodeEvaluator.prepare} sets the mob's WALKABLE cost to 6.0 and
+     * WATER_BORDER to 4.0, and only {@code done()} puts them back. A drowned or axolotl that was
+     * mid-dispatch when the world closed kept those search-time costs for as long as it stayed
+     * loaded, permanently and silently.
+     */
+    private record OwedEpilogue(net.minecraft.world.level.pathfinder.NodeEvaluator evaluator,
+                                SearchStartGate gate) {}
     private final Map<Integer, Long> failUntilTick = new ConcurrentHashMap<>();
     private final AtomicBoolean callbackFailureLogged = new AtomicBoolean();
     private final AtomicBoolean rollbackFailureLogged = new AtomicBoolean();
@@ -180,8 +192,9 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
 
     /** Arm the epilogue for a request whose prologue has fully run on the main thread. */
     public void armEpilogue(RequestKey key,
-                            net.minecraft.world.level.pathfinder.NodeEvaluator evaluator) {
-        epilogues.put(key, evaluator);
+                            net.minecraft.world.level.pathfinder.NodeEvaluator evaluator,
+                            SearchStartGate gate) {
+        epilogues.put(key, new OwedEpilogue(evaluator, gate));
     }
 
     /**
@@ -192,8 +205,8 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
      * the search callable has returned.
      */
     public void runEpilogue(RequestKey key) {
-        net.minecraft.world.level.pathfinder.NodeEvaluator evaluator = epilogues.remove(key);
-        if (evaluator != null) finishCallback(evaluator);
+        OwedEpilogue owed = epilogues.remove(key);
+        if (owed != null) finishCallback(owed.evaluator());
     }
 
     private void finishCallback(net.minecraft.world.level.pathfinder.NodeEvaluator evaluator) {
@@ -341,12 +354,32 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         if (workersQuiesced) {
             for (RequestKey key : epilogues.keySet().toArray(RequestKey[]::new)) runEpilogue(key);
         } else {
-            int abandoned = epilogues.size();
+            // Abandon only what is genuinely unsafe. An epilogue whose gate was never opened cannot
+            // be racing anything -- no worker was ever authorized to read that evaluator -- so its
+            // done() can still run and give the mob its pathfinding costs back. Abandoning those too
+            // was over-broad: an abandoned amphibious epilogue leaves WALKABLE at 6.0 and
+            // WATER_BORDER at 4.0 on a live mob for as long as it stays loaded, which outlives the
+            // shutdown this was protecting.
+            int abandoned = 0;
+            int restored = 0;
+            for (RequestKey key : epilogues.keySet().toArray(RequestKey[]::new)) {
+                OwedEpilogue owed = epilogues.get(key);
+                if (owed == null) continue;
+                if (owed.gate().authorizedSearch()) {
+                    epilogues.remove(key);
+                    abandoned++;
+                } else {
+                    runEpilogue(key);
+                    restored++;
+                }
+            }
             epilogues.clear();
             if (abandoned > 0 && epilogueDropLogged.compareAndSet(false, true)) {
                 try {
                     PathWeaver.LOG.warn("Workers did not stop in time; {} pathfinding epilogue(s) "
-                        + "abandoned rather than run against evaluators still in use.", abandoned);
+                        + "abandoned rather than run against evaluators still in use"
+                        + "{}.", abandoned,
+                        restored > 0 ? ", " + restored + " restored because no worker had started" : "");
                 } catch (Throwable ignored) {
                     // The boundary must stay terminal even if the logging backend is compromised.
                 }
