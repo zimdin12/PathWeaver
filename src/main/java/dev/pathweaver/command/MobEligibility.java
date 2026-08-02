@@ -56,7 +56,7 @@ public final class MobEligibility {
         String evaluator = evaluatorOk ? null : evaluatorReason(evaluatorClass);
         if (origin != null && evaluator != null) return new Verdict(false, origin + ", and " + evaluator);
         if (origin != null) {
-            return new Verdict(false, origin + " (enable \"Also speed up mobs added by mods\")");
+            return new Verdict(false, origin + " (enable \"Speed up mod-added mobs (unsafe)\")");
         }
         return new Verdict(false, evaluator);
     }

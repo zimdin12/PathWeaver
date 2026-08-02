@@ -19,7 +19,7 @@
 
   Unchanged and still one setting away: `compatibilityTier=Audited` for full checking, and
   `trustedMods` for naming individual mods rather than waiving everything. The startup `WARN` block
-  naming every unaudited mod now running on workers is unchanged too, so this is never silent.
+  still fires, so this is never silent — and it now names the mods in the block itself; see below.
 
 ### Fixed
 

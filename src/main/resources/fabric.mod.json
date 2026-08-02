@@ -3,7 +3,7 @@
   "id": "pathweaver",
   "version": "${version}",
   "name": "PathWeaver",
-  "description": "Experimental fail-closed Walk/Swim A* offload with one Enabled master. The current required aggregate Fabric API makes supported installs synchronous pending dependency redesign.",
+  "description": "Experimental off-thread A* for all six vanilla mob evaluators. Ships with compatibility checking OFF, so it runs other mods' uninspected pathfinding code on worker threads — back up your worlds, or set compatibilityTier=AUDITED.",
   "authors": ["Zimdin"],
   "contact": {
     "homepage": "https://modrinth.com/mod/pathweaver",

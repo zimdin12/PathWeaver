@@ -15,7 +15,7 @@ Two ways to opt back into checking, both one setting away:
 
 Whichever you land on, the game log says so at world start and names the mods responsible, rather than leaving you to infer it from silence.
 
-See the [version-exact compatibility matrix](COMPATIBILITY.md) for audited verdicts, artifact hashes, and the evidence boundary. Future or modified artifacts fail closed.
+See the [version-exact compatibility matrix](COMPATIBILITY.md) for audited verdicts, artifact hashes, and the evidence boundary. Future or modified artifacts fail closed — at `AUDITED`. The shipped default does not consult this at all.
 
 ## What it does
 
@@ -184,7 +184,7 @@ about above, visible in a controlled comparison.
 
 So about **82% of dispatched searches install**, and the rest were **cancelled by the mob changing its mind, not delivered late** — in this workload every mob is retargeted every 6 ticks, and cancelling a navigation is what that does. Not one result was ever rejected for arriving too late.
 
-The number worth watching is the last row: at the shipped `maxInFlight=256`, **admission refused more requests than it accepted.** Those are not wasted — they run synchronously on the tick exactly as they would without this mod — but it does mean the in-flight limit, not worker speed, is the binding constraint under a burst this heavy.
+The number worth watching is the last row: at the shipped `maxInFlight=256`, **admission refused nearly as many requests as it accepted — 49% and 48% across the two pairs.** Those are not wasted — they run synchronously on the tick exactly as they would without this mod — but it does mean the in-flight limit, not worker speed, is the binding constraint under a burst this heavy.
 
 This is still a synthetic burst with all other mob AI stripped out. It shows what happens when pathfinding alone overloads the server; it is not a measurement of ordinary play.
 
@@ -299,7 +299,7 @@ You can also edit `config/pathweaver.json`. **The exact keys differ between vers
 
 `compatibilityTier` decides how much risk to accept from mods that modify pathfinding:
 
-- **`AUDITED`** (default) allows mods cleared by bounded evidence rather than by proof. It is the most conservative tier that exists, and it is what any pack containing Fabric API needs. Four different mechanisms sit behind it, and they are not equally strong — [COMPATIBILITY.md](COMPATIBILITY.md) states each one:
+- **`AUDITED`** (not the default; opt in) allows mods cleared by bounded evidence rather than by proof. It is the most conservative tier that exists, and it is what any pack containing Fabric API needs. Four different mechanisms sit behind it, and they are not equally strong — [COMPATIBILITY.md](COMPATIBILITY.md) states each one:
   - **Lithium and Diagonal Blocks**: no field-write opcode in the audited classes on the search path, plus per-mod structural conditions. That check does not model array stores, mutations inside methods those classes call, or effects reached through helpers, so it means no worker write was *found* — it lowers the risk of worker-side corruption rather than excluding it.
   - **Fabric API's interaction module**: an inventory of direct calls from ten pinned worker-side classes, which is a sample rather than an exhaustive proof that no worker route reaches the injected methods.
   - **Mods that mark blocks dangerous**: an assumption that such a rule is a pure function of block state, which the API's shape encourages but does not enforce.
@@ -310,7 +310,7 @@ You can also edit `config/pathweaver.json`. **The exact keys differ between vers
 
 `allowModdedMobAsync` is an advanced, genuinely unsafe override. It bypasses only the vanilla-origin mob check; every other gate still applies. Do not enable it unless you accept running unaudited mod code on a worker thread.
 
-`compatibilityTier=UNSAFE` implies `allowModdedMobAsync`, because the origin gate is a compatibility check like any other. Leaving it armed under "ignore every check" kept most of a heavily-modded pack's mobs synchronous while the log reported that nothing was being checked. The separate flag remains the way to reach that bypass from `STRICT` or `AUDITED`.
+`compatibilityTier=UNSAFE` implies `allowModdedMobAsync`, because the origin gate is a compatibility check like any other. Leaving it armed under "ignore every check" kept most of a heavily-modded pack's mobs synchronous while the log reported that nothing was being checked. The separate flag remains the way to reach that bypass from `AUDITED`.
 
 ## What is unproven
 

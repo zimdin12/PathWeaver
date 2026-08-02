@@ -38,11 +38,15 @@ public enum CompatibilityTier implements SelectionListEntry.Translatable {
      * pathfinding.
      *
      * <p>Named for what it does rather than for everything it might be assumed to do. It waives the
-     * compatibility scan and the evaluator allowlist for third-party subclasses, which is every
-     * question about <em>other mods'</em> code. It does not waive the two vanilla evaluators that
-     * write to the mob during a search — flying and amphibious stay synchronous here too, because
-     * that is a race with zero mods installed and no setting can make it safe. Calling this tier
-     * "all" implied a completeness it does not have.
+     * compatibility scan, the evaluator allowlist for third-party subclasses, and the mob-origin
+     * gate — which is every question about <em>other mods'</em> code. Calling this tier "all"
+     * implied a completeness it does not have.
+     *
+     * <p>This used to add that flying and amphibious evaluators stay synchronous here too, because
+     * they write to the mob mid-search. That stopped being true in 0.4.0: those writes turned out to
+     * live only in {@code prepare()} and {@code done()}, which now run on the main thread, so all six
+     * vanilla evaluators are eligible at both tiers. The sentence outlived the release that removed
+     * the exclusion it described.
      *
      * <p>This runs unaudited third-party code on a worker thread, which is the exact thing the
      * scan exists to prevent. Nothing here has been proven about thread-safety, and a failure mode

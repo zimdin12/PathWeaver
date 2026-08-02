@@ -5,7 +5,7 @@
   "text.autoconfig.pathweaver.category.repath": "Repath and result validity",
   "text.autoconfig.pathweaver.option.enabled": "Enabled",
   "text.autoconfig.pathweaver.option.compatibilityTier": "Compatibility risk",
-  "text.autoconfig.pathweaver.option.compatibilityTier.AUDITED": "Audited (strict)",
+  "text.autoconfig.pathweaver.option.compatibilityTier.AUDITED": "Audited (checked)",
   "text.autoconfig.pathweaver.option.allowModdedMobAsync": "Speed up mod-added mobs (unsafe)",
   "text.autoconfig.pathweaver.option.poolThreads": "Worker threads (0 = automatic)",
   "text.autoconfig.pathweaver.option.maxInFlight": "Maximum searches queued or running at once",

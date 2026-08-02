@@ -64,7 +64,7 @@ The stock aggregate-Fabric witness runs in a dedicated GameTest harness that reg
 
 With the exact aggregate Fabric API modules loaded, the unmodified production scanner reported `scanned=37`, `failed=0`, `deniedFamilies=0`. The test required active prepared claims, exact module/config/class/vanilla identity, no plugin, the complete audited claim bundles, and live near-miss denial. It observed a genuine Walk request increase both real counters, then dispatched a second exact Walk request and registered a real provider before installation; the terminal recheck discarded that captured result. Final live counters were `dispatched=2`, `installed=1`, `discarded=1`. A subsequent provider-present Walk produced a real synchronous path without adding an async dispatch. The run also exercised the worker provider-map bypass. No `SafetyGate` clearing or synthetic production decision was used.
 
-The original milestone-1 harness remains separate and green: all three registered tests passed with the intentional test-probe denial and ended at `dispatched=11`, `installed=8`, `discarded=3`. The full unit suite contains 166 passing tests, and production plus source JARs contain no GameTest/probe artifacts.
+The original milestone-1 harness remains separate and green: all three registered tests passed with the intentional test-probe denial and ended at `dispatched=11`, `installed=8`, `discarded=3`. The full unit suite contains 255 passing tests, and production plus source JARs contain no GameTest/probe artifacts.
 
 ## Verification scope
 
@@ -105,7 +105,7 @@ A search running concurrently with a block change can observe a stale or torn vi
 worse path, and can meet a concurrent-resize exception. That failure is contained — it surfaces as a
 failed search, which is discarded and leaves that mob synchronous for a short cooldown rather than
 being retried synchronously in place — but path *quality* under live mutation
-was never measured. This is why Lithium sits behind an explicit opt-in and not in the default tier.
+was never measured. This is why the Lithium exemption only decides anything at `AUDITED`. At the shipped `UNSAFE` default the scan is waived wholesale and this audit is not consulted.
 
 **Live witness.** With Lithium loaded and `compatibilityTier=AUDITED`, the startup scan reports
 `scanned=39, failed=0, deniedFamilies=0` and a real vanilla zombie Walk request dispatches to a
@@ -321,11 +321,11 @@ not proven-discarded work.
 |---|---|---|---|---|---|
 | *(baseline)* | shipped defaults | 51.1 / 50.8 ms | 388 / 385 ms | 30.1 / 26.2% | — |
 | `enabled` | `false` | 92.7 ms | 941 ms | — | the A/B: **−45%** when on |
-| `maxInFlight` | 64 | 49.5 ms | 425 ms | **1.1%** | **strictly better** |
+| `maxInFlight` | 64 | 49.5 ms | 425 ms | **1.1%** | **less wasted work, worse p99** — see the trade below |
 | `maxInFlight` | 512 | 50.0 ms | 357 ms | **56.4%** | wastes over half the work |
 | `stalenessMoveThreshold` | 0.0 | 51.2 ms | 386 ms | **91.8%** | **destroys the feature** |
 | `poolThreads` | 2 / 4 / 16 | 50.0 / 65.4 / 52.5 ms | 365 / 533 / 367 ms | 15.8 / 15.6 / 13.1% | no consistent direction |
-| `repathElisionEnabled` | `false` | 53.8 ms | 396 ms | 26.3% | no measurable effect here |
+| `repathElisionEnabled` *(removed in 0.4.0; folded into `repathToleranceBlocks`)* | `false` | 53.8 ms | 396 ms | 26.3% | no measurable effect here |
 | `repathToleranceBlocks` | 0 / 4 | 56.1 / 55.2 ms | 424 / 414 ms | 32.2 / 28.5% | no measurable effect here |
 | `maxResultAgeTicks` | 10 / 200 | 61.9 / 59.3 ms | 472 / 478 ms | 19.0 / 20.6% | no measurable effect here |
 | `stalenessMoveThreshold` | 64.0 | 53.6 ms | 408 ms | 28.6% | no measurable effect here |
@@ -389,11 +389,7 @@ control moved 43.7% between identical arms, so tick time is **not** resolvable i
 only the wasted share is; and forcing one worker on a 32-core box leaves the other 31 cores idle, so
 real low-core hardware is likely worse rather than better.
 
-So the limit is now capped to the pool's width: the enforced bound is
-`min(maxInFlight, workers × 32)`. On the eight-worker machine every measurement here was taken on,
-that is `min(256, 256)` and nothing changes. On a single-worker machine it becomes 32, which is the
-regime that measured well. The configured value stays the operator's ceiling and the startup log
-states both when they differ.
+A cap of `min(maxInFlight, workers x 32)` was implemented and then **reverted**. At two workers it turns 256 into 64, which measured 31% worse p99. `maxInFlight` is now enforced exactly as configured and nothing silently narrows it; a deep-per-worker configuration produces a startup warning instead. See the sweep below for why 256 is the right side of the trade.
 
 ### What `discarded` in the stats line actually counts
 
@@ -474,7 +470,7 @@ standalone, so the audit passed in dev and denied in production. The released ja
 booted on a plain dedicated server built from release artifacts only.
 
 Fabric API `0.153.0+26.1.2`, Cloth Config `26.1.154`, Lithium `0.24.6+mc26.1.2`, and
-`pathweaver-0.3.0+26.1.2` (SHA-256 `e4a9cfd5…87a9`, the current artifact), on JDK 25. 1024-mob maze load,
+`pathweaver-0.3.0+26.1.2` — the artifact current when this section was recorded, not re-run for 0.4.0 or 0.5.0 — (SHA-256 `e4a9cfd5…87a9`, the current artifact), on JDK 25. 1024-mob maze load,
 `maxInFlight=256`.
 
 | Mods added | Tier | Scan result | Dispatched |
