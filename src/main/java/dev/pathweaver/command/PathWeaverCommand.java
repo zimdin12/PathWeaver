@@ -3,7 +3,9 @@ package dev.pathweaver.command;
 import com.mojang.brigadier.CommandDispatcher;
 import dev.pathweaver.PathWeaverRuntime;
 import dev.pathweaver.async.RequestOutcome;
+import dev.pathweaver.config.CompatibilityTier;
 import dev.pathweaver.config.PathWeaverConfig;
+import dev.pathweaver.gate.ActiveCompatibilityPolicy;
 import dev.pathweaver.gate.ForeignMixinScanner;
 import dev.pathweaver.gate.MobOriginGate;
 import dev.pathweaver.gate.SafetyGate;
@@ -58,8 +60,19 @@ public final class PathWeaverCommand {
         ForeignMixinScanner.ScanReport report = ForeignMixinScanner.lastScanReport();
 
         say(source, "§6PathWeaver status");
-        say(source, "  enabled: " + config.enabled + "   tier: " + config.compatibilityTier
-            + " (frozen at startup)");
+        // Report the tier that is actually in force, not the one on disk. The field is what a
+        // settings save writes; the policy was frozen at scan time and does not follow it. Printing
+        // the field labelled "frozen at startup" told an operator who had just switched to AUDITED
+        // mid-session that they were running checked, on a session still running unchecked -- which
+        // is now the common direction of travel, since the shipped default is UNSAFE.
+        CompatibilityTier inForce = ActiveCompatibilityPolicy.bypassesScan()
+            ? CompatibilityTier.UNSAFE
+            : CompatibilityTier.AUDITED;
+        String tierLine = "  enabled: " + config.enabled + "   tier in force: " + inForce;
+        if (config.compatibilityTier != inForce) {
+            tierLine += " (config says " + config.compatibilityTier + " -- restart to apply)";
+        }
+        say(source, tierLine);
         say(source, "  scan: scanned=" + report.decision().scanned()
             + ", failed=" + report.decision().failed()
             + ", deniedFamilies=" + report.decision().denied().size());

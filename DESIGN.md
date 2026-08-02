@@ -80,3 +80,45 @@ The engine is cancelled, not pending implementation. The only plausible future a
 The retained four-pair test-only denial-cleared Spark benchmark proves only that the isolated engine path can offload server-thread A*: Walk evaluator inclusive samples fell 90.97% and `PathFinder` samples moved off the server thread. It is not a user-real benchmark under the current required dependency graph and does not prove net MSPT improvement: mean MSPT averaged 2.927 ms OFF and 3.012 ms ON with noisy pairs.
 
 No load/scaling matrix is claimed for an engine that will not be built.
+
+## 10. Rejected async `MoveToTargetSink` (brain-driven walk targets)
+
+The largest remaining block of server-thread A* on a real 317-mod client is not a gap in coverage.
+It is structural, and this section records why, because the profile makes it look like low-hanging
+fruit and it is not.
+
+**What the profile shows.** Client spark capture, PathWeaver active, all six families dispatching,
+120 s of ordinary play: `PathFinder.findPath` still runs on the server thread for 3984 ms (3.32% of
+wall time; ~8% of the server's non-idle work). Of that, 3456 ms — **86%** — is one call site,
+`MoveToTargetSink.checkExtraStartConditions` → `tryComputePath` → `PathNavigation.createPath`.
+Everything else is noise by comparison: `AcquirePoi.findPathToPois` 408 ms, stormiespiders 96 ms,
+MCA's archer task 64 ms.
+
+**Why deferring the return value is not an option.** `tryComputePath` is not a request for a path,
+it is a question whose answer is consumed in the same tick. Read from the 26.1.2 bytecode:
+
+- a null or unreachable result **sets `CANT_REACH_WALK_TARGET_SINCE`** on the brain, which other
+  behaviours read — so a "not ready yet" is indistinguishable from "this target is unreachable";
+- it then runs a **second synchronous `createPath`** to a `DefaultRandomPos.getPosTowards` position,
+  sending the mob wandering away from the goal it was given.
+
+So returning null early is not a one-tick delay. It is a wrong answer that propagates into brain
+memory and produces visibly different mob behaviour. Measured on the same capture, the fallback
+branch currently fires almost never (128 ms, no A* beneath it), meaning these searches are
+overwhelmingly *succeeding* today. Deferring them would convert ~3.4 s of successful pathfinding per
+two minutes into "unreachable" verdicts. It would make the mod worse in a way a benchmark that only
+counts off-thread searches would score as an improvement.
+
+**Why speculative pre-computation does not rescue it.** The obvious repair is to compute the path a
+tick early and serve it from cache. It does not apply to the case that matters:
+`checkExtraStartConditions` accounts for 3456 ms and `tick()` for 12 ms — **99.7% of the cost is the
+behaviour starting**, which happens because another behaviour set a *new* `WALK_TARGET` during the
+current tick. A target that did not exist a tick ago cannot be pathed a tick ago. Speculation could
+only serve `tick()`, which is already 0.01% because vanilla elides its own repaths whenever the
+target moved 2 blocks or less (`distSqr(lastTargetPos) > 4.0`).
+
+**Conclusion.** On this pack PathWeaver has taken essentially all of the pathfinding that can be
+moved without changing what mobs decide. The residue is synchronous by construction, not by
+oversight. Reopening this needs a different lever — an upstream change letting a behaviour express
+"ask me again next tick" without it meaning "unreachable" — not more work on this side of the
+boundary.

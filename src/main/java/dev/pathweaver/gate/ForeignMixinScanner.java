@@ -811,12 +811,28 @@ public final class ForeignMixinScanner {
                 && !SafetyGate.deniedBySafety.isEmpty()) {
             Set<Class<?>> overridden = Set.copyOf(SafetyGate.deniedBySafety);
             SafetyGate.replaceDenials(Set.of());
+            // Name the mods here, in this block, rather than saying "listed above". The per-config
+            // lines that name them are emitted during early mixin scanning, hundreds of lines
+            // earlier, in a format that reads as a warning about the other mod -- which is the same
+            // argument that justified adding the world-start report. A block whose whole purpose is
+            // to say "you are running these mods unaudited" should not make the reader go and find
+            // out which ones.
+            List<String> unauditedNowRunning = blockingModIds();
             PathWeaver.LOG.warn("=========================== PathWeaver ===========================");
-            PathWeaver.LOG.warn("compatibilityTier=UNSAFE. The compatibility scan denied {}", overridden);
-            PathWeaver.LOG.warn("and that denial has been IGNORED at your request. Path searches will");
-            PathWeaver.LOG.warn("now run on worker threads alongside the mods listed above, whose code");
-            PathWeaver.LOG.warn("has not been audited for thread safety. Use worlds you can afford to");
-            PathWeaver.LOG.warn("lose, and keep backups. Set compatibilityTier=AUDITED to undo.");
+            PathWeaver.LOG.warn("compatibilityTier=UNSAFE -- this is the shipped default. The scan");
+            PathWeaver.LOG.warn("denied {}", overridden);
+            PathWeaver.LOG.warn("and that denial has been IGNORED. Path searches will now run on");
+            PathWeaver.LOG.warn("worker threads alongside code that has not been audited for thread");
+            PathWeaver.LOG.warn("safety. Use worlds you can afford to lose, and keep backups.");
+            if (!unauditedNowRunning.isEmpty()) {
+                PathWeaver.LOG.warn("");
+                PathWeaver.LOG.warn("The {} unaudited mod(s) now running on worker threads:",
+                    unauditedNowRunning.size());
+                PathWeaver.LOG.warn("  {}", String.join(", ", unauditedNowRunning));
+            }
+            PathWeaver.LOG.warn("");
+            PathWeaver.LOG.warn("Set compatibilityTier=AUDITED for full checking, or list only some");
+            PathWeaver.LOG.warn("of the above in trustedMods to accept those and keep checking the rest.");
             PathWeaver.LOG.warn("==================================================================");
         }
         PathWeaver.LOG.info("Foreign-mixin scan complete: scanned={}, failed={}, deniedFamilies={}.",

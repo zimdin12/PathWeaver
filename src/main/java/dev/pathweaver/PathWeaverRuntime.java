@@ -179,8 +179,9 @@ public final class PathWeaverRuntime {
             PathWeaver.LOG.warn("  {}", String.join(", ", blockers));
         }
         PathWeaver.LOG.warn("");
-        PathWeaver.LOG.warn("This is the safe default: unverified code is not run on worker");
-        PathWeaver.LOG.warn("threads. On a heavily-modded pack it usually means no benefit.");
+        PathWeaver.LOG.warn("This is what compatibilityTier=AUDITED gives you: unverified code");
+        PathWeaver.LOG.warn("is not run on worker threads. It is NOT the shipped default -- you");
+        PathWeaver.LOG.warn("opted into it. On a heavily-modded pack it usually means no benefit.");
         PathWeaver.LOG.warn("");
         PathWeaver.LOG.warn("Two ways to run anyway, both unsafe, both needing a restart:");
         PathWeaver.LOG.warn("  - add some of the mods above to trustedMods, which accepts only");

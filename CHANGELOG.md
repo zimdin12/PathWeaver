@@ -23,11 +23,57 @@
 
 ### Fixed
 
+- **A config carrying the retired `overrideCompatibilityScan: false` no longer migrates to
+  `Unsafe`.** That key meant "do not bypass the compatibility scan", and the migration resolved it
+  through the shipped default — so the moment the default became `Unsafe`, an explicit refusal to
+  bypass the scan was answered by turning the scan off entirely, silently and with no log line. It
+  now maps to a literal `Audited`, which is what the stored value asked for, and says so in the log
+  (it is stricter than a fresh install, so an operator who sees PathWeaver refuse deserves to know
+  why). Found in review; it is the one setting whose stored value is an explicit refusal of exactly
+  what the new default does.
+- **The test guarding that migration was a tautology.** It asserted the result against
+  `new PathWeaverConfig().compatibilityTier` — the same expression the production code used — so it
+  compared the code to itself, could not fail for any default, and passed unchanged through the flip
+  while certifying the defect above as intended. Replaced with literal expectations plus
+  `everyLegacyConfigShapeResolvesToALiteralTier`, which pins every accepted legacy config shape to a
+  literal tier. The rule is now "no migration path may resolve through the shipped default", because
+  a default is precisely the thing that changes under a migration written years earlier.
 - Game-test harnesses now pin `compatibilityTier` on disk for **every** harness rather than only the
   audited one. The audited harness wrote that file into the shared run directory and nothing deleted
   it, so a later default run inherited it. That was invisible while the shipped default was also
   `Audited`; with the default changed it would have meant a default run silently exercising a tier
   the mod no longer ships, and only on machines that had run the audited harness at some point.
+- The harness config no longer hardcodes `configVersion`; it is read from `PathWeaverConfig.java`. A
+  stale literal would not have failed as "wrong version" — the serializer would reject the config,
+  fall back to `enabled=false`, and every game test would fail at once pointing nowhere near the
+  cause.
+- The harness seeding now yields to a staged `StartupConfigMigrationProbe` fixture instead of
+  overwriting it.
+
+### Added
+
+- **`-PunsafeTierHarness`, a live witness for the configuration this mod actually ships.** Every
+  other harness pins `Audited`, because every other harness exists to watch the gate close — which
+  left the shipped default, the state every new user starts in, as the only configuration with no
+  end-to-end coverage. It runs at `Unsafe` at scan time, on a harness that deliberately keeps a mixin
+  into sensitive pathfinding code so the scan genuinely denies something first, and asserts the chain
+  an operator depends on: the denial happened, the waiver cleared it, the evaluator is admitted, a
+  real mob dispatches, and a path installs. The non-vacuity assertion is the load-bearing one — at
+  `Unsafe` nearly everything worth asserting is trivially true, so the test fails unless there was
+  something to waive.
+
+### Changed (also)
+
+- The `Unsafe` startup block now names the unaudited mods **in the block**, rather than saying "the
+  mods listed above" and leaving the reader to find per-config lines emitted hundreds of lines
+  earlier during mixin scanning. That is the same argument that justified adding the world-start
+  report in 0.4.0.
+- `/pathweaver status` reports the tier **in force** rather than the field on disk. The field is what
+  a settings save writes; the policy was frozen at scan time and does not follow it. Printing the
+  field labelled "frozen at startup" told an operator who had just selected `Audited` that they were
+  running checked, on a session still running unchecked — now the common direction of travel.
+- Corrected three surviving statements that the default is the safe tier, in the startup log, in
+  `COMPATIBILITY.md`, and in the Lithium exemption's javadoc.
 
 ### Notes
 

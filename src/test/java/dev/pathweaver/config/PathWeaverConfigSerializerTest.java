@@ -8,6 +8,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -124,13 +125,19 @@ class PathWeaverConfigSerializerTest {
     }
 
     /**
-     * The retired flag off recorded "I accepted whatever the scan does", not a choice between three
-     * tiers that did not exist. Pinning it to STRICT would read as faithful and would in fact take a
-     * working install inert on upgrade, because STRICT now denies any pack containing Fabric API.
+     * {@code overrideCompatibilityScan=false} is the one stored value that is an explicit refusal of
+     * what the shipped default now does, so it must resolve to a literal and never to the default.
+     *
+     * <p>This test used to assert against {@code new PathWeaverConfig().compatibilityTier} — the same
+     * expression the production code used — so it compared the code to itself and could not fail for
+     * any default. It passed unchanged through the 0.5.0 flip while certifying that a config saying
+     * "do not bypass the compatibility scan" now migrates to the tier that bypasses everything.
+     * That is why every expectation in {@link #everyLegacyConfigShapeResolvesToALiteralTier()} is a
+     * literal.
      */
-    @Test void retiredOverrideFalseBecomesTheShippedDefault() throws Exception {
+    @Test void retiredOverrideFalseBecomesAudited() throws Exception {
         assertTier("{\"configVersion\":2,\"enabled\":true,\"overrideCompatibilityScan\":false}",
-            new PathWeaverConfig().compatibilityTier);
+            CompatibilityTier.AUDITED);
     }
 
     /** An operator who already chose a tier must not have it rewritten by a stale legacy key. */
@@ -158,6 +165,42 @@ class PathWeaverConfigSerializerTest {
             "this test is only meaningful while the shipped default is wider than AUDITED");
         assertTier("{\"configVersion\":2,\"enabled\":true,\"compatibilityTier\":\"AUDITED\"}",
             CompatibilityTier.AUDITED);
+    }
+
+    /**
+     * Every config shape the serializer accepts, each pinned to a literal tier.
+     *
+     * <p>The invariant is not "an explicit AUDITED survives" — that is one instance of it. It is
+     * that <em>no</em> migration path may resolve through the shipped default, because a default is
+     * exactly the thing that changes underneath a migration written years earlier. Two separate
+     * defects shipped in 0.5.0 for want of this table: a migration that deferred to the default, and
+     * a test that asserted the default against itself. Both were invisible precisely because they
+     * agreed with each other.
+     *
+     * <p>Adding a legacy shape here is cheap. Discovering one was mis-migrated is not: the operator
+     * cannot see it, because a widened install behaves exactly like a working one.
+     */
+    @Test void everyLegacyConfigShapeResolvesToALiteralTier() throws Exception {
+        record Shape(String json, CompatibilityTier expected, String why) {}
+        List<Shape> shapes = List.of(
+            new Shape("{\"configVersion\":2,\"enabled\":true,\"overrideCompatibilityScan\":true}",
+                CompatibilityTier.UNSAFE, "an explicit bypass stays a bypass"),
+            new Shape("{\"configVersion\":2,\"enabled\":true,\"overrideCompatibilityScan\":false}",
+                CompatibilityTier.AUDITED, "an explicit refusal to bypass must never become a bypass"),
+            new Shape("{\"configVersion\":2,\"enabled\":true,\"overrideCompatibilityScan\":true,"
+                + "\"compatibilityTier\":\"AUDITED\"}",
+                CompatibilityTier.AUDITED, "an explicit tier outranks the retired key"),
+            new Shape("{\"configVersion\":2,\"enabled\":true,\"compatibilityTier\":\"ALL\"}",
+                CompatibilityTier.UNSAFE, "ALL was renamed, not retired"),
+            new Shape("{\"configVersion\":2,\"enabled\":true,\"compatibilityTier\":\"STRICT\"}",
+                CompatibilityTier.AUDITED, "STRICT was inert on every real pack; AUDITED is the "
+                + "nearest tier that still checks"),
+            new Shape("{\"configVersion\":2,\"enabled\":true,\"compatibilityTier\":\"UNSAFE\"}",
+                CompatibilityTier.UNSAFE, "an explicit UNSAFE is kept"));
+
+        for (Shape shape : shapes) {
+            assertTier(shape.json(), shape.expected());
+        }
     }
 
     /**

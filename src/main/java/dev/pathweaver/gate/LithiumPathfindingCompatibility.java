@@ -42,7 +42,9 @@ import java.util.Set;
  * exception. That failure is contained — it surfaces as a failed search, which falls back to
  * synchronous pathfinding — but it is a real behavioural risk rather than a proof of equivalence.
  * Trading a possible wrong path for tick headroom is a judgement call that belongs to the server
- * owner, which is why this sits behind {@link CompatibilityTier#AUDITED} instead of the default.
+ * owner, which is why this exemption only decides anything at {@link CompatibilityTier#AUDITED}.
+ * That is the opt-in checked tier, not the shipped default -- at the default the scan is waived
+ * wholesale and this audit decides nothing at all.
  *
  * <p>The exemption is pinned to exact artifact bytes. A different Lithium build, a changed mixin
  * class, or a changed mixin plugin fails verification and denies, because the proof above is a

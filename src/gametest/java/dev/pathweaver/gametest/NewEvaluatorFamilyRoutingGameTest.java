@@ -1,6 +1,7 @@
 package dev.pathweaver.gametest;
 
 import dev.pathweaver.PathWeaverRuntime;
+import dev.pathweaver.config.CompatibilityTier;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.gate.SafetyGate;
 import java.lang.reflect.Field;
@@ -86,6 +87,16 @@ public final class NewEvaluatorFamilyRoutingGameTest {
         }
 
         private void begin() {
+            // Assert the tier rather than assume it. Every check below -- an empty denial set, both
+            // evaluators admitted -- is trivially true at UNSAFE, so without this line the whole
+            // harness would pass vacuously if the build ever stopped pinning the tier. That is not
+            // hypothetical: the pin used to be inherited from the shipped default, and when the
+            // default moved to UNSAFE only the one harness that asserted its own precondition
+            // noticed.
+            check(PathWeaverConfig.get().compatibilityTier == CompatibilityTier.AUDITED,
+                "harness must run at compatibilityTier=AUDITED or these checks prove nothing, found "
+                    + PathWeaverConfig.get().compatibilityTier);
+
             // This harness declares no mixin config, so nothing is denied and nothing here needs to
             // touch the shared denial set. That matters: mutating it concurrently with the long
             // routing test is what made the default gate flaky when this test lived there.

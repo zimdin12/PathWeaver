@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "pathweaver_gametest_unsafe",
+  "version": "1.0.0",
+  "name": "PathWeaver Unsafe Tier Waiver Game Test",
+  "environment": "server",
+  "mixins": [
+    "pathweaver-gametest.mixins.json"
+  ],
+  "entrypoints": {
+    "fabric-gametest": [
+      "dev.pathweaver.gametest.UnsafeTierWaiverGameTest"
+    ]
+  },
+  "depends": {
+    "fabric-gametest-api-v1": "*",
+    "pathweaver": "*"
+  }
+}

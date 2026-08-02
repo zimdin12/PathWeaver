@@ -52,8 +52,11 @@ public final class ClientSingleplayerGameTest implements FabricClientGameTest {
                 report.add("runtime running=" + PathWeaverRuntime.get().isRunning());
                 report.add("workers=" + PathWeaverRuntime.get().pool().threads());
 
-                // Singleplayer is a fresh world with stock Fabric only, so the scan should open the
-                // gate on its own. If it did not, everything below would pass vacuously.
+                // NOT pinned by the runGameTest tier seeding -- the client harness runs under a
+                // different task and run directory, so it takes the shipped default (UNSAFE).
+                // This used to read "the scan should open the gate on its own", which was true while
+                // the default was AUDITED and is not now: the gate opens because checking is off.
+                // Reported rather than asserted, so nothing here silently depends on which it was.
                 synchronized (SafetyGate.deniedBySafety) {
                     report.add("deniedFamilies=" + SafetyGate.deniedBySafety.size());
                 }

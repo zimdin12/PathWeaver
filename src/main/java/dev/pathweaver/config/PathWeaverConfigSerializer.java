@@ -147,31 +147,46 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
      * because mapping a deliberate loosening onto a stricter tier would silently override a choice
      * the operator made.
      *
-     * <p>{@code false} maps to the shipped default rather than to the removed strictest tier.
-     * It was the old default, so it records "I accepted whatever the scan does" rather than a choice
-     * between three tiers that did not exist yet. Pinning it to {@code STRICT} would read as faithful
-     * and would in fact change behaviour for every such user, because {@code STRICT} now denies any
-     * pack containing Fabric API — their working install would go inert on upgrade without them
-     * touching anything. An explicit {@code compatibilityTier} always wins, so a config carrying both
-     * is not re-migrated.
+     * <p>{@code false} maps to {@link CompatibilityTier#AUDITED}, pinned as a literal and
+     * deliberately NOT to the shipped default.
+     *
+     * <p>This used to resolve through {@code new PathWeaverConfig().compatibilityTier} on the
+     * argument that the default was the conservative tier, so deferring to it was the faithful
+     * reading. That argument died when 0.5.0 made {@code UNSAFE} the default, and deferring became
+     * an inversion: the key is literally named "override the compatibility scan", the operator
+     * stored {@code false}, and the migration would have answered by turning the scan off entirely.
+     * It is the one setting whose stored value is an explicit refusal of exactly what the new
+     * default does, so it is the one setting that must not follow the default anywhere.
+     *
+     * <p>Pinning it to {@code STRICT} would read as more faithful still and would be worse: that
+     * tier now denies any pack containing Fabric API, so a working install would go inert on upgrade
+     * without the operator touching anything. {@code AUDITED} is the armed-scan tier that
+     * {@code false} actually described.
+     *
+     * <p>An explicit {@code compatibilityTier} always wins, so a config carrying both is not
+     * re-migrated.
      */
     private static void migrateCompatibilityTier(JsonObject raw) {
         if (!raw.has("overrideCompatibilityScan")) return;
         boolean override = strictBoolean(raw, "overrideCompatibilityScan", null);
         raw.remove("overrideCompatibilityScan");
         if (raw.has("compatibilityTier")) return;
-        raw.addProperty("compatibilityTier",
-            (override ? CompatibilityTier.UNSAFE : new PathWeaverConfig().compatibilityTier).name());
+        CompatibilityTier migrated = override ? CompatibilityTier.UNSAFE : CompatibilityTier.AUDITED;
+        raw.addProperty("compatibilityTier", migrated.name());
+        if (migrated == CompatibilityTier.AUDITED) {
+            try {
+                dev.pathweaver.PathWeaver.LOG.info("Your config still carried the retired "
+                    + "overrideCompatibilityScan=false, which meant \"do not bypass the compatibility "
+                    + "scan\". It has been migrated to compatibilityTier=AUDITED, which is what that "
+                    + "asked for. Note this is STRICTER than a fresh 0.5.0 install, which ships "
+                    + "UNSAFE — so on a heavily-modded pack expect PathWeaver to refuse, and see the "
+                    + "world-start report for which mods are responsible.");
+            } catch (Throwable ignored) {
+                // Migrating must not depend on a logging backend being healthy.
+            }
+        }
     }
 
-    /**
-     * Configs written before the tier was renamed persist {@code ALL}.
-     *
-     * <p>It was renamed because it did not mean all: the tier waives every question about other
-     * mods' code, but never the two vanilla evaluators that write to the mob mid-search. Rejecting
-     * the old spelling would fail closed on upgrade and silently switch the mod off for exactly the
-     * operators who had opted furthest in, so it is rewritten in place instead.
-     */
     /**
      * Rewrite tier names that no longer exist, so an upgrade does not fail closed on its own config.
      *
@@ -181,9 +196,11 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
      * covering Fabric API's own interaction module is a bounded call sample rather than a proof, so
      * it denied every install containing Fabric API — which this mod requires. It could not do
      * anything on any pack that has ever existed. Anyone holding it was running a mod that was
-     * switched off, so mapping them to the shipped default is the smallest honest change: it is now
-     * the most conservative tier that exists, and it is what they would have got by installing
-     * fresh. It is logged rather than done quietly, because it is still a loosening.
+     * switched off, so mapping them to {@code AUDITED} is the smallest honest change: it is the
+     * most conservative tier that still exists. Note this is NOT the shipped default and NOT what
+     * a fresh install gives -- 0.5.0 ships {@code UNSAFE} -- and the literal is deliberate for the
+     * same reason it is deliberate in {@code migrateCompatibilityTier}. It is logged rather than
+     * done quietly, because it is still a loosening.
      */
     private static void migrateRenamedTier(JsonObject raw) {
         if (!raw.has("compatibilityTier")) return;

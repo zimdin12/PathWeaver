@@ -172,21 +172,50 @@ if (providers.gradleProperty("auditedTierHarness").isPresent()) {
 // AUDITED for all of them, deliberately decoupled from the shipped default. These harnesses exist to
 // witness the gate: PathNavigationRoutingGameTest asserts that stock Fabric API fails closed for
 // every family, which is a statement about AUDITED and is unprovable at a tier that denies nothing.
-// Inheriting the shipped default silently converted that witness into a vacuous pass the moment the
-// default moved to UNSAFE -- it did not go quiet, it failed, which is the only reason this is a
-// comment rather than a bug report. The shipped default is covered instead by
-// FabricAggregateWalkRoutingGameTest, which flips to UNSAFE in-process.
+// Letting it inherit the shipped default did not make it go quiet, it made it fail, which is the
+// only reason this is a comment rather than a bug report.
 //
-// Written from one unconditional place, because `doFirst` prepends: a second action registered
-// inside the conditional block above would run BEFORE this one and be overwritten by it.
+// The one exception is `-PunsafeTierHarness`, which pins UNSAFE because it witnesses the shipped
+// default itself -- the configuration every new user starts in, and until it was added the only one
+// with no end-to-end coverage. Note FabricAggregateWalkRoutingGameTest does NOT cover that: it flips
+// to UNSAFE in-process to prove the opposite, that a tier written AFTER the scan is inert because
+// the tier is frozen until restart. By construction it cannot witness a scan-time UNSAFE.
+//
+// Written from one unconditional place, because `doFirst` prepends: actions run in reverse
+// registration order, so an action registered inside the conditional block above would run AFTER
+// this one and overwrite it.
 tasks.named("runGameTest") {
     doFirst {
+        // Yield to the migration matrix. StartupConfigMigrationProbe arms only when this property
+        // is set, and it works by staging a real legacy config on disk and asserting what the
+        // serializer made of it. Writing over that fixture would silently convert those runs into a
+        // test of this line instead. Previously the clobber only happened under -PauditedTierHarness
+        // and so was easy to miss; making the write unconditional made it everyone's problem.
+        if (System.getProperty("pathweaver.test.expectedStartupEnabled") != null) {
+            logger.lifecycle("game-test config left alone: a startup migration fixture is staged")
+            return
+        }
+
+        // Read the version out of the source rather than hardcoding it. A stale literal here does
+        // not fail as "wrong version": the serializer rejects the config, falls back to
+        // enabled=false, and every game test fails at once with a symptom that points nowhere near
+        // this line.
+        def configSource = file("src/main/java/dev/pathweaver/config/PathWeaverConfig.java").text
+        def matcher = configSource =~ /CURRENT_CONFIG_VERSION\s*=\s*(\d+)/
+        if (!matcher.find()) {
+            throw new GradleException("could not read CURRENT_CONFIG_VERSION from PathWeaverConfig.java; "
+                + "the game-test harness cannot write a config the serializer will accept")
+        }
+        def configVersion = matcher.group(1)
+        def tier = providers.gradleProperty("unsafeTierHarness").isPresent() ? "UNSAFE" : "AUDITED"
         def config = layout.buildDirectory
             .file("run/gameTest/config/pathweaver.json").get().asFile
         config.parentFile.mkdirs()
-        config.text = '{"configVersion":2,"enabled":true,"compatibilityTier":"AUDITED"}'
-        logger.lifecycle("game-test harness pinned to compatibilityTier=AUDITED "
-            + "(gate witnesses; the shipped default is UNSAFE)")
+        config.text = "{\"configVersion\":${configVersion},\"enabled\":true,\"compatibilityTier\":\"${tier}\"}"
+        logger.lifecycle("game-test harness pinned to compatibilityTier=${tier}, configVersion="
+            + "${configVersion}"
+            + (tier == "AUDITED" ? " (gate witnesses; the shipped default is UNSAFE)"
+                                 : " (witnessing the shipped default)"))
     }
 }
 
@@ -249,6 +278,26 @@ if (providers.gradleProperty("newFamilyHarness").isPresent()) {
     }
     tasks.named("runGameTest") {
         dependsOn tasks.named("prepareNewFamilyGameTestHarness")
+    }
+}
+
+// Witness for the shipped default. Unlike every other harness it KEEPS the sensitive test mixin
+// config, because the denial is the point: the waiver is only observable when the scan genuinely
+// refused something first. Removing that mixin here would leave a test that passes on an install
+// where nothing was ever denied.
+if (providers.gradleProperty("unsafeTierHarness").isPresent()) {
+    tasks.register("prepareUnsafeTierGameTestHarness") {
+        dependsOn tasks.named("processGametestResources")
+        outputs.upToDateWhen { false }
+        doLast {
+            copy {
+                from file("src/gametest/unsafeResources/fabric.mod.json")
+                into layout.buildDirectory.dir("resources/gametest")
+            }
+        }
+    }
+    tasks.named("runGameTest") {
+        dependsOn tasks.named("prepareUnsafeTierGameTestHarness")
     }
 }
 
