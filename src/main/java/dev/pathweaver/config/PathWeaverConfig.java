@@ -49,22 +49,35 @@ public class PathWeaverConfig implements ConfigData {
     /**
      * How much risk to accept from mods that modify pathfinding. See {@link CompatibilityTier}.
      *
-     * <p>Defaults to {@link CompatibilityTier#AUDITED}, which is now the most conservative tier that
-     * exists. A stricter one was removed in 0.4.0: it honoured only structural proofs, and the
-     * exemption covering Fabric API's own interaction module is a bounded call sample rather than a
-     * proof, so it denied every install containing Fabric API — which this mod requires. It could
-     * not do anything on any pack that has ever existed.
+     * <p>Defaults to {@link CompatibilityTier#UNSAFE}: no compatibility checking at all. That is a
+     * deliberate project decision and it is worth stating plainly rather than burying, because the
+     * safer value is the one this field does not ship with.
      *
-     * <p>{@code AUDITED} is the weaker evidence standard, and it is the one that describes what this
-     * mod can actually demonstrate today. On a heavily-modded pack it will usually still refuse, and
-     * the startup log now says so in those words rather than leaving the operator to infer it from
-     * silence.
+     * <p>The reason is that {@code AUDITED} does nothing on the packs people actually run. It
+     * honours bytecode audits and one bounded call sample, and any mod outside that evidence denies
+     * every movement family. Measured on a 222-mod pack: {@code AUDITED} left <strong>0 of 187</strong>
+     * mob types eligible, {@code UNSAFE} left all 187. A stricter tier existed in 0.3 and was removed
+     * in 0.4.0 for being worse still — it admitted only structural proofs, and since the exemption
+     * covering Fabric API's own interaction module is a sample rather than a proof, it denied every
+     * install containing Fabric API, which this mod requires. Shipping {@code AUDITED} by default
+     * meant shipping a mod that installs, does nothing, and is indistinguishable from a broken one.
+     *
+     * <p>What is being accepted: uninspected third-party code runs on worker threads. The failure
+     * mode is a data race — a wrong path, a torn read — not a crash and not a corrupt region file,
+     * so it is quiet, and a user who hits it will most likely never report it. Nothing here is
+     * evidence that it is safe; it is a choice to trade a silent risk for a mod that works on
+     * arrival, taken because the alternative was a mod that never works at all.
+     *
+     * <p>Two things keep it honest. The startup log prints a blocking {@code WARN} block naming
+     * every unaudited mod that is now running on workers, so this is never silent. And
+     * {@code AUDITED} is one setting away, with {@link #trustedMods} between them for anyone who
+     * wants to accept named mods rather than all of them.
      */
     @ConfigEntry.Gui.Tooltip(count = 5)
     @ConfigEntry.Category("general")
     @ConfigEntry.Gui.RequiresRestart
     @ConfigEntry.Gui.EnumHandler(option = ConfigEntry.Gui.EnumHandler.EnumDisplayOption.DROPDOWN)
-    public CompatibilityTier compatibilityTier = CompatibilityTier.AUDITED;
+    public CompatibilityTier compatibilityTier = CompatibilityTier.UNSAFE;
 
     /**
      * Mod ids whose pathfinding denials to ignore, while the scan stays armed for everything else.

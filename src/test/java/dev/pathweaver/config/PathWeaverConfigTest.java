@@ -113,8 +113,12 @@ class PathWeaverConfigTest {
         // The tier is frozen at scan time, so writing the field -- which is what a settings save
         // does -- must not change runtime policy. Before any scan publishes, everything denies.
         PathWeaverConfig c = new PathWeaverConfig();
-        assertSame(CompatibilityTier.AUDITED, c.compatibilityTier,
-            "STRICT denies any pack containing Fabric API, so shipping it would ship an inert mod");
+        // Pinned deliberately, because this is the one default whose value is a risk decision rather
+        // than a preference: AUDITED left 0 of 187 mob types eligible on a 222-mod pack, so shipping
+        // it shipped a mod that installs and does nothing. Changing this back is a real decision and
+        // should have to break a test that says so out loud.
+        assertSame(CompatibilityTier.UNSAFE, c.compatibilityTier,
+            "the shipped default runs uninspected mod code on workers; AUDITED is inert on real packs");
         assertFalse(c.allowModdedMobAsync);
         assertEquals(c.bypassesCompatibilityScan(), c.moddedMobAsyncAllowed(),
             "with the flag off, modded mobs follow the frozen tier and nothing else");

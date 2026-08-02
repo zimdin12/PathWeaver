@@ -2,11 +2,18 @@
 
 **Experimental server-side mod for Minecraft 26.1.2 (Fabric). Moves vanilla mob path searches off the server thread.**
 
-**Read this first: PathWeaver refuses to run wherever another mod modifies pathfinding code and that mod has not been individually audited.**
+**Read this first: PathWeaver ships with its compatibility checking turned off, so out of the box it runs other mods' uninspected pathfinding code on worker threads. Back up worlds you care about.**
 
-**On a heavily-modded pack the default will refuse to do anything, and from 0.4.0 the game log says so at world start** — naming the mods responsible rather than leaving you to infer it from silence.
+That is a deliberate choice and the reasoning is in the open. The checked tier, `AUDITED`, only honours individual bytecode audits, and on a real modpack that means it denies everything and the mod does nothing — measured at **0 of 187** eligible mob types on a 222-mod pack. Shipping it as the default shipped something indistinguishable from broken. Shipping `UNSAFE` means it works on arrival and the risk is yours to opt out of, which is the trade this project decided to make.
 
-There are two tiers, `AUDITED` (default) and `UNSAFE`, plus `trustedMods` for naming individual mods you have decided to run unaudited. That last one is the option worth knowing about: it gets a heavy pack working without waiving every check you will ever make. See [Will it actually do anything?](#will-it-actually-do-anything).
+What you are accepting: the failure mode is a data race — a wrong path, a torn read — not a crash and not a corrupt region file. It is quiet. Nothing here is evidence that it is safe.
+
+Two ways to opt back into checking, both one setting away:
+
+- `compatibilityTier=AUDITED` — full checking. Expect it to refuse on a heavy pack; the log names which mods did it.
+- `trustedMods` — the middle option, and the one worth knowing about. Name the specific mods you have decided to run unaudited and the scan keeps working for everything else. See [Will it actually do anything?](#will-it-actually-do-anything).
+
+Whichever you land on, the game log says so at world start and names the mods responsible, rather than leaving you to infer it from silence.
 
 See the [version-exact compatibility matrix](COMPATIBILITY.md) for audited verdicts, artifact hashes, and the evidence boundary. Future or modified artifacts fail closed.
 
@@ -20,12 +27,14 @@ Flying and amphibious mobs were excluded before 0.4.0, and the stated reason was
 
 ## Will it actually do anything?
 
-At startup PathWeaver scans every loaded mod for mixins into pathfinding code. If a mod modifies that code and has not been audited, PathWeaver disables itself for the affected movement family and everything runs vanilla-synchronous.
+At the shipped `UNSAFE` default the answer is yes, on any pack, because no check can stop it. **This whole section describes `compatibilityTier=AUDITED`** — what you get when you opt back into checking.
 
-Failing closed is better than running unaudited code on a worker thread and corrupting a world. The consequence is that PathWeaver only does something once the mods in your pack that touch pathfinding have each been individually audited. Two of the biggest have been:
+At `AUDITED`, PathWeaver scans every loaded mod at startup for mixins into pathfinding code. If a mod modifies that code and has not been audited, PathWeaver disables itself for the affected movement family and everything runs vanilla-synchronous.
+
+Failing closed is better than running unaudited code on a worker thread and corrupting a world — which is exactly why it is worth understanding what the default gives up. The consequence, and the reason it is not the default, is that `AUDITED` only does something once every mod in your pack that touches pathfinding has been individually audited. Two of the biggest have been:
 
 - **The Fabric API that PathWeaver itself requires.** It bundles `fabric-content-registries-v0`, which injects into a method the walk search calls for every block. That alone used to deny Walk on *every* stock install. It is now allowed while no mod has registered a land path-type provider — the condition that makes the injection inert — and denies permanently the moment one registers, including cancelling a search already in flight. Fabric API also bundles `fabric-events-interaction-v0`, whose exemption rests on an inventory of calls from ten pinned worker-side classes. That is a bounded sample, not an exhaustive proof that no worker route reaches those methods.
-- **Lithium**, which ships in most performance modpacks, and **Diagonal Blocks** (Diagonal Fences/Walls/Windows). Their pathfinding mixins are pinned by hash and checked at startup: the audited classes are rejected if they write a field on the search path, and Diagonal Blocks is additionally required never to reach the unsynchronised shape caches. That is a bounded mechanical check, not a whole-program proof — [COMPATIBILITY.md](COMPATIBILITY.md) states exactly what each verifier inspects. They are allowed at the default tier; see below for the trade.
+- **Lithium**, which ships in most performance modpacks, and **Diagonal Blocks** (Diagonal Fences/Walls/Windows). Their pathfinding mixins are pinned by hash and checked at startup: the audited classes are rejected if they write a field on the search path, and Diagonal Blocks is additionally required never to reach the unsynchronised shape caches. That is a bounded mechanical check, not a whole-program proof — [COMPATIBILITY.md](COMPATIBILITY.md) states exactly what each verifier inspects. They are allowed at `AUDITED`; see below for the trade.
 
 Mods that just mark a block dangerous — "mobs should avoid my spikes" — are handled generically, with no per-mod entry: their rule is asked for every answer it can give and frozen before any worker sees it. That rests on such a rule being a pure function of the block state, which the API's shape encourages but does not enforce, so it rests on an assumption rather than a proof. A rule that *receives* the surrounding world normally switches Walk back to synchronous, because its answers cannot be precomputed. Farmer's Delight's lit stove is the one exception: it receives the world and provably never reads it, so an exact audit of that artifact lets its answers be frozen too. That audit is bounded evidence, not a proof.
 
@@ -37,7 +46,7 @@ Check your server log for:
 Foreign-mixin scan complete: scanned=…, failed=…, deniedFamilies=…
 ```
 
-`deniedFamilies=0` means PathWeaver is active. Any other value means it is partly or wholly inactive, and the preceding lines name each mod responsible.
+`deniedFamilies=0` means PathWeaver is active — always true at the `UNSAFE` default. Any other value means it is partly or wholly inactive, and the preceding lines name each mod responsible.
 
 ## How many of your mobs are actually eligible
 
@@ -45,17 +54,19 @@ Two numbers from the same 222-mod pack, because only quoting the flattering one 
 
 | Tier | Eligible mob types |
 |---|---|
-| `UNSAFE` | **187 of 187** (0.3.0 managed 163) |
-| `AUDITED` — the shipped default | **0 of 187** |
+| `UNSAFE` — the shipped default | **187 of 187** (0.3.0 managed 163) |
+| `AUDITED` | **0 of 187** |
 
-The second number has been true since 0.3.0 and no version has improved it. Nine mods in that pack —
+The second number has been true since 0.3.0 and no version has improved it, which is why it is no
+longer the default. Nine mods in that pack —
 balm, carpet, expandability, ferritecore, scalablelux, sereneseasons, terrain_slabs, vehicleupgrade
 and yungscavebiomes — mix into pathfinding-adjacent code, so the scan denies every movement family
 and the mod does nothing. From 0.4.0 it says exactly that at world start and names them.
 **What limits PathWeaver is other mods touching block state, not which mobs it can handle.**
 
-Where the scan denies nothing — a lean pack, Fabric API and Lithium — the default admits everything,
-which is the configuration the benchmark below runs in.
+Where the scan denies nothing — a lean pack, Fabric API and Lithium — `AUDITED` admits everything on
+its own, which is the configuration the benchmark below runs in. That is the case the checked tier was
+built for, and it is rarer than a modpack list makes it look.
 
 ### There is a middle option
 
@@ -63,7 +74,7 @@ which is the configuration the benchmark below runs in.
 month. `trustedMods` is the scoped version — name the specific mods you have decided about, and the
 scan keeps working for everything else.
 
-On the same 222-mod pack, tier left at the `AUDITED` default throughout:
+On the same 222-mod pack, tier set to `AUDITED` throughout:
 
 | `trustedMods` | Result |
 |---|---|

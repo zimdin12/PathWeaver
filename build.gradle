@@ -158,14 +158,35 @@ if (providers.gradleProperty("auditedTierHarness").isPresent()) {
     }
     tasks.named("runGameTest") {
         dependsOn tasks.named("prepareAuditedTierGameTestHarness")
-        doFirst {
-            // The tier is read during the startup scan, long before a game test can set it, so it
-            // has to be on disk in the run directory before the server process starts.
-            def config = layout.buildDirectory
-                .file("run/gameTest/config/pathweaver.json").get().asFile
-            config.parentFile.mkdirs()
-            config.text = '{"configVersion":2,"enabled":true,"compatibilityTier":"AUDITED"}'
-        }
+    }
+}
+
+// Pin the tier on disk for EVERY harness, not just the audited one.
+//
+// The tier is read during the startup scan, long before a game test can set it, so it has to be in
+// the run directory before the server process starts. This used to be written only by the audited
+// harness, which left the run directory carrying that file into subsequent runs -- nothing deletes
+// it -- so which tier a default run got depended on whether that machine had ever run the audited
+// harness. It was invisible while every harness wanted the same tier anyway.
+//
+// AUDITED for all of them, deliberately decoupled from the shipped default. These harnesses exist to
+// witness the gate: PathNavigationRoutingGameTest asserts that stock Fabric API fails closed for
+// every family, which is a statement about AUDITED and is unprovable at a tier that denies nothing.
+// Inheriting the shipped default silently converted that witness into a vacuous pass the moment the
+// default moved to UNSAFE -- it did not go quiet, it failed, which is the only reason this is a
+// comment rather than a bug report. The shipped default is covered instead by
+// FabricAggregateWalkRoutingGameTest, which flips to UNSAFE in-process.
+//
+// Written from one unconditional place, because `doFirst` prepends: a second action registered
+// inside the conditional block above would run BEFORE this one and be overwritten by it.
+tasks.named("runGameTest") {
+    doFirst {
+        def config = layout.buildDirectory
+            .file("run/gameTest/config/pathweaver.json").get().asFile
+        config.parentFile.mkdirs()
+        config.text = '{"configVersion":2,"enabled":true,"compatibilityTier":"AUDITED"}'
+        logger.lifecycle("game-test harness pinned to compatibilityTier=AUDITED "
+            + "(gate witnesses; the shipped default is UNSAFE)")
     }
 }
 

@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.5.0 — Works on arrival
+
+### Changed
+
+- **The default `compatibilityTier` is now `Unsafe`, so out of the box PathWeaver runs other mods'
+  uninspected pathfinding code on worker threads.** This is a risk decision and not a small one, so
+  the reasoning is stated rather than buried. `Audited` honours individual bytecode audits and one
+  bounded call sample; any mod outside that evidence denies every movement family. On a 222-mod pack
+  that left **0 of 187** mob types eligible, and it has been 0 since 0.3.0 — no release has improved
+  it, because the limit is other mods touching block state, not anything this mod can fix. Shipping
+  `Audited` shipped something indistinguishable from broken.
+
+  What is being accepted: the failure mode is a data race — a wrong path, a torn read — not a crash
+  and not a corrupt region file. It is quiet, and a user who hits it will most likely never report
+  it. Nothing in this release is evidence that it is safe. It is a trade of a silent risk for a mod
+  that works on arrival.
+
+  Unchanged and still one setting away: `compatibilityTier=Audited` for full checking, and
+  `trustedMods` for naming individual mods rather than waiving everything. The startup `WARN` block
+  naming every unaudited mod now running on workers is unchanged too, so this is never silent.
+
+### Fixed
+
+- Game-test harnesses now pin `compatibilityTier` on disk for **every** harness rather than only the
+  audited one. The audited harness wrote that file into the shared run directory and nothing deleted
+  it, so a later default run inherited it. That was invisible while the shipped default was also
+  `Audited`; with the default changed it would have meant a default run silently exercising a tier
+  the mod no longer ships, and only on machines that had run the audited harness at some point.
+
+### Notes
+
+- Two things reported as defects during profiling were re-checked against the code and are **not**
+  defects, recorded here so they are not "fixed" later by someone reading the same profile. Idle
+  `PathWeaver-Worker` threads in a profile taken with the mod disabled are a pool decaying after the
+  live master switch was flipped: the executor creates core threads on demand and
+  `allowCoreThreadTimeOut(true)` retires them after 30s, so a disabled mod creates none. And
+  `poolThreads` is a ceiling, not an allocation — observing eight live workers means burst demand
+  actually reached eight, so lowering it would serialise those bursts.
+
 ## 0.4.0 — Every vanilla mob, and counters that mean something
 
 _There are two tiers from this release: `Audited` (default) and `Unsafe`. The tier named `ALL` in

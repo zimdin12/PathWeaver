@@ -139,11 +139,25 @@ class PathWeaverConfigSerializerTest {
             + "\"compatibilityTier\":\"AUDITED\"}", CompatibilityTier.AUDITED);
     }
 
-    @Test void absentTierTakesTheShippedDefaultAndNothingWider() throws Exception {
-        CompatibilityTier shipped = new PathWeaverConfig().compatibilityTier;
-        assertTier("{\"configVersion\":2,\"enabled\":true}", shipped);
-        assertNotSame(CompatibilityTier.UNSAFE, shipped,
-            "a missing tier must never inherit the tier that disables every check");
+    @Test void absentTierTakesTheShippedDefault() throws Exception {
+        assertTier("{\"configVersion\":2,\"enabled\":true}", new PathWeaverConfig().compatibilityTier);
+    }
+
+    /**
+     * The upgrade hazard created by shipping {@code UNSAFE} as the default.
+     *
+     * <p>This test used to assert the opposite property — that an absent tier could never resolve to
+     * the tier that disables every check — which was true while the default was {@code AUDITED} and
+     * is deliberately no longer true. Deleting it outright would have dropped the part that still
+     * matters, and it matters more now than it did: an operator who read the warnings and chose
+     * checking must keep it. If a default change ever rewrites an explicit tier, this is the failure
+     * nobody would notice, because a widened install looks exactly like a working one.
+     */
+    @Test void anExplicitAuditedTierSurvivesTheDefaultBeingWider() throws Exception {
+        assertNotSame(CompatibilityTier.AUDITED, new PathWeaverConfig().compatibilityTier,
+            "this test is only meaningful while the shipped default is wider than AUDITED");
+        assertTier("{\"configVersion\":2,\"enabled\":true,\"compatibilityTier\":\"AUDITED\"}",
+            CompatibilityTier.AUDITED);
     }
 
     /**
