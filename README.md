@@ -4,9 +4,9 @@
 
 **Read this first: PathWeaver refuses to run wherever another mod modifies pathfinding code and that mod has not been individually audited.**
 
-**There are two tiers, `AUDITED` (default) and `UNSAFE`, and on a heavily-modded pack that is a choice between off and unsafe.** A third, stricter tier existed until 0.4.0 and was removed: it honoured only structural proofs, and the exemption covering Fabric API's own interaction module is a bounded call sample rather than a proof, so it denied every install containing Fabric API — which this mod requires. It could not do anything on any pack that has ever existed.
+**On a heavily-modded pack the default will refuse to do anything, and from 0.4.0 the game log says so at world start** — naming the mods responsible rather than leaving you to infer it from silence.
 
-**`AUDITED` will refuse most heavy packs, and from 0.4.0 the game log says so at world start**, naming the mods responsible and telling you how to override it. See [Will it actually do anything?](#will-it-actually-do-anything).
+There are two tiers, `AUDITED` (default) and `UNSAFE`, plus `trustedMods` for naming individual mods you have decided to run unaudited. That last one is the option worth knowing about: it gets a heavy pack working without waiving every check you will ever make. See [Will it actually do anything?](#will-it-actually-do-anything).
 
 See the [version-exact compatibility matrix](COMPATIBILITY.md) for audited verdicts, artifact hashes, and the evidence boundary. Future or modified artifacts fail closed.
 
@@ -48,12 +48,11 @@ Two numbers from the same 222-mod pack, because only quoting the flattering one 
 | `UNSAFE` | **187 of 187** (0.3.0 managed 163) |
 | `AUDITED` — the shipped default | **0 of 187** |
 
-The second number is not a regression and 0.4.0 does not improve it. Nine mods in that pack — balm,
-carpet, expandability, ferritecore, scalablelux, sereneseasons, terrain_slabs, vehicleupgrade and
-yungscavebiomes — mix into pathfinding-adjacent code, so the scan denies every movement family and the mod does nothing — and from 0.4.0 it says exactly
-that at world start, naming them. That has been true since 0.3.0 and remains the honest ceiling on
-heavily-modded packs: **what limits PathWeaver is other mods
-touching block state, not which mobs it can handle.**
+The second number has been true since 0.3.0 and no version has improved it. Nine mods in that pack —
+balm, carpet, expandability, ferritecore, scalablelux, sereneseasons, terrain_slabs, vehicleupgrade
+and yungscavebiomes — mix into pathfinding-adjacent code, so the scan denies every movement family
+and the mod does nothing. From 0.4.0 it says exactly that at world start and names them.
+**What limits PathWeaver is other mods touching block state, not which mobs it can handle.**
 
 Where the scan denies nothing — a lean pack, Fabric API and Lithium — the default admits everything,
 which is the configuration the benchmark below runs in.
