@@ -1,5 +1,7 @@
 package dev.pathweaver.config;
 
+import java.util.ArrayList;
+import java.util.List;
 import me.shedaniel.autoconfig.ConfigData;
 import me.shedaniel.autoconfig.ConfigHolder;
 import me.shedaniel.autoconfig.annotation.Config;
@@ -63,6 +65,29 @@ public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Gui.RequiresRestart
     @ConfigEntry.Gui.EnumHandler(option = ConfigEntry.Gui.EnumHandler.EnumDisplayOption.DROPDOWN)
     public CompatibilityTier compatibilityTier = CompatibilityTier.AUDITED;
+
+    /**
+     * Mod ids whose pathfinding denials to ignore, while the scan stays armed for everything else.
+     *
+     * <p>The tier is all-or-nothing: {@code UNSAFE} waives every denial, permanently, including for
+     * mods installed next month. On a heavily-modded pack that is the only way to make this mod do
+     * anything, which turns an informed decision about nine known mods into a blanket one about
+     * every mod that will ever touch pathfinding.
+     *
+     * <p>This is the scoped version. Naming a mod here accepts exactly that mod's risk and leaves
+     * the rest of the scan doing its job, so a new mod that modifies pathfinding still switches the
+     * affected families off and still says so at world start.
+     *
+     * <p>It is not a safety feature. Anything named here runs on worker threads without having been
+     * audited, which is the same exposure {@code UNSAFE} gives — just aimed. Matching is by mod id
+     * only, so an entry keeps applying after that mod updates and changes what its mixins do; the
+     * audited exemptions are pinned to exact artifact hashes precisely because this is not.
+     */
+    @ConfigEntry.Gui.Tooltip(count = 4)
+    @ConfigEntry.Category("general")
+    @ConfigEntry.Gui.RequiresRestart
+    public List<String> trustedMods = new ArrayList<>();
+
 
     @ConfigEntry.Gui.Tooltip(count = 2)
     @ConfigEntry.Gui.RequiresRestart

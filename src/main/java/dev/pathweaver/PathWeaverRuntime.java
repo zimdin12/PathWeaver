@@ -159,9 +159,14 @@ public final class PathWeaverRuntime {
         int denied = dev.pathweaver.gate.SafetyGate.deniedBySafety.size();
         int eligible = dev.pathweaver.gate.SafetyGate.allowlisted().size() - denied;
 
+        java.util.List<String> trusted = dev.pathweaver.gate.ForeignMixinScanner.trustedModIdsInUse();
         if (denied == 0) {
             PathWeaver.LOG.info("PathWeaver is ACTIVE: all {} movement families can path off-thread"
                 + "{}.", eligible, blockers.isEmpty() ? "" : " (waived: " + blockers.size() + " mod(s))");
+            if (!trusted.isEmpty()) {
+                PathWeaver.LOG.warn("{} mod(s) are running unaudited because you listed them as "
+                    + "trusted: {}", trusted.size(), String.join(", ", trusted));
+            }
             return;
         }
         PathWeaver.LOG.warn("======================== PathWeaver ========================");
@@ -177,9 +182,14 @@ public final class PathWeaverRuntime {
         PathWeaver.LOG.warn("This is the safe default: unverified code is not run on worker");
         PathWeaver.LOG.warn("threads. On a heavily-modded pack it usually means no benefit.");
         PathWeaver.LOG.warn("");
-        PathWeaver.LOG.warn("To run anyway, set compatibilityTier=UNSAFE in the settings screen");
-        PathWeaver.LOG.warn("or config/pathweaver.json, then restart. That runs the mods above");
-        PathWeaver.LOG.warn("on worker threads unchecked, so back up your world first.");
+        PathWeaver.LOG.warn("Two ways to run anyway, both unsafe, both needing a restart:");
+        PathWeaver.LOG.warn("  - add some of the mods above to trustedMods, which accepts only");
+        PathWeaver.LOG.warn("    those and leaves the scan armed for anything you install later;");
+        PathWeaver.LOG.warn("  - or set compatibilityTier=UNSAFE, which waives every check there");
+        PathWeaver.LOG.warn("    is, now and in future. Back up your world either way.");
+        if (!trusted.isEmpty()) {
+            PathWeaver.LOG.warn("Already trusted: {}", String.join(", ", trusted));
+        }
         PathWeaver.LOG.warn("Run /pathweaver status in game for the same answer at any time.");
         PathWeaver.LOG.warn("============================================================");
     }

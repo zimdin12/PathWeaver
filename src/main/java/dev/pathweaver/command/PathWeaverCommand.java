@@ -72,6 +72,12 @@ public final class PathWeaverCommand {
                 config.bypassesCompatibilityScan())) {
             say(source, line);
         }
+        java.util.List<String> trusted =
+            dev.pathweaver.gate.ForeignMixinScanner.trustedModIdsInUse();
+        if (!trusted.isEmpty()) {
+            say(source, "  §e" + trusted.size() + " mod(s) running unaudited from trustedMods: §7"
+                + String.join(", ", trusted));
+        }
         say(source, "  workers: " + runtime.pool().threads()
             + "   maxInFlight: " + runtime.pool().maxInFlight());
         long dispatched = runtime.dispatchedCount();

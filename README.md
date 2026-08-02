@@ -58,6 +58,28 @@ touching block state, not which mobs it can handle.**
 Where the scan denies nothing — a lean pack, Fabric API and Lithium — the default admits everything,
 which is the configuration the benchmark below runs in.
 
+### There is a middle option
+
+`UNSAFE` is all-or-nothing: it waives every denial, permanently, including for mods you install next
+month. `trustedMods` is the scoped version — name the specific mods you have decided about, and the
+scan keeps working for everything else.
+
+On the same 222-mod pack, tier left at the `AUDITED` default throughout:
+
+| `trustedMods` | Result |
+|---|---|
+| empty | 0 of 187 — nine mods named as blockers |
+| 4 of the 9 | still refuses, now names the remaining 5 |
+| all 9 | **185 of 187**, `deniedFamilies=0`, 709 searches installed, zero exceptions |
+
+The two still refused are the spiders, whose evaluator stormiespiders replaces — trusting a mod does
+not admit a third-party evaluator, which remains `UNSAFE` only.
+
+**This is not a safety feature.** Anything named runs unaudited on worker threads, exactly as `UNSAFE`
+would, aimed at fewer mods. Matching is by mod id, so an entry keeps applying after that mod updates
+and changes what its mixins do — the audited exemptions are pinned to exact artifact hashes precisely
+because this is not.
+
 What 0.4.0 changed is the first row. The 24 types that were ineligible at the widest tier are now
 eligible: 12 amphibious, 8 flying, the frog's and the creaking's bespoke evaluators, and both spiders,
 which use stormiespiders' `AdvancedWalkNodeProcessor` — the first third-party evaluator this mod has

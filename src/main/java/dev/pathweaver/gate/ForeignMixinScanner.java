@@ -218,11 +218,24 @@ public final class ForeignMixinScanner {
     public static ScanDecision decide(Collection<ActiveConfig> configs, Collection<String> failures,
                                       SwimExemptionEvidence swimEvidence,
                                       AuditedExemptionEvidence auditedEvidence) {
+        return decide(configs, failures, swimEvidence, auditedEvidence, Set.of());
+    }
+
+    /**
+     * @param trustedMods mod ids the operator has chosen to run unaudited, scoped to those mods
+     */
+    public static ScanDecision decide(Collection<ActiveConfig> configs, Collection<String> failures,
+                                      SwimExemptionEvidence swimEvidence,
+                                      AuditedExemptionEvidence auditedEvidence,
+                                      Set<String> trustedMods) {
         Set<Class<?>> denied = new HashSet<>();
         List<String> diagnostics = new ArrayList<>(failures);
         diagnostics.addAll(swimEvidence.diagnostics());
         diagnostics.addAll(auditedEvidence.diagnostics());
         for (ActiveConfig config : configs) {
+            // Passed in rather than read from a static, so a test's decision depends only on its
+            // arguments. The production path hands in the set frozen at scan time.
+            if (trustedMods.contains(config.modId())) continue;
             boolean exactSwimShape = exactFabricSwimClaimShape(config, swimEvidence);
             denied.addAll(denialsForConfig(config, exactSwimShape, auditedEvidence));
         }
@@ -461,6 +474,33 @@ public final class ForeignMixinScanner {
     }
 
     private static volatile List<String> blockingModIds = List.of();
+
+    /** Mod ids the operator trusted that actually had a denial waived. */
+    public static List<String> trustedModIdsInUse() {
+        return trustedModIdsInUse;
+    }
+
+    private static volatile List<String> trustedModIdsInUse = List.of();
+
+    /**
+     * The operator's trust list, read once at scan time like the tier.
+     *
+     * <p>Fail-closed on any trouble reading it: an empty set denies, which is the safe direction.
+     */
+    private static Set<String> operatorTrustedMods() {
+        try {
+            List<String> configured = PathWeaverConfig.get().trustedMods;
+            if (configured == null || configured.isEmpty()) return Set.of();
+            Set<String> ids = new HashSet<>();
+            for (String id : configured) {
+                if (id != null && !id.isBlank()) ids.add(id.trim());
+            }
+            return Set.copyOf(ids);
+        } catch (Throwable unreadable) {
+            PathWeaver.LOG.warn("Could not read the trusted-mod list; treating it as empty.", unreadable);
+            return Set.of();
+        }
+    }
 
     public static ScanReport lastScanReport() {
         return lastScanReport;
@@ -734,14 +774,20 @@ public final class ForeignMixinScanner {
                 "audited compatibility runtime verification aborted: " + t));
         }
 
-        ScanDecision decision = decide(active, failures, swimEvidence, auditedEvidence);
+        Set<String> trustedMods = operatorTrustedMods();
+        ScanDecision decision = decide(active, failures, swimEvidence, auditedEvidence, trustedMods);
         lastScanReport = new ScanReport(decision, active, auditedEvidence);
         scanCompleted = true;
         SafetyGate.replaceDenials(decision.denied());
         java.util.SortedSet<String> blockers = new java.util.TreeSet<>();
+        java.util.SortedSet<String> trustedInUse = new java.util.TreeSet<>();
         for (ActiveConfig config : active) {
             Set<Class<?>> denied = denialsForConfig(config,
                 exactFabricSwimClaimShape(config, swimEvidence), auditedEvidence);
+            if (!denied.isEmpty() && trustedMods.contains(config.modId())) {
+                trustedInUse.add(config.modId());
+                continue;
+            }
             if (!denied.isEmpty()) {
                 blockers.add(config.modId());
                 PathWeaver.LOG.warn("Mod '{}' config '{}' targets sensitive pathfinding code{}; "
@@ -751,6 +797,13 @@ public final class ForeignMixinScanner {
             }
         }
         blockingModIds = List.copyOf(blockers);
+        trustedModIdsInUse = List.copyOf(trustedInUse);
+        if (!trustedInUse.isEmpty()) {
+            PathWeaver.LOG.warn("Running {} mod(s) unaudited at your request: {}. Their pathfinding "
+                + "code executes on worker threads without having been checked. Matching is by mod "
+                + "id, so this keeps applying after they update.", trustedInUse.size(),
+                String.join(", ", trustedInUse));
+        }
         for (String failure : decision.diagnostics()) {
             PathWeaver.LOG.warn("Foreign-mixin scan failure (fail-closed): {}", failure);
         }

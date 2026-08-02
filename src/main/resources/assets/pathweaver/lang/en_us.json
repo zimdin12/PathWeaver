@@ -37,5 +37,10 @@
   "text.autoconfig.pathweaver.option.compatibilityTier.@Tooltip[1]": "About other mods' code, not about which mobs qualify. If your pack is refused, nothing runs off-thread.",
   "text.autoconfig.pathweaver.option.compatibilityTier.@Tooltip[2]": "Audited: trusts bytecode audits and a bounded call-sample. Lean packs pass; heavy packs are often refused.",
   "text.autoconfig.pathweaver.option.compatibilityTier.@Tooltip[3]": "Unsafe: no checks at all, runs uninspected mod code on worker threads. Back up your world first.",
-  "text.autoconfig.pathweaver.option.compatibilityTier.@Tooltip[4]": "The startup log says which one your pack landed on, and /pathweaver status repeats it. Restart to apply."
+  "text.autoconfig.pathweaver.option.compatibilityTier.@Tooltip[4]": "The startup log says which one your pack landed on, and /pathweaver status repeats it. Restart to apply.",
+  "text.autoconfig.pathweaver.option.trustedMods": "Run these mods unaudited (unsafe)",
+  "text.autoconfig.pathweaver.option.trustedMods.@Tooltip[0]": "Mod ids to run on worker threads without auditing them, leaving the scan armed for everything else.",
+  "text.autoconfig.pathweaver.option.trustedMods.@Tooltip[1]": "The scoped version of Unsafe: accept the mods you have decided about, not every mod you ever install.",
+  "text.autoconfig.pathweaver.option.trustedMods.@Tooltip[2]": "Not a safety feature. These run unchecked, exactly as Unsafe would, just aimed at fewer mods.",
+  "text.autoconfig.pathweaver.option.trustedMods.@Tooltip[3]": "Matched by mod id, so an entry keeps applying after that mod updates. Restart to apply."
 }
