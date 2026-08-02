@@ -84,6 +84,11 @@ class PathNavigationRoutingContractTest {
         assertInjection("pathweaver$captureEntitySpeed", 1, 1,
             net.minecraft.world.entity.Entity.class, double.class, CallbackInfoReturnable.class);
         assertInjection("pathweaver$deferredMovementResult", 3, 3, CallbackInfoReturnable.class);
+        // Injects at recomputePath's canUpdatePath() call, deliberately upstream of the branches
+        // where vanilla recomputes nothing. Review has twice proposed moving it down to the
+        // createPath call so it only fires when a recompute really happens; that would keep work
+        // computed against the pre-change world alive and then install it. See the method's javadoc
+        // and PathNavigationRoutingGameTest's airborne case.
         assertInjection("pathweaver$supersedeBeforeRecomputeGuard", 1, 1,
             org.spongepowered.asm.mixin.injection.callback.CallbackInfo.class);
     }

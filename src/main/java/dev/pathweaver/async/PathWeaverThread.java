@@ -49,6 +49,35 @@ public final class PathWeaverThread {
     private static final ThreadLocal<Boolean> PREPARING_FOR_WORKER =
         ThreadLocal.withInitial(() -> Boolean.FALSE);
 
+    /**
+     * The mob's step height, resolved on the main thread at dispatch and read by the worker instead
+     * of calling {@code Mob.maxUpStep()}.
+     *
+     * <p>{@code maxUpStep()} looks like a read and is not. It resolves to
+     * {@code AttributeInstance.getValue()}, which on 26.1.2 is a read-modify-write:
+     *
+     * <pre>{@code if (this.dirty) { this.cachedValue = calculateValue(); this.dirty = false; }}</pre>
+     *
+     * <p>Both fields are plain and non-volatile, and {@code calculateValue()} walks the modifier
+     * collections while the main thread may be adding or removing modifiers. {@code WalkNodeEvaluator}
+     * calls it from {@code getNeighbors} and {@code getMobJumpHeight} — inside the A* loop, hundreds
+     * of times per search. So this is a live data race on shared entity state, in the middle of the
+     * one region the design claims contains only reads.
+     *
+     * <p>A dispatch-time pre-resolve was tried first and is not sufficient: it clears {@code dirty}
+     * at that instant, but anything that touches the attribute afterwards — equipment, a potion
+     * effect, a mod — sets it again while the search is still in flight. The failure is worse than a
+     * thrown exception: the worker can publish {@code dirty = false} without {@code cachedValue}
+     * being visible to the main thread, leaving the mob's step height permanently wrong for the rest
+     * of the session with nothing in the log.
+     *
+     * <p>Same shape as {@link #WORKER_RANDOM}, and for the same reason: the search does not need the
+     * live value, it needs <em>a</em> value fixed for the duration. Vanilla resolves it once per
+     * search anyway, microseconds after the prologue, so a value captured at dispatch is what a
+     * synchronous search would have observed.
+     */
+    private static final ThreadLocal<Float> WORKER_STEP_HEIGHT = new ThreadLocal<>();
+
     private PathWeaverThread() {}
 
     /** True only while a PathWeaver worker is executing a search Callable. */
@@ -99,5 +128,33 @@ public final class PathWeaverThread {
     /** Cleared by {@link PathWorkerPool} in a finally after the search, so pooled threads reset cleanly. */
     public static void exitWorker() {
         WORKER.set(Boolean.FALSE);
+    }
+
+    /**
+     * Publish the step height this search must use, captured on the main thread at dispatch.
+     *
+     * <p>Call from the worker, inside the search, paired with {@link #clearWorkerStepHeight()} in a
+     * finally. Pooled threads outlive a search, so a value left behind would be silently reused by
+     * the next mob to run on that thread.
+     */
+    public static void setWorkerStepHeight(float stepHeight) {
+        WORKER_STEP_HEIGHT.set(stepHeight);
+    }
+
+    public static void clearWorkerStepHeight() {
+        WORKER_STEP_HEIGHT.remove();
+    }
+
+    /**
+     * The captured step height, or {@code null} if this thread has none.
+     *
+     * <p>Null is deliberately distinguishable rather than defaulted. A worker running a search with
+     * no captured value means the dispatch path changed and stopped supplying one; the redirect then
+     * falls back to the live call, which is vanilla behaviour and the race this exists to avoid. That
+     * is the correct direction to fail — a wrong step height is a permanent, silent, unreportable
+     * behaviour change, whereas the race is at least the status quo ante.
+     */
+    public static Float workerStepHeight() {
+        return WORKER_STEP_HEIGHT.get();
     }
 }

@@ -75,8 +75,48 @@
 - Corrected three surviving statements that the default is the safe tier, in the startup log, in
   `COMPATIBILITY.md`, and in the Lithium exemption's javadoc.
 
+### Fixed (thread safety)
+
+- **`Mob.maxUpStep()` was being called from worker threads, and it is not a read.** It resolves to
+  `AttributeInstance.getValue()`, which on 26.1.2 is
+  `if (dirty) { cachedValue = calculateValue(); dirty = false; }` on plain non-volatile fields, while
+  `calculateValue()` walks the modifier collections. `WalkNodeEvaluator` reaches it from
+  `getNeighbors` and `getMobJumpHeight` — inside the A* loop, so hundreds of times per search. This
+  is the one place the design's central claim (all live-mob writes live in `prepare()`/`done()`, the
+  search between them only reads) was wrong: every *explicit* mutation in all six evaluators does obey
+  it, and a write hidden behind an attribute getter did not.
+
+  A dispatch-time pre-resolve was the previous mitigation and was insufficient — it clears `dirty` at
+  that instant, and equipment, a potion effect or a mod re-dirties it while the request is still in
+  flight. The worker is now given the value instead of the call, exactly as it already is for
+  `Mob.getRandom()`. The quiet failure this removes was the dangerous one: a worker publishing
+  `dirty = false` without `cachedValue` being visible to the main thread leaves a mob's step height
+  wrong for the rest of the session, with nothing in any log connecting it to pathfinding.
+- **Dispatch now also requires the navigation's `PathFinder` to be exactly vanilla's.** Dispatch
+  builds its own `new PathFinder(...)`, ignoring whatever `createPathFinder(int)` returned, while the
+  gate only checked the evaluator class. A mod shipping a `PathFinder` subclass paired with a stock
+  `WalkNodeEvaluator` passed, and its mobs would run the mod's A* on every synchronous fallback and
+  vanilla's on every async dispatch — routing that flips with worker-pool load.
+- The startup report now warns when `Unsafe` has waived the land path-type latch and a mod has
+  registered an uncertified "mobs should avoid this block" rule. Workers cannot read that rule, so
+  off-thread searches treat those blocks as ordinary ground while synchronous ones avoid them. The
+  tier waiving it was defensible as an explicit opt-in and is weaker as the shipped default, so it is
+  at least no longer silent. Certification already covers the audited providers, so this fires only
+  for genuinely unknown ones.
+- Corrected a `SafetyGate` claim that the frog's and creaking's evaluators touch the mob solely
+  through `getBoundingBox`. The creaking's reads `SynchedEntityData` via `getHomePos()`. It is still
+  admitted — a stale home position only shifts the 1024-block cutoff against a slightly old anchor —
+  but that is a judgement, and stating it as the absence of a read was wrong.
+
 ### Notes
 
+- **Reviewed and deliberately NOT changed:** the supersede at `recomputePath`'s `canUpdatePath()`
+  call. It fires upstream of the branches where vanilla then recomputes nothing, which looks like an
+  ordering bug and has now been raised twice. It is deliberate: what invalidates the pending search
+  is the world change that caused `recomputePath` to be called, not whether vanilla can act on it
+  this tick. Deferring the cancel would keep work computed against the pre-change world alive across
+  every tick where `canUpdatePath()` is false and then install it. The cost is a wasted search on
+  those ticks; the alternative is a wrong path. Reasoning now recorded at the injection site.
 - Two things reported as defects during profiling were re-checked against the code and are **not**
   defects, recorded here so they are not "fixed" later by someone reading the same profile. Idle
   `PathWeaver-Worker` threads in a profile taken with the mod disabled are a pool decaying after the

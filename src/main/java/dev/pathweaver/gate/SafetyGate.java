@@ -27,8 +27,16 @@ import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
  * loop between them only reads. {@code PathFinderMixin} now runs the prologue and epilogue on the
  * main thread and {@code FlyNodeEvaluatorMixin} gives a worker its own randomness, which removes the
  * hazard at its source rather than routing around it. The frog's and creaking's evaluators come along
- * with it: verified on 26.1.2, they override only {@code getStart} and {@code getPathType}, touch the
- * mob solely through {@code getBoundingBox}, and inherit their prologue from the classes above.
+ * with it: verified on 26.1.2, they override only {@code getStart} and {@code getPathType} and
+ * inherit their prologue from the classes above.
+ *
+ * <p>The frog's touches the mob solely through {@code getBoundingBox}. The creaking's does not, and
+ * this used to claim otherwise: {@code Creaking$HomeNodeEvaluator.getPathType} calls
+ * {@code getHomePos()}, which reads {@code SynchedEntityData} through a plain non-volatile field
+ * while the main thread may write it. It is admitted anyway, deliberately — the worst case is a
+ * stale home position, so the 1024-block cutoff is measured against a slightly old anchor, which
+ * changes no path the mob could not also have taken a tick earlier. That is a judgement, not the
+ * absence of a read, and stating it as the latter was wrong.
  *
  * <p>Two package-private evaluators are declared inside their mobs and so cannot be named in source.
  * They are resolved by name and simply absent if a future version moves them — the allowlist shrinks,

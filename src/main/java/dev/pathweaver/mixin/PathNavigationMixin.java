@@ -6,6 +6,7 @@ import dev.pathweaver.PathWeaverRuntime;
 import dev.pathweaver.async.EntityInstallSink;
 import dev.pathweaver.async.NavigationIdentity;
 import dev.pathweaver.async.PathRequest;
+import dev.pathweaver.async.PathWeaverThread;
 import dev.pathweaver.async.RequestKey;
 import dev.pathweaver.async.RequestTarget;
 import dev.pathweaver.async.SearchStartGate;
@@ -116,6 +117,34 @@ public abstract class PathNavigationMixin implements PWNavigation {
         pathweaver$acceptedDeferred = false;
     }
 
+    /**
+     * Cancel the in-flight request as soon as {@code recomputePath} is entered, whether or not
+     * vanilla goes on to recompute anything.
+     *
+     * <p>This injection point looks wrong and is not, so the reasoning is recorded here — it has now
+     * been raised twice. Against the 26.1.2 bytecode, this sits before three separate ways for
+     * vanilla to then do nothing:
+     *
+     * <pre>{@code
+     * if (gameTime - timeLastRecompute > 20 && canUpdatePath()) {   // <- injected at this INVOKE
+     *     if (targetPos == null) return;                            // <- plain return
+     *     path = createPath(targetPos, reachRange);                 // <- the only actual recompute
+     * } else hasDelayedRecomputation = true;
+     * }</pre>
+     *
+     * <p>The objection is that superseding here throws away a search on ticks where nothing replaces
+     * it. That is true and it is deliberate. <strong>What invalidates the pending work is the world
+     * change that caused {@code recomputePath} to be called, not whether vanilla can act on it this
+     * tick.</strong> The in-flight search was computed against the pre-change world; installing it
+     * later would route the mob through geometry that has since changed. Deferring the cancel until
+     * vanilla reaches {@code createPath} would keep known-stale work alive across every tick where
+     * {@code canUpdatePath()} is false — precisely the mid-jump and delayed-recompute cases — and
+     * then install it.
+     *
+     * <p>So the cost is a wasted search on those ticks, and the alternative is a wrong path. Vanilla
+     * sets {@code hasDelayedRecomputation} on the rejecting branch and retries, so the mob is not
+     * stranded. {@code PathNavigationRoutingGameTest} pins this for the airborne case by name.
+     */
     @Inject(
         method = "recomputePath()V",
         at = @At(value = "INVOKE",
@@ -279,6 +308,13 @@ public abstract class PathNavigationMixin implements PWNavigation {
         if (!rt.isRunning()) return;
         if (!(this.level instanceof ServerLevel)) return;                       // server-side only
         if (this.nodeEvaluator == null || !SafetyGate.isAllowed(this.nodeEvaluator.getClass())) return;
+        // The gate checks the evaluator; it must also check the PathFinder, because dispatch builds
+        // its own `new PathFinder(...)` and so ignores whatever createPathFinder(int) returned. A mod
+        // shipping a PathFinder subclass that overrides findPath/getBestH paired with a stock
+        // WalkNodeEvaluator passes the exact-class evaluator allowlist, and its mobs would then run
+        // the mod's A* on every synchronous fallback and vanilla's A* on every async dispatch --
+        // routing that flips with worker-pool load, which nobody can report reproducibly.
+        if (this.pathFinder == null || this.pathFinder.getClass() != PathFinder.class) return;
         // ALL means all: the operator has asked for no compatibility checking whatsoever, so the
         // land-provider gate is waived too. It is a correctness gate rather than a thread-safety
         // one -- with it waived a mob can be routed over a block a mod marked dangerous -- but
@@ -317,9 +353,17 @@ public abstract class PathNavigationMixin implements PWNavigation {
         SearchStartGate startGate = null;
         boolean authorizeSearch = false;
         try {
-            // Force-resolve the mob's step-height attribute on the MAIN thread so the worker's
-            // read of maxUpStep() hits a clean cached value instead of lazily writing it off-thread.
-            theMob.maxUpStep();
+            // Resolve the mob's step height on the MAIN thread and hand the VALUE to the worker.
+            //
+            // This used to pre-resolve the attribute here and let the worker call maxUpStep() itself,
+            // on the theory that a warm cache made the worker's call a pure read. It does not.
+            // maxUpStep() is AttributeInstance.getValue(), which is
+            //   if (dirty) { cachedValue = calculateValue(); dirty = false; }
+            // on plain non-volatile fields, and WalkNodeEvaluator reaches it from inside the A* loop.
+            // Pre-resolving only clears `dirty` at this instant; the request is in flight for at
+            // least a tick, and equipment, a potion effect or a mod re-dirties it inside that window.
+            // WalkNodeEvaluatorMixin redirects the call to this captured value instead.
+            final float capturedStepHeight = theMob.maxUpStep();
 
             // Use vanilla's bounds formula. The region is still backed by live chunks, so matching
             // construction does not guarantee a temporally identical result.
@@ -347,9 +391,18 @@ public abstract class PathNavigationMixin implements PWNavigation {
 
             final SearchStartGate requestStartGate = new SearchStartGate();
             startGate = requestStartGate;
-            Callable<Path> search = () -> requestStartGate.awaitStart()
-                ? finder.findPath(region, theMob, targetsCopy, fRange, rRange, mult)
-                : null;
+            // Publish the captured step height for the duration of this search only. Pooled worker
+            // threads outlive a search, so a value left behind would be silently reused by whatever
+            // mob ran next on that thread -- which is the same class of bug as the race it fixes.
+            Callable<Path> search = () -> {
+                if (!requestStartGate.awaitStart()) return null;
+                PathWeaverThread.setWorkerStepHeight(capturedStepHeight);
+                try {
+                    return finder.findPath(region, theMob, targetsCopy, fRange, rRange, mult);
+                } finally {
+                    PathWeaverThread.clearWorkerStepHeight();
+                }
+            };
 
             requestKey = rt.nextRequestKey(entityId);
             final RequestKey submittedKey = requestKey;

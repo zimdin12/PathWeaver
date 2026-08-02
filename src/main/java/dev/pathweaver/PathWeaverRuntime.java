@@ -150,6 +150,37 @@ public final class PathWeaverRuntime {
      * <p>Deliberately at {@code WARN} when inert. It is not an error — failing closed is the design
      * — but "you installed something that is doing nothing" is worth interrupting for.
      */
+    /**
+     * Say when the unsafe tier has waived a <em>correctness</em> gate, not just a thread-safety one.
+     *
+     * <p>The land-path-type registry latch stops Walk dispatching while a mod has registered a
+     * dynamic provider that is not certified — a rule saying "mobs should avoid my block". A worker
+     * cannot read the live provider map, so it answers "no rule exists", and the mob is routed over
+     * a block the mod marked dangerous. The same mob's synchronous fallback consults the real
+     * registry and avoids it, so the behaviour differs between two code paths for one mob depending
+     * on worker-pool load.
+     *
+     * <p>The tier waives this latch on the argument that "ignore every check" should mean what it
+     * says. That was a defensible reading of an explicit opt-in. It is a weaker one now that
+     * {@code UNSAFE} is the shipped default, because it makes divergent routing the out-of-the-box
+     * behaviour on any pack carrying an uncertified provider. Certification already covers the
+     * providers that have been audited (Farmer's Delight's stove, and static providers generically),
+     * so this fires only for genuinely unknown ones — but when it fires it is a gameplay bug, not a
+     * performance trade, and it should not be discovered by watching a mob walk into a fire.
+     */
+    private void warnIfLandProviderCorrectnessIsWaived(PathWeaverConfig c) {
+        if (!c.bypassesCompatibilityScan()) return;
+        if (dev.pathweaver.gate.FabricLandPathRegistryLatch.allowsWalkDispatch()) return;
+        PathWeaver.LOG.warn("");
+        PathWeaver.LOG.warn("A mod has registered an uncertified land path-type rule (\"mobs should");
+        PathWeaver.LOG.warn("avoid this block\"). Worker threads cannot read that rule, so off-thread");
+        PathWeaver.LOG.warn("searches will treat those blocks as ordinary ground while synchronous");
+        PathWeaver.LOG.warn("ones still avoid them. Expect mobs to occasionally route over a block a");
+        PathWeaver.LOG.warn("mod marked dangerous. This is a correctness gate, not a thread-safety");
+        PathWeaver.LOG.warn("one, and compatibilityTier=UNSAFE waives it along with everything else.");
+        PathWeaver.LOG.warn("Set compatibilityTier=AUDITED if that matters more than the throughput.");
+    }
+
     private void reportWhetherItIsDoingAnything(PathWeaverConfig c) {
         if (!c.enabled) {
             PathWeaver.LOG.warn("PathWeaver is disabled in the config; pathfinding is fully vanilla.");
@@ -167,6 +198,7 @@ public final class PathWeaverRuntime {
                 PathWeaver.LOG.warn("{} mod(s) are running unaudited because you listed them as "
                     + "trusted: {}", trusted.size(), String.join(", ", trusted));
             }
+            warnIfLandProviderCorrectnessIsWaived(c);
             return;
         }
         PathWeaver.LOG.warn("======================== PathWeaver ========================");
