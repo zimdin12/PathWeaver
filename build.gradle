@@ -39,8 +39,13 @@ dependencies {
     // annotations are RetentionPolicy.CLASS and reflection cannot see them; ASM currently arrives
     // via fabric-loader, so a loader bump could drop it off the test classpath and take the
     // strongest safety contract in the suite with it.
-    testImplementation "org.ow2.asm:asm:9.7"
-    testImplementation "org.ow2.asm:asm-tree:9.7"
+    // 9.10.1, not 9.7. The point of declaring it is that a loader bump must not silently remove it,
+    // but pinning BELOW the class-file version we compile would have been an own goal: `release = 25`
+    // emits major 69 and ASM 9.7 stops at 66, so on the very day the pin started binding the two
+    // contract tests that read our own mixins with ClassReader would die with "Unsupported class
+    // file major version 69" -- the exact contract the declaration exists to protect.
+    testImplementation "org.ow2.asm:asm:9.10.1"
+    testImplementation "org.ow2.asm:asm-tree:9.10.1"
     testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"
     // Compile-time too, not just runtime: MinecraftBootstrapListener implements
     // LauncherSessionListener so Minecraft's registries boot before the first test class is loaded.

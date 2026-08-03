@@ -42,8 +42,20 @@ public enum RequestOutcome {
      */
     POOL_SATURATED("admission refused"),
 
-    /** Dispatch setup threw. Vanilla ran the search synchronously instead. */
+    /** Dispatch setup threw after the request registered. Vanilla ran the search synchronously. */
     SETUP_FAILED("dispatch setup failed"),
+
+    /**
+     * Dispatch setup threw BEFORE the request registered, so nothing was ever handed to a worker.
+     *
+     * <p>Separate from {@link #SETUP_FAILED} for the same reason {@link #POOL_SATURATED} is separate:
+     * not a discard and not a dispatch. Counting it as a discard produced
+     * {@code dispatched=0 ... discarded=41028} under a footer reading "only the amber rows are wasted
+     * work", when nothing had been wasted at all — vanilla ran every one of those searches
+     * synchronously in the same tick. That conflation is exactly what this enum exists to prevent,
+     * and it is the number the mod page quotes.
+     */
+    SETUP_FAILED_PRE_DISPATCH("dispatch setup failed before admission"),
 
     /** The worker threw while searching. */
     SEARCH_FAILED("search threw"),
@@ -71,10 +83,11 @@ public enum RequestOutcome {
     /**
      * True when this outcome produced nothing usable.
      *
-     * <p>{@link #NO_PATH} is excluded because the search succeeded, and {@link #POOL_SATURATED}
-     * because no search was ever dispatched to waste.
+     * <p>{@link #NO_PATH} is excluded because the search succeeded, and {@link #POOL_SATURATED} and
+     * {@link #SETUP_FAILED_PRE_DISPATCH} because no search was ever dispatched to waste.
      */
     public boolean isDiscard() {
-        return this != INSTALLED && this != NO_PATH && this != POOL_SATURATED;
+        return this != INSTALLED && this != NO_PATH && this != POOL_SATURATED
+            && this != SETUP_FAILED_PRE_DISPATCH;
     }
 }

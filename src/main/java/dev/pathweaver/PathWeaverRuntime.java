@@ -86,6 +86,22 @@ public final class PathWeaverRuntime {
 
     public void markDispatched() { dispatched.incrementAndGet(); }
 
+    /**
+     * One setup-failure warning per SERVER SESSION, matching what the message promises.
+     *
+     * <p>It lived on the mixin as a static, so it burned once per JVM while the counter it points at
+     * is cleared by {@link #onServerStarting}. On a client, loading a second world reset the counter
+     * and kept the flag: {@code /pathweaver status} then showed a climbing "dispatch setup failed"
+     * with no log line anywhere, and the line printed in the first world had explicitly promised the
+     * counter would keep counting.
+     */
+    public boolean claimSetupFailureLog() {
+        return setupFailureLogged.compareAndSet(false, true);
+    }
+
+    private final java.util.concurrent.atomic.AtomicBoolean setupFailureLogged =
+        new java.util.concurrent.atomic.AtomicBoolean();
+
     public void markOutcome(dev.pathweaver.async.RequestOutcome outcome) {
         outcomes.incrementAndGet(outcome.ordinal());
     }
@@ -119,6 +135,9 @@ public final class PathWeaverRuntime {
         // one piece of evidence that leftovers existed.
         dispatched.set(0);
         for (int i = 0; i < outcomes.length(); i++) outcomes.set(i, 0L);
+        // Re-arm alongside the counter it refers to. Leaving it burnt across a world switch left the
+        // next session accumulating "dispatch setup failed" with nothing in the log to explain it.
+        setupFailureLogged.set(false);
         entitySink.clear(false);
         installer.clear();
         pool.start(c.resolvedPoolThreads(), c.maxInFlight);
@@ -258,7 +277,27 @@ public final class PathWeaverRuntime {
         // full "you opted into AUDITED" lecture plus advice to edit trustedMods, none of which would
         // change anything. Fixing this method to stop lying about COUNTS gave it a new way to lie
         // about CAUSE.
-        if (blockers.isEmpty()) {
+        // Derive the cause; do not infer it from "no mod was blamed".
+        //
+        // The first version of this branch assumed an empty blocker list meant a clone failure and
+        // told the operator that changing compatibilityTier would NOT help. A live A/B proved that
+        // wrong: with a mod registering an uncertified land path-type rule and its mixins trusted,
+        // `blockers` is empty, five of six families are refused by the LAND-REGISTRY LATCH, and
+        // compatibilityTier=UNSAFE waives it completely. The banner was sending operators to file a
+        // bug report about a fully explained, self-inflicted, documented state -- while
+        // /pathweaver status and /pathweaver mobs each named a different cause again. Three
+        // diagnostics, three answers, in the release whose whole thesis is that they agree.
+        boolean latchRefused = dev.pathweaver.gate.SafetyGate.landRegistryBlocksWalkFamilies();
+        if (blockers.isEmpty() && latchRefused) {
+            PathWeaver.LOG.warn("");
+            PathWeaver.LOG.warn("No mod was blamed by the compatibility scan. These families are");
+            PathWeaver.LOG.warn("held back by Fabric's land path-type registry instead: either a mod");
+            PathWeaver.LOG.warn("registered an uncertified land rule, or the registry hooks could not");
+            PathWeaver.LOG.warn("be verified against this Fabric API build.");
+            PathWeaver.LOG.warn("");
+            PathWeaver.LOG.warn("Setting compatibilityTier=UNSAFE waives this (restart required).");
+            PathWeaver.LOG.warn("trustedMods does NOT -- it waives the mixin scan, not this.");
+        } else if (blockers.isEmpty()) {
             PathWeaver.LOG.warn("");
             PathWeaver.LOG.warn("No mod was blamed for this. The families above were refused for a");
             PathWeaver.LOG.warn("reason other than the compatibility scan -- most likely their");

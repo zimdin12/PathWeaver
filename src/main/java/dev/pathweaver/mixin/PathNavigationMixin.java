@@ -127,12 +127,6 @@ public abstract class PathNavigationMixin implements PWNavigation {
      */
     @Unique private BlockPos pathweaver$recomputeTargetClaim;
 
-    /**
-     * One warning per session, not per navigation. A pack that trips this trips it for every mob of
-     * that type on every tick, and a log line per mob per tick is its own outage.
-     */
-    @Unique private static final java.util.concurrent.atomic.AtomicBoolean
-        pathweaver$setupFailureLogged = new java.util.concurrent.atomic.AtomicBoolean();
 
     @Inject(method = "moveTo(DDDD)Z", at = @At("HEAD"), require = 1, expect = 1)
     private void pathweaver$captureCoordinateSpeed(double x, double y, double z, double speed,
@@ -603,13 +597,13 @@ public abstract class PathNavigationMixin implements PWNavigation {
             if (registered) {
                 sink.discard(requestKey, dev.pathweaver.async.RequestOutcome.SETUP_FAILED);
             } else {
-                rt.markOutcome(dev.pathweaver.async.RequestOutcome.SETUP_FAILED);
+                rt.markOutcome(dev.pathweaver.async.RequestOutcome.SETUP_FAILED_PRE_DISPATCH);
             }
-            if (pathweaver$setupFailureLogged.compareAndSet(false, true)) {
+            if (rt.claimSetupFailureLog()) {
                 try {
                     dev.pathweaver.PathWeaver.LOG.warn("PathWeaver could not set up an async search "
-                        + "and fell back to synchronous pathfinding for {}. Logged once per session; "
-                        + "the SETUP_FAILED counter in /pathweaver status keeps counting.",
+                        + "and fell back to synchronous pathfinding for {}. Logged once per server "
+                        + "session; the setup-failure rows in /pathweaver status keep counting.",
                         this.mob.getType().toShortString(), t);
                 } catch (Throwable ignored) {
                     // Falling back to sync stays the outcome even if logging is compromised.

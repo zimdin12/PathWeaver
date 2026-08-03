@@ -184,9 +184,7 @@ public final class SafetyGate {
      */
     static boolean landRegistryPermits(Class<?> evaluatorClass, boolean bypassesScan,
                                        boolean latchAllows) {
-        boolean landDerived = net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class
-            .isAssignableFrom(evaluatorClass);
-        return !(landDerived && !bypassesScan) || latchAllows;
+        return !(isLandDerived(evaluatorClass) && !bypassesScan) || latchAllows;
     }
 
     /**
@@ -196,9 +194,23 @@ public final class SafetyGate {
      * dispatching against a registry that could have been populated.
      */
     public static boolean requiresEmptyLandRegistry(Class<?> evaluatorClass) {
+        return isLandDerived(evaluatorClass) && !ActiveCompatibilityPolicy.bypassesScan();
+    }
+
+    /**
+     * Resolves block path types through {@code WalkNodeEvaluator}'s code, and so depends on Fabric's
+     * land registry staying empty.
+     *
+     * <p>ONE definition. There were two: this rule was written out separately in the predicate the
+     * diagnostics use and in the predicate dispatch uses, and only the first had tests — so reverting
+     * the dispatch copy to an exact-class check would have kept every test green while frogs,
+     * axolotls, drowned, turtles and creakings dispatched off-thread against a populated registry,
+     * with the install-time re-check disarmed too. That is verbatim the bug these tests claim to
+     * prevent, invisible because they were asserting the other copy.
+     */
+    static boolean isLandDerived(Class<?> evaluatorClass) {
         return net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class
-                .isAssignableFrom(evaluatorClass)
-            && !ActiveCompatibilityPolicy.bypassesScan();
+            .isAssignableFrom(evaluatorClass);
     }
 
     /**

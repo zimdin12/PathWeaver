@@ -60,17 +60,20 @@ isolation were all attacked and held.
 ### Added
 
 - **A worker-reachability analysis** (`src/test/java/dev/pathweaver/reach/`), the first step of the
-  0.6 plan to replace hand-written hazard lists with derivation. It found no unknown bug — stated
-  plainly because that is the result — but it independently rediscovered every read a human had to
-  reason about, without being told what to look for, which is what three hand-written lists failed to
-  do. What building it taught is in `ROADMAP-0.6.md` §4b: the naive version is useless rather than
-  imprecise, reporting 1,220 hazards including the client renderer.
+  0.6 plan to replace hand-written hazard lists with derivation. **It is a discovery aid and is
+  currently unsound — it is deliberately NOT cited as evidence for anything.** An earlier draft of
+  this entry claimed it corroborated that no attribute hazard remains; a review showed it silently
+  truncates in three places that contradict its own stated guarantee, so its clean result is not a
+  result. Details in `ROADMAP-0.6.md` §4b. It found no unknown bug. What building it taught is
+  recorded there too: the naive version is useless rather than imprecise, reporting 1,220 hazards
+  including the client renderer.
 - **`tools/scan_pack.py`**, which measured why `AUDITED` leaves nothing eligible: 21 mods in a real
   317-jar pack claim a watched target, any one of which denies everything, and 15 have no audit. Nine
   of those 15 touch only `BlockBehaviour$BlockStateBase` and are not pathfinding mods at all.
 - ASM is now an explicit test dependency instead of arriving through `fabric-loader`.
 
-282 unit tests, four server harnesses, the client harness.
+284 unit tests, four server harnesses, the client harness, and a live two-server A/B on a real
+Fabric server confirming the reported cause matches what dispatch actually does.
 
 ## 0.5.3 — The branch the fix did not reach
 

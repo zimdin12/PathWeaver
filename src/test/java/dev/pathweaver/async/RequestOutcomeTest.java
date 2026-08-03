@@ -32,9 +32,14 @@ class RequestOutcomeTest {
     @Test
     void everyOtherOutcomeCountsAsWastedWork() {
         for (RequestOutcome outcome : RequestOutcome.values()) {
+            // Three exemptions, each for a stated reason: a path was installed; a search succeeded
+            // with an empty answer; or nothing ever reached a worker so there was no work to waste.
+            // SETUP_FAILED_PRE_DISPATCH is the third kind -- adding it as a discard reported
+            // "dispatched=0 ... discarded=41028" for searches vanilla had already run synchronously.
             boolean exempt = outcome == RequestOutcome.INSTALLED
                 || outcome == RequestOutcome.NO_PATH
-                || outcome == RequestOutcome.POOL_SATURATED;
+                || outcome == RequestOutcome.POOL_SATURATED
+                || outcome == RequestOutcome.SETUP_FAILED_PRE_DISPATCH;
             assertEquals(!exempt, outcome.isDiscard(), outcome + " is on the wrong side of the line");
         }
     }

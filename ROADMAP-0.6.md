@@ -237,6 +237,16 @@ accepts; the `getPathfindingMalus` chain is 2f and is worse than 2f describes, b
 19–22 hop `RandomSource` chains through `getCollisionShape → MovingPistonBlock.getBlockEntity` are
 almost certainly residual over-approximation and are **not** being reported as defects until triaged.
 
+**It is currently UNSOUND, and must not be cited as evidence until it is fixed.** A review found three
+truncations that contradict its own stated guarantee: `bodyOf` never consults interfaces; it records
+`unresolved` only when the class is missing, not on the dominant class-found/method-missing drop —
+so the reported `unresolved = 0` is an artifact of that gap, not a result; and `RECEIVER_UNIVERSE`
+maps `LevelReader` to a type that does not implement it while truncating `Level`/`ServerLevel` to
+nothing, even though the live `Mob` is handed to the worker and `Entity.level()` returns a `Level`.
+Its hard-coded cut list was also one entry wrong — it named `FlyNodeEvaluator#getStart` when the
+shipped redirect targets `iteratePathfindingStartNodeCandidatePositions`, which is precisely the
+hand-written-list failure the whole analysis exists to end, reproduced inside the analysis itself.
+
 **It found no unknown bug.** That is the honest result and it is still the argument for finishing it:
 it independently rediscovered every read a human had to reason about, without being told what to look
 for, which is precisely what the three hand-written lists failed to do.

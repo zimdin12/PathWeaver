@@ -168,12 +168,27 @@ public final class PathWeaverCommand {
             if (undispatchable.isEmpty()) {
                 return List.of("  §ano movement family is denied — searches can run off-thread");
             }
-            return List.of(
-                "  §eno mod is blamed, but " + undispatchable.size() + " of "
-                    + dev.pathweaver.gate.SafetyGate.allowlisted().size()
-                    + " families still cannot dispatch: §7" + String.join(", ", undispatchable),
-                "  §7a mod registered an uncertified land path-type rule, or the Fabric land-registry",
-                "  §7hooks could not be verified. Run §f/pathweaver mobs§7 for the per-family reason.");
+            // Only blame the land registry when the land registry is what refused. `undispatchable`
+            // is `!canDispatch`, which is also false when an evaluator cannot be cloned or the scan
+            // has not published yet -- so asserting a land-registry cause here mirrored the banner's
+            // mistake in the opposite direction: one blamed cloning for a latch refusal, the other
+            // blamed the latch for a clone failure.
+            List<String> lines = new ArrayList<>();
+            lines.add("  §eno mod is blamed, but " + undispatchable.size() + " of "
+                + dev.pathweaver.gate.SafetyGate.allowlisted().size()
+                + " families still cannot dispatch: §7" + String.join(", ", undispatchable));
+            if (dev.pathweaver.gate.SafetyGate.landRegistryBlocksWalkFamilies()) {
+                lines.add("  §7a mod registered an uncertified land path-type rule, or the Fabric "
+                    + "land-registry");
+                lines.add("  §7hooks could not be verified. compatibilityTier=UNSAFE waives this; "
+                    + "trustedMods does not.");
+            } else {
+                lines.add("  §7not the land registry -- most likely an evaluator that cannot be "
+                    + "cloned on this JVM.");
+                lines.add("  §7Changing compatibilityTier or trustedMods will not help.");
+            }
+            lines.add("  §7Run §f/pathweaver mobs§7 for the per-family reason.");
+            return List.copyOf(lines);
         }
         // A failed scan outranks the tier. Reporting "running anyway, because the tier is Unsafe"
         // here would invent a risk the operator is not taking AND hide that the mod is inert -- the
@@ -222,9 +237,10 @@ public final class PathWeaverCommand {
         // same rule, which is exactly the drift the shared predicate exists to prevent.
         if (dev.pathweaver.gate.SafetyGate.landRegistryBlocksWalkFamilies()) {
             say(source, "§6PathWeaver mobs");
-            say(source, "  §ca mod registered an uncertified land path-type rule, so every "
-                + "walk-derived family runs on the server thread no matter what the per-type rules "
-                + "say. Raising the compatibility risk setting waives this.");
+            say(source, "  §ceither a mod registered an uncertified land path-type rule, or the "
+                + "Fabric land-registry hooks could not be verified against this Fabric API build. "
+                + "Every walk-derived family runs on the server thread no matter what the per-type "
+                + "rules say. compatibilityTier=UNSAFE waives this; trustedMods does not.");
             return;
         }
         boolean moddedAllowed = cfg.moddedMobAsyncAllowed();

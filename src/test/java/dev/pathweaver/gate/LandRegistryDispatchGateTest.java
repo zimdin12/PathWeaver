@@ -70,4 +70,28 @@ class LandRegistryDispatchGateTest {
         assertTrue(SafetyGate.landRegistryPermits(WalkNodeEvaluator.class, true, false),
             "bypassing the compatibility scan must waive the land-registry gate as well");
     }
+
+    /**
+     * The predicate DISPATCH uses, which is the one that was untested.
+     *
+     * <p>{@code SafetyGate} carried the land-derived rule twice — once for the diagnostics and once
+     * for dispatch — and only the first had coverage, so reverting the dispatch copy to an
+     * exact-class check kept every test green while frogs, axolotls, drowned, turtles and creakings
+     * dispatched off-thread against a populated registry, with the install-time re-check disarmed
+     * too. Both now route through {@code isLandDerived}, and this pins that.
+     */
+    @Test
+    void everyLandDerivedFamilyIsRecognisedByTheDispatchSidePredicateToo() throws Exception {
+        for (String name : new String[] {
+                "net.minecraft.world.level.pathfinder.WalkNodeEvaluator",
+                "net.minecraft.world.level.pathfinder.FlyNodeEvaluator",
+                "net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator",
+                "net.minecraft.world.entity.animal.frog.Frog$FrogNodeEvaluator",
+                "net.minecraft.world.entity.monster.creaking.Creaking$HomeNodeEvaluator" }) {
+            assertTrue(SafetyGate.isLandDerived(Class.forName(name)),
+                name + " must be recognised as land-derived by the dispatch-side predicate");
+        }
+        assertFalse(SafetyGate.isLandDerived(SwimNodeEvaluator.class),
+            "Swim must not be land-derived, or dispatch would gate it on a registry it never reads");
+    }
 }
