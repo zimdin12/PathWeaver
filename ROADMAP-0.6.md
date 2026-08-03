@@ -110,12 +110,16 @@ and was removed. The real fix is to have the registration carry its origin so
 `hasDelayedRecomputation` can be re-armed when a recompute-originated request ends without
 installing. That is a change to the request record and wants a soak.
 
-**2b. Async-pathed mobs vanish from the vanilla pathfinding debug renderer.** *(carried)*
-`PathNavigation`'s constructor wires its own finder to the debug subscribers via `setCaptureDebug`;
-dispatch builds a fresh `PathFinder` and never copies that supplier, so `findPath` attaches no
-`Path$DebugData`. Anyone debugging mob AI on a server running PathWeaver sees paths for
-synchronously-resolved mobs and nothing for async ones, with no explanation. Fix: an `@Accessor` for
-`captureDebug` and copy it to the clone.
+**2b. Async-pathed mobs vanish from the vanilla pathfinding debug renderer.** *(carried; the naive
+fix is wrong)* A bug hunt confirmed the mechanism from bytecode — `PathNavigation`'s constructor wires
+its finder to the debug subscribers, PathWeaver's fresh `PathFinder` keeps the default
+`() -> false`, and `findPath` consults it before building any `Path$DebugData`, so paths flicker on
+and off with worker-pool load for anyone debugging mob AI. **But do not simply copy `setCaptureDebug`
+to the clone**, which is what the previous entry implied: that supplier reads `ServerDebugSubscribers`
+and the capture writes `Path.debugData`, both from a worker — a brand new off-thread read of live
+server state, added to fix a diagnostic. Snapshot `hasAnySubscriberFor(ENTITY_PATHS)` on the main
+thread at dispatch and hand the async finder a constant `BooleanSupplier`, or document it and say so
+in `/pathweaver status`.
 
 **2c. `RequestTarget` is allocated above the gates.** *(carried)* `RequestTarget.of(...)` runs a
 `Set.copyOf` plus a record allocation plus a `ConcurrentHashMap` lookup before `cfg.enabled`, before

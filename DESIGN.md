@@ -39,7 +39,7 @@ The scanner reconciles current-environment Loader-resolved Fabric/JiJ metadata w
 
 The concrete mob class is independently checked through a cached `ClassValue<Boolean>`. Its `CodeSource` URL must equal vanilla `Mob`'s runtime origin; null origins and security failures deny dispatch. This works with Fabric Knot's shared classloader without trusting a spoofable package prefix. `allowModdedMobAsync` defaults false and bypasses only this origin gate.
 
-The navigation-subclass boundary is deliberate: `WallClimberNavigation` entity movement overrides and bypasses the four base routing seams, so it stays synchronous; its inherited coordinate route passes through already-covered `GroundPathNavigation`. `WaterBoundPathNavigation` inherits the covered base path-creation seam, while Flying and Amphibious evaluators are ineligible.
+The navigation-subclass boundary is deliberate: `WallClimberNavigation` entity movement overrides and bypasses the four base routing seams, so it stays synchronous; its inherited coordinate route passes through already-covered `GroundPathNavigation`. `WaterBoundPathNavigation` inherits the covered base path-creation seam. (This sentence used to end "while Flying and Amphibious evaluators are ineligible" — that has been false since 0.4.0, which admitted both. A reader auditing the threading story from this file would have concluded that axolotls, turtles, drowned, frogs and every flying mob were synchronous when they are the default async path. §9 already cost a reviewer a correct verdict by being stale; this is the same failure in the same file.)
 
 ## 4. Request lifecycle and installation
 

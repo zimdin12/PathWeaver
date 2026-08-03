@@ -148,4 +148,38 @@ public final class SafetyGate {
         }
         return !isDenied(evaluatorClass) && EvaluatorCloner.canClone(evaluatorClass);
     }
+
+    /**
+     * Everything {@link #isAllowed} decides, PLUS the land-registry latch that dispatch also checks.
+     *
+     * <p>This exists because the startup banner and {@code /pathweaver status} answered a different
+     * question from the one dispatch asks, and answered it more optimistically. Dispatch refuses any
+     * {@code WalkNodeEvaluator}-derived family — which is five of the six — while Fabric's land
+     * path-type registry is unverified, so on a pack where that verification fails the mod would
+     * announce "ACTIVE: all 6 movement families can path off-thread" and then run exactly one of them.
+     * {@code /pathweaver mobs} consulted the latch and said the opposite, so the mod's own
+     * diagnostics contradicted each other.
+     *
+     * <p>Reporting is not decoration here: it is how an operator decides whether the mod is earning
+     * its risk. A single predicate that every reporting site and the dispatch path share is the only
+     * way this stays true, and it is the third time a diagnostic has been found disagreeing with what
+     * the gates actually do.
+     */
+    public static boolean canDispatch(Class<?> evaluatorClass) {
+        if (!isAllowed(evaluatorClass)) return false;
+        return !requiresEmptyLandRegistry(evaluatorClass)
+            || FabricLandPathRegistryLatch.allowsWalkDispatch();
+    }
+
+    /**
+     * True when this family resolves block path types through {@code WalkNodeEvaluator}'s code and so
+     * depends on Fabric's land registry staying empty. Kept here rather than restated at each call
+     * site: testing for the exact Walk class once covered the zombie and left the other four
+     * dispatching against a registry that could have been populated.
+     */
+    public static boolean requiresEmptyLandRegistry(Class<?> evaluatorClass) {
+        return net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class
+                .isAssignableFrom(evaluatorClass)
+            && !ActiveCompatibilityPolicy.bypassesScan();
+    }
 }

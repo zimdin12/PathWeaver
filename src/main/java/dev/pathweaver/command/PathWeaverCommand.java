@@ -86,7 +86,8 @@ public final class PathWeaverCommand {
         // made the report disagree with the running mod the moment a scan error appeared.
         boolean scanFailed = report.decision().failed() > 0;
         for (String line : scanSummary(report.decision().denied(),
-                config.bypassesCompatibilityScan() && !scanFailed, scanFailed)) {
+                config.bypassesCompatibilityScan() && !scanFailed, scanFailed,
+                undispatchableFamilyNames())) {
             say(source, line);
         }
         java.util.List<String> trusted =
@@ -138,15 +139,41 @@ public final class PathWeaverCommand {
         return scanSummary(deniedFamilies, waived, false);
     }
 
+    static List<String> scanSummary(java.util.Collection<Class<?>> deniedFamilies, boolean waived,
+                                    boolean scanFailed) {
+        return scanSummary(deniedFamilies, waived, scanFailed, List.of());
+    }
+
+    /** The families dispatch would still refuse even with nothing denied — see SafetyGate.canDispatch. */
+    static List<String> undispatchableFamilyNames() {
+        List<String> names = new ArrayList<>();
+        for (Class<?> family : dev.pathweaver.gate.SafetyGate.allowlisted()) {
+            if (!dev.pathweaver.gate.SafetyGate.canDispatch(family)) names.add(family.getSimpleName());
+        }
+        return names;
+    }
+
     /**
      * @param scanFailed the scan errored, so no tier can waive its denials
      */
     static List<String> scanSummary(java.util.Collection<Class<?>> deniedFamilies, boolean waived,
-                                    boolean scanFailed) {
+                                    boolean scanFailed, List<String> undispatchable) {
         List<String> denied = new ArrayList<>();
         for (Class<?> family : deniedFamilies) denied.add(family.getSimpleName());
         if (denied.isEmpty()) {
-            return List.of("  §ano movement family is denied — searches can run off-thread");
+            // "Nothing is denied" is not the same as "anything can run". Dispatch also refuses every
+            // WalkNodeEvaluator-derived family -- five of the six -- while Fabric's land path-type
+            // registry is unverified, and this line used to report all-clear straight through that
+            // while /pathweaver mobs reported the opposite. Ask the same predicate dispatch asks.
+            if (undispatchable.isEmpty()) {
+                return List.of("  §ano movement family is denied — searches can run off-thread");
+            }
+            return List.of(
+                "  §eno mod is blamed, but " + undispatchable.size() + " of "
+                    + dev.pathweaver.gate.SafetyGate.allowlisted().size()
+                    + " families still cannot dispatch: §7" + String.join(", ", undispatchable),
+                "  §7a mod registered an uncertified land path-type rule, or the Fabric land-registry",
+                "  §7hooks could not be verified. Run §f/pathweaver mobs§7 for the per-family reason.");
         }
         // A failed scan outranks the tier. Reporting "running anyway, because the tier is Unsafe"
         // here would invent a risk the operator is not taking AND hide that the mod is inert -- the

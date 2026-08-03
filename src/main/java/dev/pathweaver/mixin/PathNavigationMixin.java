@@ -127,6 +127,13 @@ public abstract class PathNavigationMixin implements PWNavigation {
      */
     @Unique private BlockPos pathweaver$recomputeTargetClaim;
 
+    /**
+     * One warning per session, not per navigation. A pack that trips this trips it for every mob of
+     * that type on every tick, and a log line per mob per tick is its own outage.
+     */
+    @Unique private static final java.util.concurrent.atomic.AtomicBoolean
+        pathweaver$setupFailureLogged = new java.util.concurrent.atomic.AtomicBoolean();
+
     @Inject(method = "moveTo(DDDD)Z", at = @At("HEAD"), require = 1, expect = 1)
     private void pathweaver$captureCoordinateSpeed(double x, double y, double z, double speed,
                                                     CallbackInfoReturnable<Boolean> cir) {
@@ -417,14 +424,10 @@ public abstract class PathNavigationMixin implements PWNavigation {
         //
         // Clearing the flag here waives the dispatch gate and the install-time re-check together,
         // because both are driven from it.
+        // Shared with the startup banner and /pathweaver status through SafetyGate, so a reporting
+        // site cannot answer a more optimistic question than the one asked here.
         final boolean requiresEmptyLandRegistry =
-            // Every land evaluator -- walking, flying, amphibious, frog, creaking -- resolves block
-            // path types through WalkNodeEvaluator's code, so all of them depend on Fabric's land
-            // registry staying empty. Testing for the exact Walk class covered the zombie and left
-            // the other four dispatching against a registry that could have been populated.
-            net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class
-                    .isAssignableFrom(this.nodeEvaluator.getClass())
-                && !cfg.bypassesCompatibilityScan();
+            SafetyGate.requiresEmptyLandRegistry(this.nodeEvaluator.getClass());
         if (requiresEmptyLandRegistry
                 && !dev.pathweaver.gate.FabricLandPathRegistryLatch.allowsWalkDispatch()) return;
 
@@ -585,7 +588,33 @@ public abstract class PathNavigationMixin implements PWNavigation {
             cir.setReturnValue(this.path);
             authorizeSearch = true;
         } catch (Throwable t) {
-            if (registered) sink.discard(requestKey, dev.pathweaver.async.RequestOutcome.SETUP_FAILED);
+            // Record it even when nothing was registered yet. `registered` is not set until the
+            // request reaches the sink, and everything before that -- the attribute captures, the
+            // region, the evaluator clone, the PathFinder, the target copy -- is inside this try.
+            // A throw from any of them used to produce no outcome, no counter and no log line
+            // anywhere, so a deterministic setup failure meant the mod did nothing forever while
+            // reporting itself as fully working: "PathWeaver is ACTIVE", dispatched=0, no outcome
+            // rows, silence in the log. That is the failure mode this project's own comments call
+            // worse than having no diagnostic at all.
+            //
+            // The reachable trigger is a third-party evaluator whose no-argument constructor throws
+            // when invoked outside the mod's own construction path: canClone proves a constructor
+            // RESOLVES, never that it RUNS.
+            if (registered) {
+                sink.discard(requestKey, dev.pathweaver.async.RequestOutcome.SETUP_FAILED);
+            } else {
+                rt.markOutcome(dev.pathweaver.async.RequestOutcome.SETUP_FAILED);
+            }
+            if (pathweaver$setupFailureLogged.compareAndSet(false, true)) {
+                try {
+                    dev.pathweaver.PathWeaver.LOG.warn("PathWeaver could not set up an async search "
+                        + "and fell back to synchronous pathfinding for {}. Logged once per session; "
+                        + "the SETUP_FAILED counter in /pathweaver status keeps counting.",
+                        this.mob.getType().toShortString(), t);
+                } catch (Throwable ignored) {
+                    // Falling back to sync stays the outcome even if logging is compromised.
+                }
+            }
             // No cir.cancel(): fall through so vanilla computes the path synchronously this tick.
         } finally {
             // Every main-thread exit releases an accepted worker. Only a fully completed setup opens

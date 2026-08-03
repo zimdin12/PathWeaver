@@ -1,5 +1,74 @@
 # Changelog
 
+## 0.6.0 — Diagnostics that agree with the gates
+
+Not published. Built and committed for testing.
+
+A cumulative review of everything since 0.5.0 and an adversarial concurrency bug hunt. The bug hunt
+found **no blocker and no high-severity defect**, and said so explicitly rather than padding — the
+epilogue pairing, the install-staleness checks, the evaluator clone, and the pool's generation
+isolation were all attacked and held.
+
+### Fixed
+
+- **The startup banner and `/pathweaver status` reported "ACTIVE, all six families" while five of the
+  six were being refused every tick.** Dispatch consults Fabric's land path-type registry latch in
+  addition to `SafetyGate`; the two reporting sites did not. On a pack where that verification fails,
+  the mod announced itself fully active, `dispatched` rose only from squid and fish, and
+  `/pathweaver mobs` said the opposite — the mod's own diagnostics contradicting each other on the
+  first question an operator asks. All three sites now share one predicate,
+  `SafetyGate.canDispatch`, so they cannot drift again. This is the third time a diagnostic has been
+  caught disagreeing with what the gates actually do.
+- **A setup failure before registration was swallowed entirely — no outcome, no counter, no log.**
+  Everything from the attribute captures through the evaluator clone runs before the request reaches
+  the sink, and the catch only recorded an outcome if it had. A deterministic failure there meant the
+  mod did nothing, forever, while reporting itself as working. It is now counted as `SETUP_FAILED`
+  whether or not registration happened, and logged once per session. The reachable trigger is a
+  third-party evaluator whose no-argument constructor throws when invoked outside its own
+  construction path: `canClone` proves a constructor resolves, never that it runs.
+- **The coverage contract treated an omitted `require` as safe.** ASM only visits values that are
+  present, so `require` arrived as null whenever it was left out — and null was read as fine. What
+  makes omission safe is `injectors.defaultRequire: 1` in the shipped config, which the test read for
+  the mixin list and never consulted for this. It now resolves `require` the way Mixin does, and that
+  is mutation-tested in both directions.
+- **That contract's declared side was gated on a literal `Mob` receiver.** Every entity call in all six
+  evaluators does have owner `Mob` on 26.1.2 — verified — but a version emitting the same call with a
+  `LivingEntity` static type would have emptied the declared side and left every assertion in the
+  class passing over a live attribute race.
+- **Both worker `ThreadLocal` captures now happen inside the `try`.** Only an `OutOfMemoryError` could
+  have separated them, but the residue is the exact failure both javadocs warn about: a step height
+  left published on a pooled thread and inherited by the next mob scheduled onto it.
+- **The banner blamed the compatibility tier for refusals it did not cause.** A family failing only
+  the clone check got the full "you opted into AUDITED" lecture and advice to edit `trustedMods`,
+  neither of which would have changed anything.
+
+### Documentation that was actively wrong
+
+- `DESIGN.md` §3 still said flying and amphibious evaluators were ineligible. They have been the
+  default async path since 0.4.0. Anyone auditing the threading story from that file would have
+  concluded axolotls, turtles, drowned, frogs and every flying mob were synchronous.
+- The recompute seam's javadoc claimed vanilla has two outcomes. It has four, and the whole table is
+  now written out — including the exit where a claim **is** still dropped, which is recorded as
+  roadmap 2g rather than papered over. That is not a regression (0.5.0 dropped it on all three
+  branches) and re-applying it there is precisely the 0.5.1 bug, so it needs the request to carry its
+  origin rather than a widened condition.
+- A javadoc describing `rollbackOptimisticTarget` was sitting above `abortFailedInstall`.
+
+### Added
+
+- **A worker-reachability analysis** (`src/test/java/dev/pathweaver/reach/`), the first step of the
+  0.6 plan to replace hand-written hazard lists with derivation. It found no unknown bug — stated
+  plainly because that is the result — but it independently rediscovered every read a human had to
+  reason about, without being told what to look for, which is what three hand-written lists failed to
+  do. What building it taught is in `ROADMAP-0.6.md` §4b: the naive version is useless rather than
+  imprecise, reporting 1,220 hazards including the client renderer.
+- **`tools/scan_pack.py`**, which measured why `AUDITED` leaves nothing eligible: 21 mods in a real
+  317-jar pack claim a watched target, any one of which denies everything, and 15 have no audit. Nine
+  of those 15 touch only `BlockBehaviour$BlockStateBase` and are not pathfinding mods at all.
+- ASM is now an explicit test dependency instead of arriving through `fabric-loader`.
+
+277 unit tests, four server harnesses, the client harness.
+
 ## 0.5.3 — The branch the fix did not reach
 
 Review of the shipped 0.5.2. It found that the release's headline fix was correct about the branch it

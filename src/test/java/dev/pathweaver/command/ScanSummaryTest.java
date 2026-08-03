@@ -86,4 +86,31 @@ class ScanSummaryTest {
         assertFalse(text.contains("Keep backups"),
             "do not warn about a risk that is not being taken: " + text);
     }
+
+    /**
+     * "Nothing is denied" must not be reported as "everything can run".
+     *
+     * <p>Dispatch refuses every {@code WalkNodeEvaluator}-derived family — five of the six — while
+     * Fabric's land path-type registry is unverified. This line reported all-clear straight through
+     * that, while {@code /pathweaver mobs} reported the opposite, so the mod's own diagnostics
+     * contradicted each other on the exact question an operator asks first.
+     */
+    @Test
+    void nothingDeniedStillReportsFamiliesThatCannotDispatch() {
+        String text = joined(PathWeaverCommand.scanSummary(
+            Set.of(), false, false, List.of("WalkNodeEvaluator", "FlyNodeEvaluator")));
+        assertTrue(text.contains("cannot dispatch"),
+            "a family dispatch would refuse must be reported even when no mod is blamed: " + text);
+        assertTrue(text.contains("WalkNodeEvaluator") && text.contains("FlyNodeEvaluator"),
+            "the report must name them: " + text);
+        assertFalse(text.contains("no movement family is denied"),
+            "the all-clear line must not appear alongside families that cannot dispatch: " + text);
+    }
+
+    @Test
+    void nothingDeniedAndEverythingDispatchableIsStillTheAllClear() {
+        String text = joined(PathWeaverCommand.scanSummary(Set.of(), false, false, List.of()));
+        assertTrue(text.contains("no movement family is denied"),
+            "with nothing denied and nothing undispatchable this must stay the all-clear: " + text);
+    }
 }

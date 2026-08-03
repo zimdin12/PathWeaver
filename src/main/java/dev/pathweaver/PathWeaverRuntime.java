@@ -219,7 +219,10 @@ public final class PathWeaverRuntime {
         int total = dev.pathweaver.gate.SafetyGate.allowlisted().size();
         int eligible = 0;
         for (Class<?> family : dev.pathweaver.gate.SafetyGate.allowlisted()) {
-            if (dev.pathweaver.gate.SafetyGate.isAllowed(family)) eligible++;
+            // canDispatch, not isAllowed: the latter omits the land-registry latch that dispatch
+            // also consults, so this block used to announce all six families active on a pack where
+            // five of them were being refused every tick.
+            if (dev.pathweaver.gate.SafetyGate.canDispatch(family)) eligible++;
         }
         int denied = total - eligible;
 
