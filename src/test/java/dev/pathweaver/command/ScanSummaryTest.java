@@ -1,5 +1,6 @@
 package dev.pathweaver.command;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -112,5 +113,28 @@ class ScanSummaryTest {
         String text = joined(PathWeaverCommand.scanSummary(Set.of(), false, false, List.of()));
         assertTrue(text.contains("no movement family is denied"),
             "with nothing denied and nothing undispatchable this must stay the all-clear: " + text);
+    }
+
+    /**
+     * The production input, which the formatting tests above do not exercise.
+     *
+     * <p>They pass their own list, so they pin the branch and not the value status actually reports.
+     * That is the same shape as the bug this release fixed — a predicate covered on one side and
+     * duplicated on the other — so the producer gets pinned to the same predicate the banner uses.
+     */
+    @Test
+    void theProducedListAgreesWithTheDispatchPredicateItReports() {
+        List<String> produced = PathWeaverCommand.undispatchableFamilyNames();
+        List<String> expected = new java.util.ArrayList<>();
+        for (Class<?> family : dev.pathweaver.gate.SafetyGate.allowlisted()) {
+            if (!dev.pathweaver.gate.SafetyGate.canDispatch(family)) {
+                expected.add(family.getSimpleName());
+            }
+        }
+        assertEquals(expected, produced,
+            "status must report exactly the families canDispatch refuses, or the banner and status "
+                + "are answering different questions again");
+        assertTrue(dev.pathweaver.gate.SafetyGate.allowlisted().size() >= produced.size(),
+            "cannot report more undispatchable families than exist");
     }
 }

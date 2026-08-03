@@ -43,6 +43,29 @@ class WorkerReachabilityProbe {
             "net/minecraft/world/level/pathfinder/FlyNodeEvaluator#done()V -> onPathfindingDone");
 
 
+    /**
+     * What a WORKER actually enters — not every method the evaluator declares.
+     *
+     * <p>{@code prepare} and {@code done} are excluded because PathWeaver runs them on the main
+     * thread: dispatch brackets the prologue with {@code PathWeaverThread.enterAsyncPrologue()} and
+     * the epilogue runs on the installer's drain. Counting them made most reported hazards
+     * {@code AmphibiousNodeEvaluator.prepare -> getPathfindingMalus -> ...} chains that no worker can
+     * reach, which buries the entries that matter under noise — and a number nobody trusts is a
+     * number nobody reads.
+     */
+    static List<WorkerReachability.MethodRef> workerEntryPoints(WorkerReachability reach) {
+        List<WorkerReachability.MethodRef> entries = new ArrayList<>();
+        for (Class<?> evaluator : SafetyGate.allowlisted()) {
+            for (WorkerReachability.MethodRef m
+                    : reach.allMethodsOf(evaluator.getName().replace('.', '/'))) {
+                if (m.name().equals("prepare") || m.name().equals("done")) continue;
+                entries.add(m);
+            }
+        }
+        entries.addAll(reach.allMethodsOf("net/minecraft/world/level/pathfinder/PathFinder"));
+        return entries;
+    }
+
     static List<Path> minecraftRoots() throws Exception {
         Set<Path> roots = new LinkedHashSet<>();
         for (Class<?> c : List.of(net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class,
@@ -67,11 +90,7 @@ class WorkerReachabilityProbe {
         long indexMs = (System.nanoTime() - t0) / 1_000_000;
         System.out.println("indexed classes = " + reach.indexedClassCount() + " in " + indexMs + "ms");
 
-        List<WorkerReachability.MethodRef> entries = new ArrayList<>();
-        for (Class<?> evaluator : SafetyGate.allowlisted()) {
-            entries.addAll(reach.allMethodsOf(evaluator.getName().replace('.', '/')));
-        }
-        entries.addAll(reach.allMethodsOf("net/minecraft/world/level/pathfinder/PathFinder"));
+        List<WorkerReachability.MethodRef> entries = workerEntryPoints(reach);
         System.out.println("entry points = " + entries.size()
             + " (from " + SafetyGate.allowlisted().size() + " evaluators + PathFinder)");
 
@@ -127,10 +146,7 @@ class WorkerReachabilityProbe {
             "the index looks empty, so any clean result below would be vacuous: "
                 + reach.indexedClassCount());
 
-        List<WorkerReachability.MethodRef> entries = new ArrayList<>();
-        for (Class<?> evaluator : SafetyGate.allowlisted()) {
-            entries.addAll(reach.allMethodsOf(evaluator.getName().replace('.', '/')));
-        }
+        List<WorkerReachability.MethodRef> entries = workerEntryPoints(reach);
         org.junit.jupiter.api.Assertions.assertFalse(entries.isEmpty(),
             "no entry points resolved from the allowlist");
 

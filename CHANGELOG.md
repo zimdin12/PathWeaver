@@ -60,11 +60,13 @@ isolation were all attacked and held.
 ### Added
 
 - **A worker-reachability analysis** (`src/test/java/dev/pathweaver/reach/`), the first step of the
-  0.6 plan to replace hand-written hazard lists with derivation. **It is a discovery aid and is
-  currently unsound — it is deliberately NOT cited as evidence for anything.** An earlier draft of
-  this entry claimed it corroborated that no attribute hazard remains; a review showed it silently
-  truncates in three places that contradict its own stated guarantee, so its clean result is not a
-  result. Details in `ROADMAP-0.6.md` §4b. It found no unknown bug. What building it taught is
+  0.6 plan to replace hand-written hazard lists with derivation. **It is a discovery aid, not
+  evidence.** An earlier draft of this entry cited it as corroborating that no attribute hazard
+  remains; a review showed it silently truncated in three places that contradicted its own stated
+  guarantee. Those are fixed — it now resolves interface defaults, records every truncation instead
+  of swallowing it, and no longer maps a receiver onto a type that does not implement it. The numbers
+  moved from 1,735 reachable / 0 unresolved / 12 hazards to 2,060 / 168 / 45, which is what an honest
+  version of the same walk looks like. Details in `ROADMAP-0.6.md` §4b. It found no unknown bug. What building it taught is
   recorded there too: the naive version is useless rather than imprecise, reporting 1,220 hazards
   including the client renderer.
 - **`tools/scan_pack.py`**, which measured why `AUDITED` leaves nothing eligible: 21 mods in a real
@@ -72,7 +74,7 @@ isolation were all attacked and held.
   of those 15 touch only `BlockBehaviour$BlockStateBase` and are not pathfinding mods at all.
 - ASM is now an explicit test dependency instead of arriving through `fabric-loader`.
 
-284 unit tests, four server harnesses, the client harness, and a live two-server A/B on a real
+285 unit tests, four server harnesses, the client harness, and a live two-server A/B on a real
 Fabric server confirming the reported cause matches what dispatch actually does.
 
 ## 0.5.3 — The branch the fix did not reach

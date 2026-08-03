@@ -237,15 +237,23 @@ accepts; the `getPathfindingMalus` chain is 2f and is worse than 2f describes, b
 19–22 hop `RandomSource` chains through `getCollisionShape → MovingPistonBlock.getBlockEntity` are
 almost certainly residual over-approximation and are **not** being reported as defects until triaged.
 
-**It is currently UNSOUND, and must not be cited as evidence until it is fixed.** A review found three
-truncations that contradict its own stated guarantee: `bodyOf` never consults interfaces; it records
-`unresolved` only when the class is missing, not on the dominant class-found/method-missing drop —
-so the reported `unresolved = 0` is an artifact of that gap, not a result; and `RECEIVER_UNIVERSE`
-maps `LevelReader` to a type that does not implement it while truncating `Level`/`ServerLevel` to
-nothing, even though the live `Mob` is handed to the worker and `Entity.level()` returns a `Level`.
+**A review found it unsound in three ways; all three are now fixed, and the numbers changed a lot.**
+`bodyOf` never consulted interfaces, so default methods were unresolvable and the walk stopped
+silently. It recorded `unresolved` only when the *class* was missing, never on the dominant
+class-found/method-missing drop — so the reported `unresolved = 0` was an artifact of that gap rather
+than a result. And `RECEIVER_UNIVERSE` mapped `LevelReader` onto `PathNavigationRegion`, which
+(verified with `javap`) implements only `CollisionGetter` — a type error that deleted every
+`LevelReader`-mediated edge.
+
+After the fix: **2,060 reachable methods, 168 unresolved, 45 hazards**, against the previous
+1,735 / 0 / 12. The `Level`/`ServerLevel` truncations are kept — following them re-explodes the graph
+— but they are now *recorded* rather than silent, which is the difference between a bound and a lie.
+The `AttributeInstance` count is still zero, now under a materially wider walk.
+
 Its hard-coded cut list was also one entry wrong — it named `FlyNodeEvaluator#getStart` when the
 shipped redirect targets `iteratePathfindingStartNodeCandidatePositions`, which is precisely the
 hand-written-list failure the whole analysis exists to end, reproduced inside the analysis itself.
+Deriving that list from `pathweaver.mixins.json` is the remaining work before it can gate anything.
 
 **It found no unknown bug.** That is the honest result and it is still the argument for finishing it:
 it independently rediscovered every read a human had to reason about, without being told what to look

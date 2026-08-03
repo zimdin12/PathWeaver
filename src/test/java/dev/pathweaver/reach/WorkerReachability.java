@@ -137,16 +137,29 @@ public final class WorkerReachability {
      * dispatch code proves the type is what makes the rest of the over-approximation affordable.
      */
     private static final Map<String, Set<String>> RECEIVER_UNIVERSE = Map.of(
+        // Verified with javap: PathNavigationRegion implements CollisionGetter, and nothing else.
+        // An earlier revision also mapped LevelReader here, which it does NOT implement -- a type
+        // error that silently deleted every LevelReader-mediated edge.
         "net/minecraft/world/level/BlockGetter",
             Set.of("net/minecraft/world/level/PathNavigationRegion"),
-        "net/minecraft/world/level/LevelReader",
-            Set.of("net/minecraft/world/level/PathNavigationRegion"),
         "net/minecraft/world/level/CollisionGetter",
-            Set.of("net/minecraft/world/level/PathNavigationRegion"),
-        "net/minecraft/world/level/LevelAccessor", Set.of(),
-        "net/minecraft/world/level/LevelWriter", Set.of(),
-        "net/minecraft/world/level/Level", Set.of(),
-        "net/minecraft/server/level/ServerLevel", Set.of());
+            Set.of("net/minecraft/world/level/PathNavigationRegion"));
+
+    /**
+     * Receivers this analysis deliberately refuses to follow, with the cost made visible.
+     *
+     * <p>These are NOT "receivers a worker cannot obtain" — the live {@code Mob} is handed to the
+     * worker and {@code Entity.level()} returns a {@code Level}. Following them re-explodes the graph
+     * into world mutation, explosions and the client renderer, so the walk stops; but stopping
+     * silently is what made a reported {@code unresolved = 0} meaningless. Every truncation here is
+     * recorded, so the number says what it cost.
+     */
+    private static final Set<String> TRUNCATED_RECEIVERS = Set.of(
+        "net/minecraft/world/level/LevelReader",
+        "net/minecraft/world/level/LevelAccessor",
+        "net/minecraft/world/level/LevelWriter",
+        "net/minecraft/world/level/Level",
+        "net/minecraft/server/level/ServerLevel");
 
     private final Map<String, ClassNode> classes = new HashMap<>();
     private final Map<String, List<String>> subclasses = new HashMap<>();
@@ -292,6 +305,10 @@ public final class WorkerReachability {
         out.add(declared);
         if (call.getOpcode() == Opcodes.INVOKEVIRTUAL
                 || call.getOpcode() == Opcodes.INVOKEINTERFACE) {
+            if (TRUNCATED_RECEIVERS.contains(call.owner)) {
+                unresolved.add(call.owner + "." + call.name + " (receiver truncated by design)");
+                return List.of();
+            }
             Set<String> universe = RECEIVER_UNIVERSE.get(call.owner);
             if (universe != null) {
                 // The dispatch code proves what the receiver is; do not invent others.
@@ -324,22 +341,37 @@ public final class WorkerReachability {
 
     /** Resolve a method body, walking up the superclass chain the way the JVM would. */
     private MethodNode bodyOf(MethodRef ref) {
-        String owner = ref.owner();
-        Set<String> guard = new HashSet<>();
-        while (owner != null && guard.add(owner)) {
-            ClassNode cn = classes.get(owner);
-            if (cn == null) {
-                if (scanPrefixes.stream().anyMatch(owner::startsWith)) {
-                    unresolved.add(owner + " (not indexed)");
-                }
-                return null;
+        MethodNode found = declaredIn(ref.owner(), ref, new HashSet<>());
+        if (found == null && classes.containsKey(ref.owner())) {
+            // Class present, method not found anywhere up the hierarchy. This was the DOMINANT drop
+            // and it recorded nothing, which is what made `unresolved = 0` an artifact rather than a
+            // result: PathNavigationRegion declares a handful of methods, so every BlockGetter
+            // default mapped onto it landed here and vanished.
+            unresolved.add(ref.toString() + " (declared nowhere in the indexed hierarchy)");
+        }
+        return found;
+    }
+
+    /** Walk superclasses AND interfaces — interface default methods have bodies too. */
+    private MethodNode declaredIn(String owner, MethodRef ref, Set<String> guard) {
+        if (owner == null || !guard.add(owner)) return null;
+        ClassNode cn = classes.get(owner);
+        if (cn == null) {
+            if (scanPrefixes.stream().anyMatch(owner::startsWith)) {
+                unresolved.add(owner + " (not indexed)");
             }
-            for (MethodNode m : cn.methods) {
-                if (m.name.equals(ref.name()) && m.desc.equals(ref.descriptor())) {
-                    return (m.access & Opcodes.ACC_ABSTRACT) != 0 ? null : m;
-                }
+            return null;
+        }
+        for (MethodNode m : cn.methods) {
+            if (m.name.equals(ref.name()) && m.desc.equals(ref.descriptor())) {
+                return (m.access & Opcodes.ACC_ABSTRACT) != 0 ? null : m;
             }
-            owner = cn.superName;
+        }
+        MethodNode fromSuper = declaredIn(cn.superName, ref, guard);
+        if (fromSuper != null) return fromSuper;
+        for (String itf : cn.interfaces) {
+            MethodNode fromItf = declaredIn(itf, ref, guard);
+            if (fromItf != null) return fromItf;
         }
         return null;
     }
