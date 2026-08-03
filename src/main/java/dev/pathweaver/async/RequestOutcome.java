@@ -101,7 +101,15 @@ public enum RequestOutcome {
      * decision instead of silently defaulting to the wrong one.
      */
     public boolean countsAgainstDispatched() {
-        return this != POOL_SATURATED && this != SETUP_FAILED && this != SETUP_FAILED_PRE_DISPATCH;
+        // An exhaustive switch with NO default. The `!=` chain it replaced claimed to "force the
+        // decision" and did the opposite: a reviewer added a constant, changed nothing else, and all
+        // 289 tests passed while the new row printed a percentage of a total it is not part of.
+        // javac refuses to compile this when a constant is added, which is what forcing actually is.
+        return switch (this) {
+            case POOL_SATURATED, SETUP_FAILED, SETUP_FAILED_PRE_DISPATCH -> false;
+            case INSTALLED, NO_PATH, SUPERSEDED, NAVIGATION_STOPPED, ARRIVED_STALE, SEARCH_FAILED,
+                 HANDOFF_FAILED, INSTALL_FAILED, SERVER_RESET -> true;
+        };
     }
 
     /**
@@ -113,6 +121,11 @@ public enum RequestOutcome {
      * mod failing to run is a good outcome.
      */
     public boolean isGoodNews() {
-        return this == INSTALLED || this == NO_PATH;
+        return switch (this) {
+            case INSTALLED, NO_PATH -> true;
+            case POOL_SATURATED, SETUP_FAILED, SETUP_FAILED_PRE_DISPATCH, SUPERSEDED,
+                 NAVIGATION_STOPPED, ARRIVED_STALE, SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED,
+                 SERVER_RESET -> false;
+        };
     }
 }

@@ -122,19 +122,40 @@ class ScanSummaryTest {
      * That is the same shape as the bug this release fixed — a predicate covered on one side and
      * duplicated on the other — so the producer gets pinned to the same predicate the banner uses.
      */
+    /**
+     * Denying one family must not make its subclasses look like a separate problem.
+     *
+     * <p>The previous version of this test computed its expectation by calling the method under test,
+     * so it passed for any implementation. It also missed the real defect: {@code SafetyGate.isDenied}
+     * matches with {@code isAssignableFrom}, so denying {@code WalkNodeEvaluator} refuses all five
+     * land-derived families while the denied list names exactly one — and the four inherited refusals
+     * were then reported as having "a different reason", followed by a cause that was not the cause.
+     */
     @Test
-    void theProducedListAgreesWithTheDispatchPredicateItReports() {
-        List<String> produced = PathWeaverCommand.undispatchableFamilyNames();
-        List<String> expected = new java.util.ArrayList<>();
+    void familiesRefusedByInheritanceAreNotReportedAsASeparateProblem() {
+        List<String> produced = PathWeaverCommand.undispatchableFamilyNames(
+            Set.of(net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class));
+        assertFalse(produced.contains("FlyNodeEvaluator"),
+            "Fly is refused BY the Walk denial, not by a different reason: " + produced);
+        assertFalse(produced.contains("AmphibiousNodeEvaluator"),
+            "Amphibious is refused BY the Walk denial: " + produced);
+        assertFalse(produced.contains("FrogNodeEvaluator"),
+            "Frog is refused BY the Walk denial: " + produced);
+        assertFalse(produced.contains("HomeNodeEvaluator"),
+            "Creaking is refused BY the Walk denial: " + produced);
+        assertFalse(produced.contains("WalkNodeEvaluator"),
+            "the denied family itself is already reported as denied: " + produced);
+    }
+
+    @Test
+    void withNothingDeniedTheProducerStillReportsWhatDispatchRefuses() {
+        List<String> produced = PathWeaverCommand.undispatchableFamilyNames(Set.of());
         for (Class<?> family : dev.pathweaver.gate.SafetyGate.allowlisted()) {
             if (!dev.pathweaver.gate.SafetyGate.canDispatch(family)) {
-                expected.add(family.getSimpleName());
+                assertTrue(produced.contains(family.getSimpleName()),
+                    family.getSimpleName() + " is refused by dispatch and must be reported: "
+                        + produced);
             }
         }
-        assertEquals(expected, produced,
-            "status must report exactly the families canDispatch refuses, or the banner and status "
-                + "are answering different questions again");
-        assertTrue(dev.pathweaver.gate.SafetyGate.allowlisted().size() >= produced.size(),
-            "cannot report more undispatchable families than exist");
     }
 }

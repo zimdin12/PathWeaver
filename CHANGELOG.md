@@ -16,12 +16,21 @@ isolation were all attacked and held.
   addition to `SafetyGate`; the two reporting sites did not. On a pack where that verification fails,
   the mod announced itself fully active, `dispatched` rose only from squid and fish, and
   `/pathweaver mobs` said the opposite — the mod's own diagnostics contradicting each other on the
-  first question an operator asks. All three sites now share one predicate,
-  `SafetyGate.canDispatch`, so they cannot drift again — four sites, in fact: `/pathweaver mobs` was
-  open-coding the same rule a fourth time. The land-registry half is split out as a pure function and
-  tested, including that all five land-derived families are covered and not just the exact `Walk`
-  class, which is the bug the predicate replaced. This is the third time a diagnostic has been caught
-  disagreeing with what the gates actually do.
+  first question an operator asks. All three reporting sites now answer through one predicate,
+  `SafetyGate.canDispatch` — four, in fact: `/pathweaver mobs` was open-coding the same rule a fourth
+  time.
+
+  Precisely what is shared, because an earlier draft of this entry overstated it: dispatch does **not**
+  call `canDispatch`. It evaluates `isAllowed`, then `requiresEmptyLandRegistry`, then the latch, as
+  three separate steps. `canDispatch` is a *reconstruction* of that sequence for the reporting sites,
+  and an unpinned reconstruction is exactly how this bug became re-introducible twice —
+  `requiresEmptyLandRegistry` could be replaced with `return false` and `canDispatch` reduced to
+  `isAllowed`, each leaving all 289 tests green. `SafetyGateDispatchParityTest` now asserts the
+  reconstruction against the sequence over the whole input space rather than against itself, and the
+  one-argument convenience wrapper that hid the call site is deleted rather than tested beside.
+
+  The land-registry half covers all five land-derived families, not just the exact `Walk` class. This
+  is the third time a diagnostic has been caught disagreeing with what the gates actually do.
 - **A setup failure before registration was swallowed entirely — no outcome, no counter, no log.**
   Everything from the attribute captures through the evaluator clone runs before the request reaches
   the sink, and the catch only recorded an outcome if it had. A deterministic failure there meant the
@@ -77,7 +86,7 @@ isolation were all attacked and held.
   of those 15 touch only `BlockBehaviour$BlockStateBase` and are not pathfinding mods at all.
 - ASM is now an explicit test dependency instead of arriving through `fabric-loader`.
 
-289 unit tests, four server harnesses, the client harness, and a live two-server A/B on a real
+292 unit tests, four server harnesses, the client harness, and a live two-server A/B on a real
 Fabric server confirming the reported cause matches what dispatch actually does.
 
 ## 0.5.3 — The branch the fix did not reach

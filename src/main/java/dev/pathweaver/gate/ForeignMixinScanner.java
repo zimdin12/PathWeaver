@@ -172,6 +172,17 @@ public final class ForeignMixinScanner {
     }
 
     /** Pure, testable: map fully-qualified mixin target names to the allowlisted classes they hit. */
+    /**
+     * The scan could not complete, so nothing can be waived.
+     *
+     * <p>Shared because it was spelled out three times — once directly beneath a comment explaining
+     * that open-coding a rule is the drift a shared predicate exists to prevent. The comment had been
+     * moved and the copy written under it in the same commit.
+     */
+    public static boolean scanFailed() {
+        return lastScanReport().decision().failed() > 0;
+    }
+
     public static Set<Class<?>> targetsTouchingAllowlist(Collection<String> targetClassNames) {
         Set<Class<?>> hits = new HashSet<>();
         for (String t : targetClassNames) {

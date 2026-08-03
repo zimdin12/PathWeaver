@@ -295,7 +295,7 @@ public final class PathWeaverRuntime {
         // tier waives what the scan found, not the scan being unable to look, and the scanner block
         // forty lines earlier in this same log already says so in capitals.
         boolean scanFailed =
-            dev.pathweaver.gate.ForeignMixinScanner.lastScanReport().decision().failed() > 0;
+            dev.pathweaver.gate.ForeignMixinScanner.scanFailed();
         if (scanFailed) {
             PathWeaver.LOG.warn("");
             PathWeaver.LOG.warn("The compatibility scan could not complete, so nothing can be");

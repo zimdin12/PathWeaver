@@ -51,7 +51,7 @@ public final class SafetyGate {
     private static final Set<Class<?>> ALLOWED = allowlist();
 
     private static Set<Class<?>> allowlist() {
-        Set<Class<?>> allowed = new LinkedHashSet<>(Set.of(
+        Set<Class<?>> allowed = new LinkedHashSet<>(java.util.List.of(
             WalkNodeEvaluator.class,
             SwimNodeEvaluator.class,
             FlyNodeEvaluator.class,
@@ -171,9 +171,16 @@ public final class SafetyGate {
             FabricLandPathRegistryLatch.allowsWalkDispatch());
     }
 
-    /** Test seam: the same composition against chosen state, so the composition itself is pinned. */
-    static boolean canDispatch(Class<?> evaluatorClass, boolean allowed, boolean bypassesScan,
-                               boolean latchAllows) {
+    /**
+     * The same composition against chosen state.
+     *
+     * <p>Public, not package-private: the no-argument form is a RECONSTRUCTION of what dispatch does
+     * in three separate steps, and a reconstruction nothing pins is how this release's headline bug
+     * became re-introducible twice. {@link dev.pathweaver.gate.SafetyGateDispatchParityTest} asserts
+     * the reconstruction against the real sequence rather than against itself.
+     */
+    public static boolean canDispatch(Class<?> evaluatorClass, boolean allowed, boolean bypassesScan,
+                                      boolean latchAllows) {
         return allowed && landRegistryPermits(evaluatorClass, bypassesScan, latchAllows);
     }
 
@@ -198,20 +205,20 @@ public final class SafetyGate {
      * site: testing for the exact Walk class once covered the zombie and left the other four
      * dispatching against a registry that could have been populated.
      */
-    public static boolean requiresEmptyLandRegistry(Class<?> evaluatorClass) {
-        return requiresEmptyLandRegistry(evaluatorClass, ActiveCompatibilityPolicy.bypassesScan());
-    }
-
     /**
-     * Test seam for the predicate DISPATCH actually calls.
+     * The predicate the dispatch mixin calls. There is no one-argument convenience wrapper, and that
+     * is deliberate.
      *
-     * <p>The previous round's tests covered {@code landRegistryPermits} and {@code isLandDerived},
-     * neither of which is on the mixin's call path — so reverting THIS method to an exact-class check
-     * left the whole suite green while frogs, axolotls, drowned, turtles and creakings dispatched
-     * against a populated registry with the install-time re-check disarmed. Asserting a helper one
-     * hop from the call site is the same defect as duplicating the rule, one level up.
+     * <p>A previous round added a wrapper so the state-injecting form could be tested, then tested
+     * the wrapper's callee and not the wrapper. A reviewer replaced the wrapper body with
+     * {@code return false;} and the entire 289-test suite stayed green — meaning every land-derived
+     * family could be made to dispatch against a populated registry, with the install-time re-check
+     * disarmed at the same time, and nothing would notice. Two rounds running, the tests were one hop
+     * from the call site; the fix is to remove the hop rather than add another test beside it.
+     *
+     * @param bypassesScan the operator waived compatibility checking entirely
      */
-    static boolean requiresEmptyLandRegistry(Class<?> evaluatorClass, boolean bypassesScan) {
+    public static boolean requiresEmptyLandRegistry(Class<?> evaluatorClass, boolean bypassesScan) {
         return isLandDerived(evaluatorClass) && !bypassesScan;
     }
 
