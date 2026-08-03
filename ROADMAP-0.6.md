@@ -208,7 +208,7 @@ counts those mobs as eligible.
 
 ---
 
-## 4b. The reachability engine, and what measuring it taught
+## 6. The reachability engine, and what measuring it taught
 
 Prototyped in `src/test/java/dev/pathweaver/reach/`. It walks the call graph from every method of the
 six admitted evaluators plus `PathFinder` and reports paths reaching `AttributeInstance.getValue`,
@@ -276,7 +276,7 @@ green. Collect *every* live-entity-receiver call the evaluators make, and requir
 redirected or on an explicit `KNOWN_SAFE` list carrying a one-line reason. That is the same
 default-deny principle `SafetyGate` already applies to evaluator classes, applied to reads.
 
-**5a-ii. Widen the receiver filter beyond `Mob`.** The declared side matches only
+**5a-ii. Widen the receiver filter beyond `Mob`.** *(DONE in 0.6.0 — kept for the record)* The declared side matches only
 `net/minecraft/world/entity/Mob` receivers, so a hazard reached through any other type is invisible —
 `Creaking$HomeNodeEvaluator` calls `Creaking.getHomePos()` (`SynchedEntityData`-backed) and the
 contract says nothing about it.

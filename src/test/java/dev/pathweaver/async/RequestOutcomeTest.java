@@ -69,4 +69,40 @@ class RequestOutcomeTest {
         assertEquals(installedBefore + 1, runtime.installedCount());
         assertTrue(runtime.outcomeCount(RequestOutcome.NO_PATH) > 0);
     }
+
+    /**
+     * Every outcome must state, deliberately, which side of both display rules it is on.
+     *
+     * <p>These were two hard-coded lists at the reporting site, and the second constant ever added
+     * missed both — printing "dispatch setup failed before admission" in green next to `installed`
+     * with a share of 136760%, because it was divided by a `dispatched` total it is not part of.
+     * Enumerating here forces the choice when a constant is added instead of defaulting to wrong.
+     */
+    @Test
+    void everyOutcomeDeclaresWhetherItIsPartOfTheDispatchedTotal() {
+        for (RequestOutcome outcome : RequestOutcome.values()) {
+            boolean neverDispatched = outcome == RequestOutcome.POOL_SATURATED
+                || outcome == RequestOutcome.SETUP_FAILED
+                || outcome == RequestOutcome.SETUP_FAILED_PRE_DISPATCH;
+            assertEquals(!neverDispatched, outcome.countsAgainstDispatched(),
+                outcome + " is on the wrong side of the dispatched-total line, so its percentage "
+                    + "is measured against a total it does not belong to");
+        }
+    }
+
+    @Test
+    void onlyAnInstalledPathOrAProvenAbsenceIsGoodNews() {
+        for (RequestOutcome outcome : RequestOutcome.values()) {
+            boolean expected = outcome == RequestOutcome.INSTALLED
+                || outcome == RequestOutcome.NO_PATH;
+            assertEquals(expected, outcome.isGoodNews(),
+                outcome + " is on the wrong side of the green/amber line; the footer tells the "
+                    + "operator only amber rows are wasted work");
+        }
+        // Not the same question as isDiscard(): these two are neither wasted nor good.
+        assertFalse(RequestOutcome.POOL_SATURATED.isDiscard());
+        assertFalse(RequestOutcome.POOL_SATURATED.isGoodNews());
+        assertFalse(RequestOutcome.SETUP_FAILED_PRE_DISPATCH.isDiscard());
+        assertFalse(RequestOutcome.SETUP_FAILED_PRE_DISPATCH.isGoodNews());
+    }
 }

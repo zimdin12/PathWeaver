@@ -105,20 +105,12 @@ public final class PathWeaverCommand {
         for (RequestOutcome outcome : RequestOutcome.values()) {
             long count = runtime.outcomeCount(outcome);
             if (count == 0L) continue;
-            // POOL_SATURATED is not drawn from `dispatched` -- RequestOutcome documents it as
-            // "not a discard and not a dispatch", and the mixin discards before markDispatched().
-            // Dividing it by `dispatched` printed shares above 100% on the one row that means "your
-            // configuration is the bottleneck", which is the row most worth reading correctly.
-            boolean partOfDispatched = outcome != RequestOutcome.POOL_SATURATED
-                && outcome != RequestOutcome.SETUP_FAILED;
-            String share = partOfDispatched && dispatched > 0L
+            // Both rules now live on the outcome. They were two hard-coded lists here, and the
+            // second constant added to them missed both: a pre-admission setup failure printed green
+            // beside `installed` with a 136760% share.
+            String share = outcome.countsAgainstDispatched() && dispatched > 0L
                 ? String.format(java.util.Locale.ROOT, " (%.1f%%)", 100.0 * count / dispatched) : "";
-            // Amber for admission refusal too. It is not a discard -- nothing was computed and
-            // thrown away -- but it is not a success either, and printing it green beside `installed`
-            // under a footer reading "only the amber rows are wasted work" told an operator their
-            // pool being the bottleneck was a good outcome.
-            boolean good = !outcome.isDiscard() && outcome != RequestOutcome.POOL_SATURATED;
-            say(source, (good ? "    §a" : "    §e") + count + "§r  "
+            say(source, (outcome.isGoodNews() ? "    §a" : "    §e") + count + "§r  "
                 + outcome.description() + "§7" + share);
         }
         say(source, "  §7Only the amber rows are wasted work. A search that proves no route exists "
@@ -160,6 +152,15 @@ public final class PathWeaverCommand {
                                     boolean scanFailed, List<String> undispatchable) {
         List<String> denied = new ArrayList<>();
         for (Class<?> family : deniedFamilies) denied.add(family.getSimpleName());
+        // Families dispatch refuses that the scan did NOT deny. Computed once and appended to every
+        // return path: it used to be computed inside the denied.isEmpty() branch and discarded
+        // everywhere else, so a partial denial plus a closed latch had the banner reporting 6 of 6
+        // refused while this line reported 1 -- the count disagreement this release exists to end,
+        // surviving in the site the README points at.
+        List<String> extra = new ArrayList<>();
+        for (String name : undispatchable) {
+            if (!denied.contains(name)) extra.add(name);
+        }
         if (denied.isEmpty()) {
             // "Nothing is denied" is not the same as "anything can run". Dispatch also refuses every
             // WalkNodeEvaluator-derived family -- five of the six -- while Fabric's land path-type
@@ -194,24 +195,43 @@ public final class PathWeaverCommand {
         // here would invent a risk the operator is not taking AND hide that the mod is inert -- the
         // worst available direction, and the third time this diagnostic has drifted from dispatch.
         if (scanFailed) {
-            return List.of(
+            return withExtra(List.of(
                 "  §cthe compatibility scan FAILED, so every family runs on the server thread",
                 "  §7denied: " + String.join(", ", denied),
                 "  §7compatibilityTier does not waive this: the tier waives what the scan found, "
-                    + "not the scan being unable to look. See the startup log for the errors.");
+                    + "not the scan being unable to look. See the startup log for the errors."), extra);
         }
         if (waived) {
-            return List.of(
+            return withExtra(List.of(
                 "  §e" + denied.size() + " family/families were denied by the scan and are running "
                     + "anyway, because the tier is Unsafe",
                 "  §7waived: " + String.join(", ", denied),
                 "  §7That is what Unsafe means: uninspected mod code is running on worker threads. "
-                    + "Keep backups.");
+                    + "Keep backups."), extra);
         }
-        return List.of(
+        return withExtra(List.of(
             "  §cdenied: " + String.join(", ", denied) + " — those searches run on the server thread",
             "  §7raise the compatibility risk setting, or check the startup log for the mods "
-                + "responsible");
+                + "responsible"), extra);
+    }
+
+    /**
+     * Append the families dispatch refuses that the scan did not deny.
+     *
+     * <p>Without this the report answers a narrower question than the banner: a mod denying only Swim
+     * while the land registry holds back the other five produced "denied: SwimNodeEvaluator" here and
+     * "doing NOTHING on this pack. All 6" in the log, from the same process, in the same second.
+     */
+    private static List<String> withExtra(List<String> base, List<String> extra) {
+        if (extra.isEmpty()) return base;
+        List<String> lines = new ArrayList<>(base);
+        lines.add("  §e" + extra.size() + " more cannot dispatch for a different reason: §7"
+            + String.join(", ", extra));
+        lines.add(dev.pathweaver.gate.SafetyGate.landRegistryBlocksWalkFamilies()
+            ? "  §7Fabric's land path-type registry is holding those back; "
+                + "compatibilityTier=UNSAFE waives it, trustedMods does not."
+            : "  §7most likely an evaluator that cannot be cloned on this JVM.");
+        return List.copyOf(lines);
     }
 
     /**
@@ -235,6 +255,15 @@ public final class PathWeaverCommand {
         }
         // Shared with dispatch, the banner and status. This was a fourth open-coded copy of the
         // same rule, which is exactly the drift the shared predicate exists to prevent.
+        boolean mobsScanFailed =
+            dev.pathweaver.gate.ForeignMixinScanner.lastScanReport().decision().failed() > 0;
+        if (mobsScanFailed) {
+            say(source, "§6PathWeaver mobs");
+            say(source, "  §cthe compatibility scan could not complete, so every family is denied "
+                + "and no per-type rule applies. compatibilityTier does NOT waive this -- the tier "
+                + "waives what the scan found, not the scan being unable to look.");
+            return;
+        }
         if (dev.pathweaver.gate.SafetyGate.landRegistryBlocksWalkFamilies()) {
             say(source, "§6PathWeaver mobs");
             say(source, "  §ceither a mod registered an uncertified land path-type rule, or the "

@@ -166,10 +166,15 @@ public final class SafetyGate {
      * the gates actually do.
      */
     public static boolean canDispatch(Class<?> evaluatorClass) {
-        return isAllowed(evaluatorClass)
-            && landRegistryPermits(evaluatorClass,
-                ActiveCompatibilityPolicy.bypassesScan(),
-                FabricLandPathRegistryLatch.allowsWalkDispatch());
+        return canDispatch(evaluatorClass, isAllowed(evaluatorClass),
+            ActiveCompatibilityPolicy.bypassesScan(),
+            FabricLandPathRegistryLatch.allowsWalkDispatch());
+    }
+
+    /** Test seam: the same composition against chosen state, so the composition itself is pinned. */
+    static boolean canDispatch(Class<?> evaluatorClass, boolean allowed, boolean bypassesScan,
+                               boolean latchAllows) {
+        return allowed && landRegistryPermits(evaluatorClass, bypassesScan, latchAllows);
     }
 
     /**
@@ -194,7 +199,20 @@ public final class SafetyGate {
      * dispatching against a registry that could have been populated.
      */
     public static boolean requiresEmptyLandRegistry(Class<?> evaluatorClass) {
-        return isLandDerived(evaluatorClass) && !ActiveCompatibilityPolicy.bypassesScan();
+        return requiresEmptyLandRegistry(evaluatorClass, ActiveCompatibilityPolicy.bypassesScan());
+    }
+
+    /**
+     * Test seam for the predicate DISPATCH actually calls.
+     *
+     * <p>The previous round's tests covered {@code landRegistryPermits} and {@code isLandDerived},
+     * neither of which is on the mixin's call path — so reverting THIS method to an exact-class check
+     * left the whole suite green while frogs, axolotls, drowned, turtles and creakings dispatched
+     * against a populated registry with the install-time re-check disarmed. Asserting a helper one
+     * hop from the call site is the same defect as duplicating the rule, one level up.
+     */
+    static boolean requiresEmptyLandRegistry(Class<?> evaluatorClass, boolean bypassesScan) {
+        return isLandDerived(evaluatorClass) && !bypassesScan;
     }
 
     /**

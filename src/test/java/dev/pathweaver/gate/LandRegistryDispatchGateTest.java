@@ -94,4 +94,42 @@ class LandRegistryDispatchGateTest {
         assertFalse(SafetyGate.isLandDerived(SwimNodeEvaluator.class),
             "Swim must not be land-derived, or dispatch would gate it on a registry it never reads");
     }
+
+    /**
+     * {@code requiresEmptyLandRegistry} is what the dispatch mixin calls, and it had no test.
+     *
+     * <p>A prior round fixed the duplicated rule but left the tests one hop away from the call site,
+     * so reverting this method to an exact-class check kept all 285 tests green while four of the
+     * five land families dispatched against a registry they must not.
+     */
+    @Test
+    void theDispatchCallPathRefusesEveryLandFamilyWhileTheRegistryMatters() throws Exception {
+        for (String name : new String[] {
+                "net.minecraft.world.level.pathfinder.WalkNodeEvaluator",
+                "net.minecraft.world.level.pathfinder.FlyNodeEvaluator",
+                "net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator",
+                "net.minecraft.world.entity.animal.frog.Frog$FrogNodeEvaluator",
+                "net.minecraft.world.entity.monster.creaking.Creaking$HomeNodeEvaluator" }) {
+            Class<?> family = Class.forName(name);
+            assertTrue(SafetyGate.requiresEmptyLandRegistry(family, false),
+                name + " must be gated on the land registry by the predicate DISPATCH calls");
+            assertFalse(SafetyGate.requiresEmptyLandRegistry(family, true),
+                name + " must be waived when the operator bypassed the scan");
+        }
+        assertFalse(SafetyGate.requiresEmptyLandRegistry(SwimNodeEvaluator.class, false),
+            "Swim must never be gated on a registry it does not read");
+    }
+
+    /** The composition itself: allowed AND permitted, not one or the other. */
+    @Test
+    void canDispatchRequiresBothHalvesOfTheDecision() {
+        assertFalse(SafetyGate.canDispatch(WalkNodeEvaluator.class, false, true, true),
+            "a family the safety gate denies must not dispatch even with the registry wide open");
+        assertFalse(SafetyGate.canDispatch(WalkNodeEvaluator.class, true, false, false),
+            "an allowed land family must not dispatch while the registry is unverified");
+        assertTrue(SafetyGate.canDispatch(WalkNodeEvaluator.class, true, false, true),
+            "allowed and the registry verified must dispatch");
+        assertTrue(SafetyGate.canDispatch(SwimNodeEvaluator.class, true, false, false),
+            "Swim needs only the safety gate");
+    }
 }

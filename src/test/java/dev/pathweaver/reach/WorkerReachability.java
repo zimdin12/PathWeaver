@@ -54,27 +54,31 @@ import java.util.stream.Stream;
  *       caller can fail closed instead of silently concluding "no path found".
  * </ul>
  *
- * <h2>KNOWN UNSOUND — do not cite this as evidence</h2>
+ * <h2>It WAS unsound in three ways; all three are fixed</h2>
  *
- * <p>The paragraph above describes the intent. A review measured the implementation against it and
- * the guarantee does not hold, in three specific ways. They are written here rather than fixed
- * quietly because this analysis was cited in a changelog as corroborating that no attribute hazard
- * remained, and a tool believed to be conservative while silently truncating is worse than no tool:
+ * <p>Recorded rather than deleted, because a tool believed to be conservative while silently
+ * truncating is worse than no tool, and this one was cited as evidence before it earned it:
  *
  * <ul>
- *   <li>{@link #bodyOf} walks the superclass chain and never consults {@code interfaces}, so
- *       interface default methods are unresolvable and the walk stops silently.
- *   <li>{@link #bodyOf} records {@code unresolved} only when the CLASS is missing. The dominant drop
- *       — class found, method not declared on it, chain walking up to {@code java/lang/Object} — 
- *       returns null and records nothing. {@code PathNavigationRegion} declares only a handful of
- *       methods, so every {@code BlockGetter} default mapped onto it by {@link #RECEIVER_UNIVERSE}
- *       takes this path. <b>A reported {@code unresolved = 0} is produced by this, not by
- *       completeness.</b>
- *   <li>{@link #RECEIVER_UNIVERSE} maps {@code LevelReader} to {@code PathNavigationRegion}, which
- *       does not implement it, and truncates {@code Level}/{@code ServerLevel}/{@code LevelAccessor}
- *       to nothing. The live {@code Mob} IS handed to the worker and {@code Entity.level()} returns a
- *       {@code Level}, so that is not a receiver a worker cannot obtain — it is a deliberate cut with
- *       no record.
+ *   <li>{@link #declaredIn} now walks interfaces as well as superclasses, so interface default
+ *       methods resolve instead of ending the walk in silence.
+ *   <li>{@code unresolved} is now recorded on the dominant drop — class found, method declared
+ *       nowhere in the indexed hierarchy — not only when the class itself is missing. That single
+ *       gap is why it used to report {@code unresolved = 0}; the honest number is 168.
+ *   <li>{@link #RECEIVER_UNIVERSE} no longer maps {@code LevelReader} onto
+ *       {@code PathNavigationRegion}, which implements only {@code CollisionGetter} (verified with
+ *       {@code javap}) — a type error that deleted every {@code LevelReader}-mediated edge.
+ * </ul>
+ *
+ * <h2>What it still cannot see</h2>
+ *
+ * <ul>
+ *   <li>{@link #TRUNCATED_RECEIVERS} — {@code Level} and friends are deliberately not followed,
+ *       because doing so re-explodes the graph into world mutation and the client renderer. Each cut
+ *       is recorded, which is the difference between a bound and a lie.
+ *   <li>Reflection, {@code invokedynamic} bootstraps, and anything leaving {@code net.minecraft}.
+ *   <li>Sinks are matched on the DECLARED owner of the call, so a sink reached through an
+ *       unmodelled receiver type is invisible.
  * </ul>
  *
  * <p>So: a discovery aid for finding call sites worth reading, not evidence that none remain. It is

@@ -127,7 +127,6 @@ public abstract class PathNavigationMixin implements PWNavigation {
      */
     @Unique private BlockPos pathweaver$recomputeTargetClaim;
 
-
     @Inject(method = "moveTo(DDDD)Z", at = @At("HEAD"), require = 1, expect = 1)
     private void pathweaver$captureCoordinateSpeed(double x, double y, double z, double speed,
                                                     CallbackInfoReturnable<Boolean> cir) {

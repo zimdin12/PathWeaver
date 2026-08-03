@@ -25,8 +25,11 @@ isolation were all attacked and held.
 - **A setup failure before registration was swallowed entirely — no outcome, no counter, no log.**
   Everything from the attribute captures through the evaluator clone runs before the request reaches
   the sink, and the catch only recorded an outcome if it had. A deterministic failure there meant the
-  mod did nothing, forever, while reporting itself as working. It is now counted as `SETUP_FAILED`
-  whether or not registration happened, and logged once per session. The reachable trigger is a
+  mod did nothing, forever, while reporting itself as working. It is now counted whether or not
+  registration happened — as `SETUP_FAILED` when the request had registered and
+  `SETUP_FAILED_PRE_DISPATCH` when it had not, because the second never reached a worker and counting
+  it as waste reported `dispatched=0 ... discarded=41028` for searches vanilla had already run — and
+  logged once per server session. The reachable trigger is a
   third-party evaluator whose no-argument constructor throws when invoked outside its own
   construction path: `canClone` proves a constructor resolves, never that it runs.
 - **The coverage contract treated an omitted `require` as safe.** ASM only visits values that are
@@ -66,7 +69,7 @@ isolation were all attacked and held.
   guarantee. Those are fixed — it now resolves interface defaults, records every truncation instead
   of swallowing it, and no longer maps a receiver onto a type that does not implement it. The numbers
   moved from 1,735 reachable / 0 unresolved / 12 hazards to 2,060 / 168 / 45, which is what an honest
-  version of the same walk looks like. Details in `ROADMAP-0.6.md` §4b. It found no unknown bug. What building it taught is
+  version of the same walk looks like. Details in `ROADMAP-0.6.md` §6. It found no unknown bug. What building it taught is
   recorded there too: the naive version is useless rather than imprecise, reporting 1,220 hazards
   including the client renderer.
 - **`tools/scan_pack.py`**, which measured why `AUDITED` leaves nothing eligible: 21 mods in a real
@@ -74,7 +77,7 @@ isolation were all attacked and held.
   of those 15 touch only `BlockBehaviour$BlockStateBase` and are not pathfinding mods at all.
 - ASM is now an explicit test dependency instead of arriving through `fabric-loader`.
 
-285 unit tests, four server harnesses, the client harness, and a live two-server A/B on a real
+289 unit tests, four server harnesses, the client harness, and a live two-server A/B on a real
 Fabric server confirming the reported cause matches what dispatch actually does.
 
 ## 0.5.3 — The branch the fix did not reach

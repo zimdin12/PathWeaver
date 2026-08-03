@@ -288,7 +288,21 @@ public final class PathWeaverRuntime {
         // /pathweaver status and /pathweaver mobs each named a different cause again. Three
         // diagnostics, three answers, in the release whose whole thesis is that they agree.
         boolean latchRefused = dev.pathweaver.gate.SafetyGate.landRegistryBlocksWalkFamilies();
-        if (blockers.isEmpty() && latchRefused) {
+        // A failed scan outranks everything below, and this branch did not know it existed.
+        // On that path the scanner denies every family, names no mod (it could not read the configs
+        // that would have blamed one), and leaves hooksVerified false -- so the FIRST arm below
+        // matched and told the operator "compatibilityTier=UNSAFE waives this". It does not: the
+        // tier waives what the scan found, not the scan being unable to look, and the scanner block
+        // forty lines earlier in this same log already says so in capitals.
+        boolean scanFailed =
+            dev.pathweaver.gate.ForeignMixinScanner.lastScanReport().decision().failed() > 0;
+        if (scanFailed) {
+            PathWeaver.LOG.warn("");
+            PathWeaver.LOG.warn("The compatibility scan could not complete, so nothing can be");
+            PathWeaver.LOG.warn("waived: compatibilityTier does NOT help here, because the tier");
+            PathWeaver.LOG.warn("waives what the scan found, not the scan being unable to look.");
+            PathWeaver.LOG.warn("The scanner's own message above has the details.");
+        } else if (blockers.isEmpty() && latchRefused) {
             PathWeaver.LOG.warn("");
             PathWeaver.LOG.warn("No mod was blamed by the compatibility scan. These families are");
             PathWeaver.LOG.warn("held back by Fabric's land path-type registry instead: either a mod");

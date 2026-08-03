@@ -90,4 +90,29 @@ public enum RequestOutcome {
         return this != INSTALLED && this != NO_PATH && this != POOL_SATURATED
             && this != SETUP_FAILED_PRE_DISPATCH;
     }
+
+    /**
+     * True when this outcome is drawn from the dispatched total, so a percentage of it means something.
+     *
+     * <p>Lives here rather than as a list at the reporting site. It WAS a list, and this is the second
+     * constant added to it that landed in neither of the two lists that needed it: the result printed
+     * a six-digit percentage — 41028 of 0 dispatched — on the one row that means the mod is doing
+     * nothing for those mobs. The rule belongs to the outcome, so adding a constant forces the
+     * decision instead of silently defaulting to the wrong one.
+     */
+    public boolean countsAgainstDispatched() {
+        return this != POOL_SATURATED && this != SETUP_FAILED && this != SETUP_FAILED_PRE_DISPATCH;
+    }
+
+    /**
+     * True when this outcome is good news, i.e. safe to print green beside {@code installed}.
+     *
+     * <p>Not simply {@code !isDiscard()}: admission refusal and a pre-admission setup failure are not
+     * discards — nothing was computed and thrown away — but neither is a success, and printing them
+     * green under a footer reading "only the amber rows are wasted work" tells an operator that the
+     * mod failing to run is a good outcome.
+     */
+    public boolean isGoodNews() {
+        return this == INSTALLED || this == NO_PATH;
+    }
 }
