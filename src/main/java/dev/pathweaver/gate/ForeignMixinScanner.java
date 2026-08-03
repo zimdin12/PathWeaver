@@ -825,10 +825,18 @@ public final class ForeignMixinScanner {
             }
             if (!denied.isEmpty()) {
                 blockers.add(config.modId());
+                // Simple names, sorted. On a heavily-modded pack this line fires once per offending
+                // config -- 14 times on the maintainer's own client -- and printing the raw Class set
+                // made each one a ~400-character wall of fully-qualified names, identical every time.
+                // The mod id and config name are the parts that differ and the parts worth reading.
+                List<String> forced = new ArrayList<>();
+                for (Class<?> family : denied) forced.add(family.getSimpleName());
+                java.util.Collections.sort(forced);
                 PathWeaver.LOG.warn("Mod '{}' config '{}' targets sensitive pathfinding code{}; "
-                        + "forcing {} to sync pathing.",
+                        + "forcing {} evaluator famil{} to sync pathing: {}",
                     config.modId(), config.configName(),
-                    config.pluginContributed() ? " (plugin-expanded)" : "", denied);
+                    config.pluginContributed() ? " (plugin-expanded)" : "",
+                    forced.size(), forced.size() == 1 ? "y" : "ies", String.join(", ", forced));
             }
         }
         blockingModIds = List.copyOf(blockers);
@@ -867,6 +875,14 @@ public final class ForeignMixinScanner {
         } else if (ActiveCompatibilityPolicy.bypassesScan()
                 && !SafetyGate.deniedBySafety.isEmpty()) {
             Set<Class<?>> overridden = Set.copyOf(SafetyGate.deniedBySafety);
+            // Simple names. Set.toString() over Class objects prints
+            // "[class net.minecraft.world.level.pathfinder.SwimNodeEvaluator, class ...]" -- one
+            // 400-character line of fully-qualified noise in the block a user is most likely to read
+            // and least likely to have context for. /pathweaver status already prints these by
+            // simple name; the startup block should not be the worse of the two.
+            List<String> deniedNames = new ArrayList<>();
+            for (Class<?> family : overridden) deniedNames.add(family.getSimpleName());
+            java.util.Collections.sort(deniedNames);
             SafetyGate.replaceDenials(Set.of());
             // Name the mods here, in this block, rather than saying "listed above". The per-config
             // lines that name them are emitted during early mixin scanning, hundreds of lines
@@ -877,7 +893,7 @@ public final class ForeignMixinScanner {
             List<String> unauditedNowRunning = blockingModIds();
             PathWeaver.LOG.warn("=========================== PathWeaver ===========================");
             PathWeaver.LOG.warn("compatibilityTier=UNSAFE -- this is the shipped default. The scan");
-            PathWeaver.LOG.warn("denied {}", overridden);
+            PathWeaver.LOG.warn("denied {}: {}", deniedNames.size(), String.join(", ", deniedNames));
             PathWeaver.LOG.warn("and that denial has been IGNORED. Path searches will now run on");
             PathWeaver.LOG.warn("worker threads alongside code that has not been audited for thread");
             PathWeaver.LOG.warn("safety. Use worlds you can afford to lose, and keep backups.");
