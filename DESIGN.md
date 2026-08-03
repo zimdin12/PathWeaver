@@ -119,6 +119,14 @@ direction: TPS 18.90 → 20.00, mean tick 27.29 → 20.38 ms, blocking `findPath
 differed between those two captures (57.1% vs 43.0%) in a way that favours the ON arm, so treat those
 magnitudes as approximate.
 
+**0.5.1 changed these materially.** The same benchmark on the 0.5.1 jar: async mean 50.00 ms in both
+runs, p99 150.8 and 152.4 ms, TPS 20.00 in both, install ratio 99.0%. Against 0.5.0's async arm
+(mean 54.08, p99 431.8, install 76-80%) that is a threefold p99 improvement, and it is attributable to
+a single line — a contended `AtomicLong` in the land-registry lookup becoming a `LongAdder`. Isolated
+by rebuilding 0.5.1 with only that revert: dispatched 56,920 vs 95,865, admission refused 68,454 vs
+11,190, install 83.1% vs 99.0%, p99 380 vs 151. The sync arms in that sweep spanned 82.9-131.6 ms, so
+compare the async arms and the isolated control rather than the sweep's headline ratio.
+
 **What this does and does not establish.** It establishes that under pathfinding-heavy load on a
 many-core host the mod removes most A* from the server thread and cuts tail latency substantially. It
 does not establish a benefit on a small host — see `PathWeaverRuntime.lowCoreAdvice`, which

@@ -4,111 +4,239 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import dev.pathweaver.gate.SafetyGate;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.LinkedHashMap;
+import java.nio.charset.StandardCharsets;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
+import java.util.ArrayList;
+import java.util.List;
+import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 /**
- * Every admitted evaluator that reads live mob state from inside a search must have a mixin covering
- * the class that actually declares the call.
+ * Every live-mob read an admitted evaluator makes from inside a search must be redirected, and the
+ * covered set is derived from the shipped mixin configuration rather than restated here.
  *
- * <p>This exists because 0.5.0 shipped with the hazard half-fixed. {@code WalkNodeEvaluatorMixin}
- * redirects {@code Mob.maxUpStep()} in {@code WalkNodeEvaluator} and its javadoc declares the
- * attribute race eliminated. {@code AmphibiousNodeEvaluator} overrides {@code getNeighbors} and
- * makes its <em>own</em> {@code maxUpStep()} call, and a mixin transforms only its target class's
- * bytecode — so axolotls, turtles, drowned and frogs kept racing. {@code require = 1} passed on
- * {@code WalkNodeEvaluator} and said nothing about the subclass, which is precisely why a
- * per-mixin assertion could not catch it and this one can.
+ * <p>This rule has now been got wrong twice, and each rewrite tightened it:
  *
- * <p>The rule is therefore stated over the <em>allowlist</em> rather than over the mixins: for every
- * class the gate admits, find which live-mob reads it declares itself, and require that PathWeaver
- * has a mixin for that exact class. Add a seventh evaluator, or let Mojang move a call into a
- * subclass, and this fails rather than going quiet.
+ * <ul>
+ *   <li>0.5.0 had no such test. {@code AmphibiousNodeEvaluator} overrides {@code getNeighbors} and
+ *       makes its own {@code maxUpStep()} call, so four mob families raced while {@code require = 1}
+ *       passed on {@code WalkNodeEvaluator} and proved nothing about the subclass.</li>
+ *   <li>0.5.1 added a version keyed on <em>class names</em> against a hand-written literal. It would
+ *       have stayed green if the new mixin were deleted from {@code pathweaver.mixins.json}, and it
+ *       could not catch a second read added to a class already in the list — which is exactly what
+ *       {@code getMaxFallDistance()} is: declared by {@code WalkNodeEvaluator} itself, reached from
+ *       the A* loop via {@code findAcceptedNode → tryFindFirstGroundNodeBelow}, racing the mob's
+ *       cached MAX_HEALTH for every admitted family whenever that mob has a target.</li>
+ * </ul>
+ *
+ * <p>Coverage is therefore keyed on the exact <em>(declaring class, declaring method, called
+ * method)</em> triple, and the covered side is read out of the {@code @Redirect} annotations of the
+ * mixins actually listed in {@code pathweaver.mixins.json}. Deleting a mixin from that config now
+ * fails, and so does a new read in an already-covered class.
  */
 class LiveMobReadCoverageContractTest {
 
     /**
-     * Live mob reads that must never run on a worker.
+     * Calls on the live mob that must not run on a worker.
      *
-     * <p>{@code maxUpStep} is {@code AttributeInstance.getValue()}, a read-modify-write over plain
-     * non-volatile fields. {@code getRandom} advances a {@code RandomSource} the server thread also
-     * uses. Both are handled by handing the worker a confined value instead of the live call.
+     * <p>Hand-maintained, and that is this test's remaining weakness. Each bottoms out in either
+     * {@code AttributeInstance.getValue()} — {@code if (dirty) { cachedValue = calculateValue();
+     * dirty = false; }} over plain non-volatile fields — or a shared {@code RandomSource}. The
+     * structural version walks the call graph for those two sinks instead of naming their callers;
+     * that is on the 0.6 roadmap, and until it exists this list is the thing most likely to be
+     * incomplete.
      */
-    private static final Set<String> CONFINED_MOB_READS = Set.of("maxUpStep", "getRandom");
+    private static final Set<String> CONFINED_MOB_READS =
+        Set.of("maxUpStep", "getRandom", "getMaxFallDistance");
 
-    /** Evaluator classes PathWeaver ships a mixin for. */
-    private static final Set<String> MIXED_IN = Set.of(
-        "net.minecraft.world.level.pathfinder.WalkNodeEvaluator",
-        "net.minecraft.world.level.pathfinder.FlyNodeEvaluator",
-        "net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator");
+    private record Site(String owner, String method, String call) {
+        @Override public String toString() { return owner + "#" + method + " -> " + call; }
+    }
+
+    private static final String MIXIN_DESC = "Lorg/spongepowered/asm/mixin/Mixin;";
+    private static final String REDIRECT_DESC =
+        "Lorg/spongepowered/asm/mixin/injection/Redirect;";
+
+    private static Set<Site> sorted() {
+        return new TreeSet<>(Comparator.comparing(Site::toString));
+    }
 
     @Test
-    void everyAdmittedEvaluatorDeclaringALiveMobReadHasAMixinForThatExactClass() throws IOException {
-        Map<String, Set<String>> declaredReads = new LinkedHashMap<>();
+    void everyConfinedReadAnAdmittedEvaluatorDeclaresIsRedirected() throws Exception {
+        Set<Site> declared = sorted();
         for (Class<?> evaluator : SafetyGate.allowlisted()) {
-            // Walk the hierarchy: a subclass inherits its parent's covered calls, but any call it
-            // DECLARES itself lives in its own bytecode and needs its own mixin.
             for (Class<?> level = evaluator;
                     level != null && level.getName().startsWith("net.minecraft");
                     level = level.getSuperclass()) {
-                Set<String> reads = liveMobReadsDeclaredBy(level);
-                if (!reads.isEmpty()) declaredReads.put(level.getName(), reads);
+                declared.addAll(confinedReadsDeclaredBy(level));
             }
         }
+        assertFalse(declared.isEmpty(),
+            "found no confined reads at all — this test stopped looking rather than the hazard "
+                + "stopping existing");
 
-        assertFalse(declaredReads.isEmpty(),
-            "found no live mob reads at all, which means this test stopped looking rather than the "
-                + "hazard stopped existing");
+        Set<Site> redirected = sorted();
+        redirected.addAll(redirectedSitesFromShippedMixinConfig());
 
-        Set<String> needMixin = new TreeSet<>(declaredReads.keySet());
-        Set<String> haveMixin = new TreeSet<>(MIXED_IN);
-        assertEquals(haveMixin, needMixin,
-            "every class DECLARING a confined live-mob read needs its own mixin — a @Redirect only "
-                + "transforms its target class, so an override in a subclass is a different method "
-                + "that happens to share a name. Declared reads: " + declaredReads);
+        assertEquals(declared, redirected,
+            "every confined live-mob read an admitted evaluator DECLARES must be redirected by a "
+                + "mixin listed in pathweaver.mixins.json. A @Redirect transforms only its target "
+                + "class, so an override in a subclass is a different method sharing a name.");
     }
 
     @Test
-    void theAmphibiousEvaluatorReallyDoesDeclareItsOwnStepHeightRead() throws IOException {
-        // Non-vacuity for the case that shipped broken. If Mojang ever removes this call the test
-        // above would still pass while silently covering nothing, so pin the specific fact.
-        Set<String> reads = liveMobReadsDeclaredBy(
-            net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator.class);
-        assertTrue(reads.contains("maxUpStep"),
-            "AmphibiousNodeEvaluator is expected to declare its own Mob.maxUpStep() call; if that is "
-                + "no longer true the coverage rule above needs rechecking, not relaxing");
+    void theCoveredSetComesFromTheShippedConfigNotFromThisTest() throws Exception {
+        // Non-vacuity: a green result must not be able to mean "parsed nothing, compared two empty
+        // sets". Prove the derivation reaches the real config and resolves real annotations.
+        Set<String> mixinClasses = shippedMixinClassNames();
+        assertTrue(mixinClasses.contains("WalkNodeEvaluatorMixin"),
+            "the shipped config should list the walk mixin: " + mixinClasses);
+        assertTrue(mixinClasses.contains("AmphibiousNodeEvaluatorMixin"),
+            "the shipped config should list the amphibious mixin: " + mixinClasses);
+        assertFalse(redirectedSitesFromShippedMixinConfig().isEmpty(),
+            "no @Redirect sites were resolved from the shipped mixins");
     }
 
-    /** Names from {@code CONFINED_MOB_READS} invoked on {@code Mob} by this class's own bytecode. */
-    private static Set<String> liveMobReadsDeclaredBy(Class<?> type) throws IOException {
-        Set<String> found = new LinkedHashSet<>();
+    @Test
+    void theAmphibiousEvaluatorDeclaresItsOwnStepHeightRead() throws IOException {
+        assertTrue(confinedReadsDeclaredBy(
+                net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator.class).stream()
+                .anyMatch(s -> s.call().equals("maxUpStep")),
+            "AmphibiousNodeEvaluator is expected to declare its own maxUpStep() call — the fact that "
+                + "shipped broken in 0.5.0");
+    }
+
+    @Test
+    void walkDeclaresTheMaxFallDistanceReadReachedFromTheSearch() throws IOException {
+        assertTrue(confinedReadsDeclaredBy(
+                net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class).stream()
+                .anyMatch(s -> s.call().equals("getMaxFallDistance")),
+            "WalkNodeEvaluator is expected to declare getMaxFallDistance() — it shipped unredirected "
+                + "in both 0.5.0 and 0.5.1 and affects every admitted family");
+    }
+
+    /** {@code (class, method, call)} triples for confined reads in this class's own bytecode. */
+    private static Set<Site> confinedReadsDeclaredBy(Class<?> type) throws IOException {
+        Set<Site> found = new LinkedHashSet<>();
+        String owner = type.getName();
         new ClassReader(classBytes(type)).accept(new ClassVisitor(Opcodes.ASM9) {
             @Override
             public MethodVisitor visitMethod(int access, String name, String descriptor,
                                              String signature, String[] exceptions) {
+                String declaring = name + descriptor;
                 return new MethodVisitor(Opcodes.ASM9) {
                     @Override
-                    public void visitMethodInsn(int opcode, String owner, String called,
+                    public void visitMethodInsn(int opcode, String callOwner, String called,
                                                 String calledDescriptor, boolean isInterface) {
-                        if (owner.equals("net/minecraft/world/entity/Mob")
+                        if (callOwner.equals("net/minecraft/world/entity/Mob")
                                 && CONFINED_MOB_READS.contains(called)) {
-                            found.add(called);
+                            found.add(new Site(owner, declaring, called));
                         }
                     }
                 };
             }
         }, ClassReader.SKIP_FRAMES);
         return found;
+    }
+
+    /**
+     * Read the shipped mixin list and expand each class's {@code @Redirect}s, via ASM.
+     *
+     * <p>Not reflection: Mixin's annotations are {@code RetentionPolicy.CLASS}, so they do not exist
+     * at runtime and {@code getAnnotation} silently returns null for every one of them — which would
+     * make this whole contract compare a populated set against an empty one and pass only when the
+     * production side was equally empty.
+     */
+    private static Set<Site> redirectedSitesFromShippedMixinConfig() throws Exception {
+        Set<Site> sites = new LinkedHashSet<>();
+        for (String simple : shippedMixinClassNames()) {
+            Class<?> mixin = Class.forName("dev.pathweaver.mixin." + simple);
+            String[] targetedClass = new String[1];
+            new ClassReader(classBytes(mixin)).accept(new ClassVisitor(Opcodes.ASM9) {
+                @Override public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
+                    if (!desc.equals(MIXIN_DESC)) return null;
+                    return new AnnotationVisitor(Opcodes.ASM9) {
+                        @Override public AnnotationVisitor visitArray(String key) {
+                            if (!key.equals("value")) return null;
+                            return new AnnotationVisitor(Opcodes.ASM9) {
+                                @Override public void visit(String ignored, Object value) {
+                                    targetedClass[0] =
+                                        ((org.objectweb.asm.Type) value).getClassName();
+                                }
+                            };
+                        }
+                    };
+                }
+
+                @Override public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                                           String signature, String[] exceptions) {
+                    return new MethodVisitor(Opcodes.ASM9) {
+                        @Override public AnnotationVisitor visitAnnotation(String desc, boolean vis) {
+                            if (!desc.equals(REDIRECT_DESC)) return null;
+                            List<String> methods = new ArrayList<>();
+                            String[] call = new String[1];
+                            return new AnnotationVisitor(Opcodes.ASM9) {
+                                @Override public AnnotationVisitor visitArray(String key) {
+                                    if (!key.equals("method")) return null;
+                                    return new AnnotationVisitor(Opcodes.ASM9) {
+                                        @Override public void visit(String ig, Object v) {
+                                            methods.add((String) v);
+                                        }
+                                    };
+                                }
+                                @Override public AnnotationVisitor visitAnnotation(String key, String d) {
+                                    if (!key.equals("at")) return null;
+                                    return new AnnotationVisitor(Opcodes.ASM9) {
+                                        @Override public void visit(String k, Object v) {
+                                            if (k.equals("target")) call[0] = calledNameOf((String) v);
+                                        }
+                                    };
+                                }
+                                @Override public void visitEnd() {
+                                    if (call[0] == null || !CONFINED_MOB_READS.contains(call[0])) return;
+                                    for (String m : methods) {
+                                        sites.add(new Site(targetedClass[0], m, call[0]));
+                                    }
+                                }
+                            };
+                        }
+                    };
+                }
+            }, ClassReader.SKIP_FRAMES);
+        }
+        return sites;
+    }
+
+    /** {@code Lnet/minecraft/world/entity/Mob;maxUpStep()F} -> {@code maxUpStep}. */
+    private static String calledNameOf(String atTarget) {
+        int semi = atTarget.indexOf(';');
+        int paren = atTarget.indexOf('(', semi + 1);
+        if (semi < 0 || paren < 0) return null;
+        return atTarget.substring(semi + 1, paren);
+    }
+
+    private static Set<String> shippedMixinClassNames() throws IOException {
+        try (InputStream in = LiveMobReadCoverageContractTest.class
+                .getResourceAsStream("/pathweaver.mixins.json")) {
+            if (in == null) throw new IOException("pathweaver.mixins.json is not on the test classpath");
+            JsonObject root = JsonParser.parseString(
+                new String(in.readAllBytes(), StandardCharsets.UTF_8)).getAsJsonObject();
+            Set<String> names = new LinkedHashSet<>();
+            root.getAsJsonArray("mixins").forEach(e -> names.add(e.getAsString()));
+            return names;
+        }
     }
 
     private static byte[] classBytes(Class<?> type) throws IOException {

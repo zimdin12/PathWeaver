@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.5.2 — What the guard did not cover
+
+Review of the 0.5.1 hotfix. It found that the hotfix was incomplete, that one of its fixes was a
+regression, and that the test written to prevent recurrence could catch neither failure.
+
+### Fixed
+
+- **A second attribute-backed read-modify-write is still in the A* loop, and it affects all six
+  families.** `WalkNodeEvaluator.tryFindFirstGroundNodeBelow` — reached from `getNeighbors` via
+  `findAcceptedNode` — calls `Mob.getMaxFallDistance()`, which for a mob with a target reads
+  `getMaxHealth()`, which is `getAttributeValue(MAX_HEALTH)` → `AttributeInstance.getValue()`. The
+  same `if (dirty) { cachedValue = calculateValue(); dirty = false; }` over plain non-volatile fields
+  that `maxUpStep()` hides. Worse reach than the 0.5.1 blocker: it is declared by `WalkNodeEvaluator`
+  itself so every admitted family hits it, and it fires exactly when a mob is chasing something. The
+  corrupted value is the mob's cached max health.
+- **0.5.1's own fix was a regression on the branch where vanilla does not recompute.** The re-apply of
+  the claimed target ran at the `canUpdatePath()` injection point, which is upstream of the branch. On
+  the false branch — a ground mob mid-jump — vanilla jumps straight to setting
+  `hasDelayedRecomputation`: it never reads `targetPos` and never nulls `path`. So the re-apply left
+  `targetPos` naming the claimed destination while `path` still held the route to the old one, and the
+  next request for that destination hit vanilla's reuse short-circuit and was handed the stale path,
+  self-sustainingly. That is precisely the pairing `rollbackOptimisticTarget` exists to prevent. The
+  re-apply now happens inside the wrap that runs only where vanilla actually recomputes.
+- **The game-test assertion added in 0.5.1 pinned that regression as correct.** It asserted the
+  claimed target survived on the airborne branch — where vanilla acts on nothing. It now asserts the
+  opposite invariant: when vanilla does not recompute, `targetPos` must not be left naming a
+  destination the installed path does not lead to.
+
+### Changed
+
+- **`LiveMobReadCoverageContractTest` is rewritten to be structural.** 0.5.1's version keyed on class
+  *names* against a hand-written literal, so it would have stayed green if the new mixin were deleted
+  from `pathweaver.mixins.json`, and it could not detect a second read in a class already on the list
+  — which is exactly what `getMaxFallDistance` was. Coverage is now keyed on the
+  *(declaring class, declaring method, called method)* triple, and the covered side is read out of the
+  `@Redirect` annotations of the mixins actually listed in the shipped config, via ASM — Mixin's
+  annotations are `RetentionPolicy.CLASS`, so reflection sees none of them and a reflective version
+  would have compared a populated set against an empty one. Both failure modes are mutation-tested.
+
+### Known limitation, stated
+
+The list of read *names* considered hazardous is still hand-maintained. The structural version walks
+the call graph for the two real sinks — `AttributeInstance.getValue()` and `RandomSource` — instead of
+naming their callers, and would have found both of these bugs without being told what to look for.
+That is the top item on the 0.6 roadmap, and until it exists this list is the thing most likely to be
+incomplete.
+
+270 unit tests, four server harnesses, the client harness.
+
 ## 0.5.1 — The half-fixed race
 
 Hotfix for 0.5.0, published the same day. Two independent reviews of the shipped code found a
@@ -29,10 +78,22 @@ blocker and a behavioural bug that eight earlier rounds had missed.
   `isDenied` matches with `isAssignableFrom`, so denying `WalkNodeEvaluator` alone blocks five
   families while the set size says one. A pack denying only Swim announced that nothing was running
   while five families dispatched. It now asks the gate per family and reports partial states.
-- The land-registry diagnostic counter is a `LongAdder` rather than an `AtomicLong`. Fabric injects
-  that lookup once per block position a search examines, so every worker in the pool was contending
-  on a single cache line thousands of times per search — costing worker throughput, which surfaces as
-  a worse install ratio.
+- **The land-registry diagnostic counter is a `LongAdder` rather than an `AtomicLong`, and this turned
+  out to be the largest single performance change the project has measured.** Fabric injects that
+  lookup once per block position a search examines, so every worker in the pool was contending on one
+  cache line thousands of times per search. Isolated by rebuilding 0.5.1 with only the counter type
+  reverted and running the same benchmark arm:
+
+  | | dispatched | admission refused | installed | p99 |
+  |---|---|---|---|---|
+  | `AtomicLong` | 56,920 | 68,454 | 83.1% | 380 ms |
+  | `LongAdder` | **95,865** | **11,190** | **99.0%** | **151 ms** |
+
+  Worker throughput rose ~69% and admission refusals fell ~84%, because the bottleneck was never the
+  A* — it was every worker queueing behind one contended cache line. It cost TPS nothing either way;
+  what it cost was results arriving late enough to be refused admission. Predicted by review as
+  "hurts worker throughput, which shows up as later results and a worse install ratio", which is
+  exactly what the control run shows.
 
 ### Documentation
 

@@ -174,13 +174,6 @@ public abstract class PathNavigationMixin implements PWNavigation {
             this.pathweaver$recomputeRequestSpeed = sink.isRegistered(entityId, this)
                 ? this.pathweaver$pendingInstallSpeed : this.speedModifier;
             if (sink.supersede(entityId)) this.pathweaver$targetRevision++;
-            // Put the claimed destination back. The rollback restored the PRE-dispatch target, which
-            // is correct when a request is abandoned outright -- but here vanilla is about to
-            // recompute, and the destination it should recompute toward is the one the caller was
-            // told it got, not the one it moved on from. A no-op when nothing was in flight.
-            if (this.pathweaver$recomputeTargetClaim != null) {
-                this.targetPos = this.pathweaver$recomputeTargetClaim;
-            }
         }
     }
 
@@ -192,6 +185,23 @@ public abstract class PathNavigationMixin implements PWNavigation {
     )
     private Path pathweaver$armRecomputePath(PathNavigation instance, BlockPos target, int reachRange,
                                               Operation<Path> original) {
+        // Re-apply the claimed destination HERE, not in the guard above.
+        //
+        // 0.5.1 applied it in the guard, which injects at the canUpdatePath() INVOKE -- upstream of
+        // the branch. On the false branch (a ground mob mid-jump) vanilla jumps straight to setting
+        // hasDelayedRecomputation: it never reads targetPos and, critically, never nulls `path`. So
+        // the guard's re-apply left targetPos naming the claimed destination while `path` still held
+        // the route to the old one. That is exactly the pairing rollbackOptimisticTarget exists to
+        // prevent: the next createPath for the claimed target hits the vanilla reuse short-circuit
+        // (path != null && !path.isDone() && targets.contains(targetPos)) and is handed the stale
+        // path, self-sustainingly, until that path completes or the navigation is stopped.
+        //
+        // This wrap runs only where vanilla actually recomputes, which is the one place the claim is
+        // both needed and safe -- `path` is null by the time it is consulted.
+        if (this.pathweaver$recomputeTargetClaim != null) {
+            this.targetPos = this.pathweaver$recomputeTargetClaim;
+            target = this.pathweaver$recomputeTargetClaim;
+        }
         this.pathweaver$navigationRequestDepth++;
         this.pathweaver$recomputeInvalidated = true;
         this.pathweaver$requestSpeed = this.pathweaver$recomputeRequestSpeed;
@@ -396,6 +406,10 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // least a tick, and equipment, a potion effect or a mod re-dirties it inside that window.
             // WalkNodeEvaluatorMixin redirects the call to this captured value instead.
             final float capturedStepHeight = theMob.maxUpStep();
+            // Same treatment, same reason: getMaxFallDistance() reads getMaxHealth() for a mob with a
+            // target, which is AttributeInstance.getValue() -- and WalkNodeEvaluator reaches it from
+            // inside the A* loop via findAcceptedNode -> tryFindFirstGroundNodeBelow.
+            final int capturedMaxFall = theMob.getMaxFallDistance();
 
             // Use vanilla's bounds formula. The region is still backed by live chunks, so matching
             // construction does not guarantee a temporally identical result.
@@ -429,10 +443,12 @@ public abstract class PathNavigationMixin implements PWNavigation {
             Callable<Path> search = () -> {
                 if (!requestStartGate.awaitStart()) return null;
                 PathWeaverThread.setWorkerStepHeight(capturedStepHeight);
+                PathWeaverThread.setWorkerMaxFallDistance(capturedMaxFall);
                 try {
                     return finder.findPath(region, theMob, targetsCopy, fRange, rRange, mult);
                 } finally {
                     PathWeaverThread.clearWorkerStepHeight();
+                    PathWeaverThread.clearWorkerMaxFallDistance();
                 }
             };
 

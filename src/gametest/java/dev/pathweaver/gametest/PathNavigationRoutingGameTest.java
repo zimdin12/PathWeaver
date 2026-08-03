@@ -208,14 +208,19 @@ public final class PathNavigationRoutingGameTest {
             check(helper, runtimeCounter("discarded") == baseDiscarded + 1,
                 "airborne recompute must account the superseded pre-change request");
 
-            // The supersede above rolls the optimistic target back to its pre-dispatch value, and
-            // vanilla reads targetPos two bytecodes after the injection point that did it. Without
-            // re-applying the claim, a recompute re-paths the mob to the destination it had already
-            // abandoned -- silently discarding a move whose moveTo returned true. Assert the claimed
-            // destination survived, since that is the value vanilla is about to act on.
-            check(helper, target.equals(targetPos(queryNav)),
-                "the destination the caller was told it got must survive a recompute supersede; "
-                    + "found " + targetPos(queryNav) + " instead of " + target);
+            // On THIS branch vanilla recomputes nothing: canUpdatePath() is false, so it jumps
+            // straight to hasDelayedRecomputation without reading targetPos and without nulling
+            // path. targetPos must therefore be left as the rollback put it, paired with the path
+            // that is still installed. 0.5.1 re-applied the claimed destination here instead, which
+            // paired a new target with an old path and made vanilla's reuse short-circuit hand back
+            // the stale path indefinitely -- and this assertion originally pinned that as correct.
+            check(helper, queryNav.getPath() == null
+                    || targetPos(queryNav) == null
+                    || !target.equals(targetPos(queryNav))
+                    || queryNav.getPath().getTarget() == null,
+                "when vanilla does not recompute, targetPos must not be left naming a destination "
+                    + "the installed path does not lead to: targetPos=" + targetPos(queryNav)
+                    + " path=" + queryNav.getPath());
 
             coordinateMob.setOnGround(true);
 

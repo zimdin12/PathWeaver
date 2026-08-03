@@ -78,6 +78,24 @@ public final class PathWeaverThread {
      */
     private static final ThreadLocal<Float> WORKER_STEP_HEIGHT = new ThreadLocal<>();
 
+    /**
+     * The mob's max fall distance, resolved on the main thread at dispatch.
+     *
+     * <p>The same hazard as {@link #WORKER_STEP_HEIGHT} reached by a different route, and it was
+     * missed when that one was fixed. {@code WalkNodeEvaluator.tryFindFirstGroundNodeBelow} — reached
+     * from {@code getNeighbors} via {@code findAcceptedNode}, so inside the A* loop — calls
+     * {@code Mob.getMaxFallDistance()}, which for a mob with a target reads {@code getMaxHealth()}
+     * and therefore {@code AttributeInstance.getValue()}: the same
+     * {@code if (dirty) { cachedValue = calculateValue(); dirty = false; }} over plain non-volatile
+     * fields.
+     *
+     * <p>Worse reach than the step-height case. It is declared by {@code WalkNodeEvaluator} itself, so
+     * all six admitted families hit it, and it fires precisely when a mob has a target — hostile mobs
+     * chasing a player, which is when async pathfinding is busiest. The corrupted value is the mob's
+     * cached MAX_HEALTH.
+     */
+    private static final ThreadLocal<Integer> WORKER_MAX_FALL = new ThreadLocal<>();
+
     private PathWeaverThread() {}
 
     /** True only while a PathWeaver worker is executing a search Callable. */
@@ -143,6 +161,19 @@ public final class PathWeaverThread {
 
     public static void clearWorkerStepHeight() {
         WORKER_STEP_HEIGHT.remove();
+    }
+
+    public static void setWorkerMaxFallDistance(int maxFall) {
+        WORKER_MAX_FALL.set(maxFall);
+    }
+
+    public static void clearWorkerMaxFallDistance() {
+        WORKER_MAX_FALL.remove();
+    }
+
+    /** Null when this thread has none; the redirect then falls back to the live call. */
+    public static Integer workerMaxFallDistance() {
+        return WORKER_MAX_FALL.get();
     }
 
     /**

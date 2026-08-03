@@ -74,4 +74,30 @@ public class WalkNodeEvaluatorMixin {
         }
         return mob.maxUpStep();
     }
+
+    /**
+     * The same hazard by a different route, found only after 0.5.1 shipped.
+     *
+     * <p>{@code tryFindFirstGroundNodeBelow} is reached from {@code getNeighbors} via
+     * {@code findAcceptedNode}, so this is inside the A* loop. {@code Mob.getMaxFallDistance()} reads
+     * {@code getMaxHealth()} when the mob has a target, and that is
+     * {@code getAttributeValue(MAX_HEALTH)} → {@code AttributeInstance.getValue()} — the identical
+     * read-modify-write over plain non-volatile fields that {@code maxUpStep()} hides. It is declared
+     * by this class, so every admitted family reaches it, and it fires exactly when a mob is chasing
+     * something.
+     */
+    @Redirect(
+        method = "tryFindFirstGroundNodeBelow(III)Lnet/minecraft/world/level/pathfinder/Node;",
+        at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/world/entity/Mob;getMaxFallDistance()I"),
+        require = 1,
+        expect = 1
+    )
+    private int pathweaver$capturedMaxFallDistance(Mob mob) {
+        if (PathWeaverThread.isWorker()) {
+            Integer captured = PathWeaverThread.workerMaxFallDistance();
+            if (captured != null) return captured;
+        }
+        return mob.getMaxFallDistance();
+    }
 }
