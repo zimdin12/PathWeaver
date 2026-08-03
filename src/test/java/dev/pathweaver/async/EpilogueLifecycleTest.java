@@ -1,7 +1,9 @@
 package dev.pathweaver.async;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.pathweaver.duck.PWNavigation;
 import java.util.List;
@@ -219,5 +221,70 @@ class EpilogueLifecycleTest {
 
         assertEquals(1, throwing.dones,
             "a throwing epilogue must not be retried against an evaluator that already restored");
+    }
+
+    /**
+     * An entity that still owes an epilogue must not be allowed to start a second search.
+     *
+     * <p>{@code aSecondRequestDoesNotStealTheFirstRequestsEpilogue} pins the same interleaving and
+     * counts {@code done()} invocations, which is why it passed while the bug below was live: both
+     * epilogues did run, in completion order, and the mob was still left corrupted.
+     *
+     * <p>{@code AmphibiousNodeEvaluator.prepare} saves the mob's WALKABLE and WATER_BORDER costs and
+     * overwrites them with 6.0 and 4.0; {@code done} restores what it saved. Two prepares before
+     * either done means the second saves 6.0/4.0, so whichever done runs last writes those back
+     * permanently — and every later request then captures them as the originals. Axolotls, turtles,
+     * frogs and drowned all use that evaluator, the malus is not serialised, and nothing is logged.
+     */
+    /** The save/restore family the guard exists for; Frog's evaluator extends this one. */
+    private static final class CountingAmphibious
+            extends net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator {
+        int dones;
+        CountingAmphibious() { super(false); }
+        @Override public void done() { dones++; }
+    }
+
+    @Test
+    void anEntityOwingAnEpilogueCannotStartASecondSearch() {
+        EntityInstallSink sink = new EntityInstallSink();
+        CountingAmphibious first = new CountingAmphibious();
+        RequestKey r1 = key(1L, 1);
+
+        sink.armEpilogue(r1, first, opened());
+        assertTrue(sink.owesEpilogue(1),
+            "the entity owes a done() the moment its prologue has run");
+
+        // Superseding drops the registration but must NOT clear the debt: the worker may still be
+        // inside the search, which is exactly why the epilogue was deferred in the first place.
+        sink.supersede(1);
+        assertTrue(sink.owesEpilogue(1),
+            "supersede removes the registration; the owed epilogue outlives it, and dispatch has to "
+                + "see that or it will run a second prepare against the same live mob");
+
+        sink.runEpilogue(r1);
+        assertFalse(sink.owesEpilogue(1),
+            "once the epilogue has run the entity is clear to dispatch again");
+    }
+
+    @Test
+    void aWalkEvaluatorDebtDoesNotBlockDispatch() {
+        // Deliberately scoped. WalkNodeEvaluator's prepare/done are onPathfindingStart/Done hooks,
+        // not a save/restore pair, so a second outstanding one cannot invert anything. Blocking those
+        // too would cost a real dispatch -- no supersede-and-redispatch within a tick -- to prevent a
+        // corruption walking mobs cannot suffer.
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.armEpilogue(key(1L, 5), new CountingEvaluator(), opened());
+        assertFalse(sink.owesEpilogue(5),
+            "a walk-evaluator debt must not block dispatch; only the malus save/restore family does");
+    }
+
+    @Test
+    void owedEpiloguesAreTrackedPerEntityNotGlobally() {
+        // A debt for one mob must not stop a different mob dispatching, or one busy axolotl would
+        // quietly force the whole server synchronous.
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.armEpilogue(key(1L, 1), new CountingAmphibious(), opened());
+        assertTrue(sink.owesEpilogue(1));
+        assertFalse(sink.owesEpilogue(2), "a different entity owes nothing");
     }
 }

@@ -12,10 +12,11 @@
   it, because the limit is other mods touching block state, not anything this mod can fix. Shipping
   `Audited` shipped something indistinguishable from broken.
 
-  What is being accepted: the failure mode is a data race — a wrong path, a torn read — not a crash
-  and not a corrupt region file. It is quiet, and a user who hits it will most likely never report
-  it. Nothing in this release is evidence that it is safe. It is a trade of a silent risk for a mod
-  that works on arrival.
+  What is being accepted: uninspected third-party code runs on worker threads. The most likely
+  failure is quiet — a wrong path or a torn read, which a user will probably never report — but it is
+  not the only possible one. Nothing has been proven about code that was never inspected, so a crash
+  or a corrupted world is not excluded, only less likely. Nothing in this release is evidence that it
+  is safe. It is a trade of an unproven risk for a mod that works on arrival.
 
   Unchanged and still one setting away: `compatibilityTier=Audited` for full checking, and
   `trustedMods` for naming individual mods rather than waiving everything. The startup `WARN` block

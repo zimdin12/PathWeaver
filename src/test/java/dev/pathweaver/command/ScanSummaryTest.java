@@ -63,4 +63,27 @@ class ScanSummaryTest {
             "with nothing denied there is nothing to waive, and saying otherwise invites the "
                 + "operator to think the tier is doing something: " + text);
     }
+
+    /**
+     * A failed scan must outrank the tier in the report, because it outranks it in the code.
+     *
+     * <p>{@code ForeignMixinScanner} only clears the denial set when {@code failed() == 0}, so at the
+     * shipped {@code UNSAFE} default with one scan error the true state is "every family
+     * synchronous, mod inert". Deriving the summary from the tier alone printed "running anyway,
+     * because the tier is Unsafe" — inventing a risk the operator is not taking while concealing that
+     * they installed something doing nothing. Both halves are wrong and they point opposite ways.
+     */
+    @Test
+    void aFailedScanIsReportedAsRefusalEvenAtTheWaivingTier() {
+        List<String> lines = PathWeaverCommand.scanSummary(
+            List.of(WalkNodeEvaluator.class, SwimNodeEvaluator.class), true, true);
+        String text = String.join(" | ", lines);
+        assertTrue(text.contains("FAILED"), "the scan failure must lead: " + text);
+        assertTrue(text.contains("server thread"),
+            "the operator must be told the searches are synchronous: " + text);
+        assertFalse(text.contains("running anyway"),
+            "a failed scan is not waived by any tier, so this must not claim otherwise: " + text);
+        assertFalse(text.contains("Keep backups"),
+            "do not warn about a risk that is not being taken: " + text);
+    }
 }

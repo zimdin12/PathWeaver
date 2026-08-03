@@ -6,7 +6,7 @@
 
 That is a deliberate choice and the reasoning is in the open. The checked tier, `AUDITED`, only honours individual bytecode audits, and on a real modpack that means it denies everything and the mod does nothing — measured at **0 of 187** eligible mob types on a 222-mod pack. Shipping it as the default shipped something indistinguishable from broken. Shipping `UNSAFE` means it works on arrival and the risk is yours to opt out of, which is the trade this project decided to make.
 
-What you are accepting: the failure mode is a data race — a wrong path, a torn read — not a crash and not a corrupt region file. It is quiet. Nothing here is evidence that it is safe.
+What you are accepting: the most likely failure is quiet — a wrong path or a torn read. It is not the only possible one: nothing has been proven about code that was never inspected, so a crash or a corrupted world is not excluded, only less likely. Nothing here is evidence that it is safe.
 
 Two ways to opt back into checking, both one setting away:
 
@@ -63,6 +63,12 @@ balm, carpet, expandability, ferritecore, scalablelux, sereneseasons, terrain_sl
 and yungscavebiomes — mix into pathfinding-adjacent code, so the scan denies every movement family
 and the mod does nothing. From 0.4.0 it says exactly that at world start and names them.
 **What limits PathWeaver is other mods touching block state, not which mobs it can handle.**
+
+Eligibility is not the same as coverage. It means nothing blocks dispatch for that mob type — not
+that every movement it makes goes off-thread. Brain-driven movement (`MoveToTargetSink`, which is
+villagers, piglins, axolotls, frogs, allays and the warden) and wall-climber chases call
+`createPath` directly and stay synchronous by construction; see [DESIGN.md §10](DESIGN.md) for why
+that is deliberate rather than a gap.
 
 Where the scan denies nothing — a lean pack, Fabric API and Lithium — `AUDITED` admits everything on
 its own, which is the configuration the benchmark below runs in. That is the case the checked tier was

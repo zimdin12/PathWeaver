@@ -62,11 +62,15 @@ public class PathWeaverConfig implements ConfigData {
      * install containing Fabric API, which this mod requires. Shipping {@code AUDITED} by default
      * meant shipping a mod that installs, does nothing, and is indistinguishable from a broken one.
      *
-     * <p>What is being accepted: uninspected third-party code runs on worker threads. The failure
-     * mode is a data race — a wrong path, a torn read — not a crash and not a corrupt region file,
-     * so it is quiet, and a user who hits it will most likely never report it. Nothing here is
-     * evidence that it is safe; it is a choice to trade a silent risk for a mod that works on
-     * arrival, taken because the alternative was a mod that never works at all.
+     * <p>What is being accepted: uninspected third-party code runs on worker threads. The most
+     * likely failure is quiet — a wrong path or a torn read, which a user will probably never
+     * report. It is not the only possible one: nothing has been proven about code that was never
+     * inspected, so a crash or a corrupted world is not excluded, only less likely.
+     * This javadoc previously said "not a crash and not a corrupt region file", which
+     * {@link CompatibilityTier#UNSAFE} flatly contradicted, and the reassuring version was the one
+     * being used to argue for this default. Nothing here is evidence that it is safe; it is a choice
+     * to trade an unproven risk for a mod that works on arrival, taken because the alternative was a
+     * mod that never works at all.
      *
      * <p>Two things keep it honest. The startup log prints a blocking {@code WARN} block naming
      * every unaudited mod that is now running on workers, so this is never silent. And

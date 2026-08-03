@@ -81,8 +81,12 @@ public final class PathWeaverCommand {
         // every denial, and printing the raw decision there told an operator that all six families
         // were synchronous while the server was in fact dispatching all six and installing
         // thousands of paths. A diagnostic that contradicts the running mod is worse than none.
+        // waived is what the tier ACTUALLY achieved, not what it asked for. ForeignMixinScanner
+        // only clears the denial set when the scan succeeded, so deriving this from the tier alone
+        // made the report disagree with the running mod the moment a scan error appeared.
+        boolean scanFailed = report.decision().failed() > 0;
         for (String line : scanSummary(report.decision().denied(),
-                config.bypassesCompatibilityScan())) {
+                config.bypassesCompatibilityScan() && !scanFailed, scanFailed)) {
             say(source, line);
         }
         java.util.List<String> trusted =
@@ -100,9 +104,20 @@ public final class PathWeaverCommand {
         for (RequestOutcome outcome : RequestOutcome.values()) {
             long count = runtime.outcomeCount(outcome);
             if (count == 0L) continue;
-            String share = dispatched > 0L
-                ? String.format(" (%.1f%%)", 100.0 * count / dispatched) : "";
-            say(source, (outcome.isDiscard() ? "    §e" : "    §a") + count + "§r  "
+            // POOL_SATURATED is not drawn from `dispatched` -- RequestOutcome documents it as
+            // "not a discard and not a dispatch", and the mixin discards before markDispatched().
+            // Dividing it by `dispatched` printed shares above 100% on the one row that means "your
+            // configuration is the bottleneck", which is the row most worth reading correctly.
+            boolean partOfDispatched = outcome != RequestOutcome.POOL_SATURATED
+                && outcome != RequestOutcome.SETUP_FAILED;
+            String share = partOfDispatched && dispatched > 0L
+                ? String.format(java.util.Locale.ROOT, " (%.1f%%)", 100.0 * count / dispatched) : "";
+            // Amber for admission refusal too. It is not a discard -- nothing was computed and
+            // thrown away -- but it is not a success either, and printing it green beside `installed`
+            // under a footer reading "only the amber rows are wasted work" told an operator their
+            // pool being the bottleneck was a good outcome.
+            boolean good = !outcome.isDiscard() && outcome != RequestOutcome.POOL_SATURATED;
+            say(source, (good ? "    §a" : "    §e") + count + "§r  "
                 + outcome.description() + "§7" + share);
         }
         say(source, "  §7Only the amber rows are wasted work. A search that proves no route exists "
@@ -120,10 +135,28 @@ public final class PathWeaverCommand {
      * happened here, so the rule is now pinned by a test rather than by care.
      */
     static List<String> scanSummary(java.util.Collection<Class<?>> deniedFamilies, boolean waived) {
+        return scanSummary(deniedFamilies, waived, false);
+    }
+
+    /**
+     * @param scanFailed the scan errored, so no tier can waive its denials
+     */
+    static List<String> scanSummary(java.util.Collection<Class<?>> deniedFamilies, boolean waived,
+                                    boolean scanFailed) {
         List<String> denied = new ArrayList<>();
         for (Class<?> family : deniedFamilies) denied.add(family.getSimpleName());
         if (denied.isEmpty()) {
             return List.of("  §ano movement family is denied — searches can run off-thread");
+        }
+        // A failed scan outranks the tier. Reporting "running anyway, because the tier is Unsafe"
+        // here would invent a risk the operator is not taking AND hide that the mod is inert -- the
+        // worst available direction, and the third time this diagnostic has drifted from dispatch.
+        if (scanFailed) {
+            return List.of(
+                "  §cthe compatibility scan FAILED, so every family runs on the server thread",
+                "  §7denied: " + String.join(", ", denied),
+                "  §7compatibilityTier does not waive this: the tier waives what the scan found, "
+                    + "not the scan being unable to look. See the startup log for the errors.");
         }
         if (waived) {
             return List.of(
@@ -146,7 +179,27 @@ public final class PathWeaverCommand {
      * whether this command caused it, and a number nobody measured is not worth defending.
      */
     private static void mobs(CommandSourceStack source) {
-        boolean moddedAllowed = PathWeaverConfig.get().moddedMobAsyncAllowed();
+        PathWeaverConfig cfg = PathWeaverConfig.get();
+        // Two dispatch gates this used to skip, both of which make every per-type verdict below
+        // meaningless when they are shut. Reporting "187 of 187 can path off-thread" while the master
+        // switch is off -- including the fail-closed state after a config load error -- is the same
+        // "diagnostic disagrees with the code" failure as the scan summary, and this command is the
+        // one the README points at to reproduce its published eligibility numbers.
+        if (!cfg.enabled) {
+            say(source, "§6PathWeaver mobs");
+            say(source, "  §cPathWeaver is disabled, so no mob type paths off-thread regardless of "
+                + "the per-type rules. Enable it and run this again.");
+            return;
+        }
+        if (!dev.pathweaver.gate.FabricLandPathRegistryLatch.allowsWalkDispatch()
+                && !cfg.bypassesCompatibilityScan()) {
+            say(source, "§6PathWeaver mobs");
+            say(source, "  §ca mod registered an uncertified land path-type rule, so every "
+                + "walk-derived family runs on the server thread no matter what the per-type rules "
+                + "say. Raising the compatibility risk setting waives this.");
+            return;
+        }
+        boolean moddedAllowed = cfg.moddedMobAsyncAllowed();
         Map<String, Integer> verdicts = new LinkedHashMap<>();
         int types = 0;
         int eligible = 0;
@@ -172,7 +225,17 @@ public final class PathWeaverCommand {
         long elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000L;
 
         say(source, "§6PathWeaver mob coverage");
-        say(source, "  " + eligible + " of " + types + " mob types can path off-thread");
+        // "eligible", not "can path off-thread". Eligibility is about the evaluator, the PathFinder
+        // and the mob's origin; it is not a promise that the mob's actual movement behaviour routes
+        // through a dispatch site. Two common ones do not: WallClimberNavigation (spiders) overrides
+        // moveTo(Entity, double) without calling super, and MoveToTargetSink -- every brain mob,
+        // including villagers, piglins, axolotls, frogs, allays and the warden -- calls createPath
+        // directly and then moveTo(Path, double). Those routes are synchronous by construction (see
+        // DESIGN.md section 10), so counting them as "can path off-thread" overstates coverage.
+        say(source, "  " + eligible + " of " + types + " mob types are eligible");
+        say(source, "  §7Eligible means nothing blocks dispatch for this mob. It is not a promise "
+            + "that its AI routes through a dispatching call site — brain-driven movement and "
+            + "wall-climber chases stay synchronous by design.");
         verdicts.entrySet().stream()
             .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
             .forEach(entry -> say(source,

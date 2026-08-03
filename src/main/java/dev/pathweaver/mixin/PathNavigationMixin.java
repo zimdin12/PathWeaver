@@ -346,6 +346,17 @@ public abstract class PathNavigationMixin implements PWNavigation {
             return;
         }
 
+        // Registration is not the only thing that has to be clear. supersede()/cancel() drop the
+        // registration but deliberately keep the epilogue owed, because the worker may still be
+        // inside the search -- so without this, the same navigation could start a second search while
+        // the first one's done() was still outstanding. Two prepare() calls against one live mob, and
+        // AmphibiousNodeEvaluator's prepare/done are a save/restore pair on that mob: the second
+        // prepare captures the first's search-time costs as "the old values" and, since epilogues run
+        // in completion order, the mob keeps 6.0/4.0 forever. Sync nests correctly, so fall back.
+        if (sink.owesEpilogue(entityId)) {
+            return;
+        }
+
         // Everything below can fail on unusual mods/data; degrade to sync rather than escape into the
         // entity tick. If we've already registered in the sink, unwind that registration.
         boolean registered = false;

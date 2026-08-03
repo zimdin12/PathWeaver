@@ -240,6 +240,22 @@ java {
     targetCompatibility = JavaVersion.VERSION_25
 }
 
+// Keep loader metadata out of the sources jar.
+//
+// withSourcesJar() sweeps in src/main/resources, so the sources artifact shipped a fabric.mod.json
+// -- with "${version}" unexpanded, because processResources only filters the main resources -- plus
+// pathweaver.mixins.json and the assets, and no classes at all. Fabric Loader will happily try to
+// load that: dropped into mods/ alongside the real jar it is a duplicate `pathweaver` mod id and a
+// hard crash, and on its own it is an unparseable version string plus a mixin config whose
+// require=1 injectors have nothing to apply to. Either way the crash report names PathWeaver.
+//
+// Listing both files on a Modrinth version page and having a user grab the wrong one is a routine
+// mistake, so the artifact should not be loadable in the first place.
+tasks.named("sourcesJar") {
+    exclude "fabric.mod.json"
+    exclude "pathweaver.mixins.json"
+}
+
 test {
     useJUnitPlatform()
 

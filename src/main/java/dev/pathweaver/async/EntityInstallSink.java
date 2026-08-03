@@ -37,6 +37,25 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     private final Map<RequestKey, OwedEpilogue> epilogues = new ConcurrentHashMap<>();
 
     /**
+     * How many epilogues are owed per entity, so dispatch can refuse to start a second search while
+     * the first one's {@code done()} is still outstanding.
+     *
+     * <p>{@code supersede()} and {@code cancel()} remove the registration but deliberately leave the
+     * epilogue owed, because the worker may still be inside the search. Nothing then stopped the same
+     * navigation dispatching again in the same call — the guard was only {@code isRegistered} — so two
+     * {@code prepare()}s could run against one live mob before either {@code done()}.
+     *
+     * <p>That is fatal for {@code AmphibiousNodeEvaluator}, whose prepare/done are a save/restore pair
+     * on the mob itself: prepare stores the old WALKABLE and WATER_BORDER costs and writes 6.0/4.0,
+     * done puts the stored values back. The second prepare therefore captures 6.0/4.0 as "the old
+     * values", and since epilogues run in completion order rather than reverse-preparation order, the
+     * mob is left carrying the search-time costs permanently — self-perpetuating, because every later
+     * request now captures them too. Axolotls, turtles, frogs and drowned all use that evaluator, the
+     * malus is not serialised so it persists for the mob's loaded lifetime, and nothing is logged.
+     */
+    private final Map<Integer, Integer> owedEpiloguesByEntity = new ConcurrentHashMap<>();
+
+    /**
      * An owed {@code done()} plus the gate that says whether a worker ever reached its evaluator.
      *
      * <p>The gate is carried so a hard stop can still run the epilogues it is safe to run. Without
@@ -195,6 +214,37 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
                             net.minecraft.world.level.pathfinder.NodeEvaluator evaluator,
                             SearchStartGate gate) {
         epilogues.put(key, new OwedEpilogue(evaluator, gate));
+        owedEpiloguesByEntity.merge(key.entityId(), 1, Integer::sum);
+    }
+
+    /**
+     * True while this entity still owes a {@code done()} from an earlier search.
+     *
+     * <p>Dispatch must refuse and fall back to synchronous, which nests correctly: a synchronous
+     * prepare/done pair opens and closes entirely inside the owed epilogue's window.
+     */
+    public boolean owesEpilogue(int entityId) {
+        if (!owedEpiloguesByEntity.containsKey(entityId)) return false;
+        // Scoped to the evaluators whose prologue/epilogue are a save/restore pair on the live mob.
+        //
+        // AmphibiousNodeEvaluator.prepare stores the mob's WALKABLE and WATER_BORDER costs and writes
+        // 6.0/4.0; done puts the stored values back. Two of those outstanding at once invert, because
+        // the second stores the first's search-time values and epilogues run in completion order --
+        // leaving the mob permanently penalised. Frog$FrogNodeEvaluator extends it, so axolotls,
+        // turtles, frogs and drowned are the affected families.
+        //
+        // Walk/Swim/Fly/Creaking do not have that shape: their prepare/done are onPathfindingStart
+        // and onPathfindingDone hooks, which are idempotent from this mod's point of view. Blocking
+        // them too cost a real dispatch -- a mob could no longer supersede and re-dispatch within one
+        // tick -- to prevent a corruption they cannot suffer.
+        for (Map.Entry<RequestKey, OwedEpilogue> owed : epilogues.entrySet()) {
+            if (owed.getKey().entityId() != entityId) continue;
+            if (owed.getValue().evaluator()
+                    instanceof net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -206,7 +256,10 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
      */
     public void runEpilogue(RequestKey key) {
         OwedEpilogue owed = epilogues.remove(key);
-        if (owed != null) finishCallback(owed.evaluator());
+        if (owed == null) return;
+        owedEpiloguesByEntity.computeIfPresent(key.entityId(),
+            (id, count) -> count <= 1 ? null : count - 1);
+        finishCallback(owed.evaluator());
     }
 
     private void finishCallback(net.minecraft.world.level.pathfinder.NodeEvaluator evaluator) {
@@ -353,6 +406,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         // Dropping an epilogue here costs nothing that survives the boundary; racing one does.
         if (workersQuiesced) {
             for (RequestKey key : epilogues.keySet().toArray(RequestKey[]::new)) runEpilogue(key);
+            owedEpiloguesByEntity.clear();
         } else {
             // Abandon only what is genuinely unsafe. An epilogue whose gate was never opened cannot
             // be racing anything -- no worker was ever authorized to read that evaluator -- so its
@@ -367,6 +421,8 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
                 if (owed == null) continue;
                 if (owed.gate().authorizedSearch()) {
                     epilogues.remove(key);
+                    owedEpiloguesByEntity.computeIfPresent(key.entityId(),
+                        (id, count) -> count <= 1 ? null : count - 1);
                     abandoned++;
                 } else {
                     runEpilogue(key);
@@ -374,6 +430,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
                 }
             }
             epilogues.clear();
+            owedEpiloguesByEntity.clear();
             if (abandoned > 0 && epilogueDropLogged.compareAndSet(false, true)) {
                 try {
                     PathWeaver.LOG.warn("Workers did not stop in time; {} pathfinding epilogue(s) "
@@ -385,6 +442,15 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
                 }
             }
         }
+        // Re-arm the one-shot log flags. These are process-scoped AtomicBooleans on a singleton, so
+        // without this a failure logged once in world A silenced the FIRST failure of every later
+        // world in the same JVM -- leaving an operator with a non-zero failure counter and no stack
+        // trace anywhere to identify the cause. PathWeaverRuntime already re-arms its waste report
+        // per world; these four were the inconsistency.
+        callbackFailureLogged.set(false);
+        rollbackFailureLogged.set(false);
+        installFailureLogged.set(false);
+        epilogueDropLogged.set(false);
         failUntilTick.clear();
         // Reset the sweep clock too. A new server starts its tick count near zero, so a
         // timestamp left from a long previous run would suppress sweeping until the new

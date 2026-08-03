@@ -41,6 +41,7 @@ public class PathWorkerPool {
         final AtomicLong failCount = new AtomicLong();
         final AtomicLong completionFailCount = new AtomicLong();
         volatile long lastFailLogMs;
+        volatile long lastCompletionFailLogMs;
 
         Generation(int threads, int maxInFlight) {
             this.threads = threads;
@@ -140,7 +141,15 @@ public class PathWorkerPool {
     }
 
     private void logCompletionFailure(Generation generation, Throwable failure) {
-        generation.completionFailCount.incrementAndGet();
+        long n = generation.completionFailCount.incrementAndGet();
+        // Rate-limited exactly like logFailure. This runs on the worker's completion path, twice per
+        // request when the fallback also throws, and a systemically broken completion consumer would
+        // otherwise emit one full stack trace per dispatched search -- thousands a minute, into a log
+        // the user then uploads as a bug report. Every other repeated-warn site here is guarded; this
+        // one was missed.
+        long now = System.currentTimeMillis();
+        if (n != 1 && now - generation.lastCompletionFailLogMs < FAIL_LOG_INTERVAL_MS) return;
+        generation.lastCompletionFailLogMs = now;
         try {
             PathWeaver.LOG.error("Async path completion callback failed; the result could not be "
                 + "delivered to the main thread.", failure);

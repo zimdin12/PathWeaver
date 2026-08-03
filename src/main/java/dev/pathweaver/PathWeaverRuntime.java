@@ -112,12 +112,22 @@ public final class PathWeaverRuntime {
         // shutdownNow(), which does not wait, so on any path that skipped a clean stop a worker
         // could still be running. Asserting quiescence we have not established is exactly the
         // mistake that put an NPE inside a worker at server stop.
+        // Zero the counters BEFORE clearing, not after. clear() records a SERVER_RESET for every
+        // leftover registration it finds -- which only happens on the abnormal path this call exists
+        // to cover, a start with no preceding stop -- and wiping the array afterwards destroyed the
+        // one piece of evidence that leftovers existed.
+        dispatched.set(0);
+        for (int i = 0; i < outcomes.length(); i++) outcomes.set(i, 0L);
         entitySink.clear(false);
         installer.clear();
         pool.start(c.resolvedPoolThreads(), c.maxInFlight);
-        dispatched.set(0);
-        for (int i = 0; i < outcomes.length(); i++) outcomes.set(i, 0L);
         resetWasteReportingForTests();
+        long leftovers = outcomeCount(dev.pathweaver.async.RequestOutcome.SERVER_RESET);
+        if (leftovers > 0L) {
+            PathWeaver.LOG.warn("{} request(s) were still registered from a previous session and have "
+                + "been discarded. A clean stop drains these, so this means the last one was not "
+                + "clean.", leftovers);
+        }
         running = true;
         PathWeaver.LOG.info("PathWeaver runtime started: epoch={}, {} worker thread(s), maxInFlight={}.",
             epoch, pool.threads(), pool.maxInFlight());
@@ -138,18 +148,6 @@ public final class PathWeaverRuntime {
     }
 
 
-    /**
-     * Say, at world start, whether this mod is going to do anything at all — and if not, what to do.
-     *
-     * <p>The scan already logs a line per offending mod, but those appear during early mixin
-     * scanning, hundreds of lines before a world loads, in a format that reads like a warning about
-     * the other mod rather than a statement that PathWeaver is switched off. The result was a mod
-     * that installs, does nothing, and never says so. On a heavily-modded pack that is the normal
-     * outcome, not an edge case, and it is the single most common thing an operator needs to know.
-     *
-     * <p>Deliberately at {@code WARN} when inert. It is not an error — failing closed is the design
-     * — but "you installed something that is doing nothing" is worth interrupting for.
-     */
     /**
      * Say when the unsafe tier has waived a <em>correctness</em> gate, not just a thread-safety one.
      *
@@ -181,6 +179,18 @@ public final class PathWeaverRuntime {
         PathWeaver.LOG.warn("Set compatibilityTier=AUDITED if that matters more than the throughput.");
     }
 
+    /**
+     * Say, at world start, whether this mod is going to do anything at all — and if not, what to do.
+     *
+     * <p>The scan already logs a line per offending mod, but those appear during early mixin
+     * scanning, hundreds of lines before a world loads, in a format that reads like a warning about
+     * the other mod rather than a statement that PathWeaver is switched off. The result was a mod
+     * that installs, does nothing, and never says so. On a heavily-modded pack that is the normal
+     * outcome, not an edge case, and it is the single most common thing an operator needs to know.
+     *
+     * <p>Deliberately at {@code WARN} when inert. It is not an error — failing closed is the design
+     * — but "you installed something that is doing nothing" is worth interrupting for.
+     */
     private void reportWhetherItIsDoingAnything(PathWeaverConfig c) {
         if (!c.enabled) {
             PathWeaver.LOG.warn("PathWeaver is disabled in the config; pathfinding is fully vanilla.");
@@ -322,6 +332,17 @@ public final class PathWeaverRuntime {
     private long lastWasteCheckTick;
     private long lastWasteDispatched;
     private long lastWasteInstalled;
+    /**
+     * Searches that completed and proved no route exists, excluded from the waste ratio.
+     *
+     * <p>{@code discardedCount()} and {@code RequestOutcome} both go to some trouble to keep
+     * {@code NO_PATH} out of "wasted work" — it is a search that succeeded with an empty answer. The
+     * sampler put it straight back in by dividing installs by raw dispatches, so a pack whose mobs
+     * routinely target positions outside the search region would be told its pool was the bottleneck
+     * and pointed at {@code maxInFlight} and {@code poolThreads}. Neither would move the number,
+     * because nothing was late.
+     */
+    private long lastWasteNoPath;
     private boolean wasteReported;
 
     /**
@@ -345,10 +366,14 @@ public final class PathWeaverRuntime {
         lastWasteCheckTick = tick;
         long dispatchedNow = dispatched.get();
         long installedNow = installedCount();
-        long windowDispatched = dispatchedNow - lastWasteDispatched;
+        long noPathNow = outcomeCount(dev.pathweaver.async.RequestOutcome.NO_PATH);
         long windowInstalled = installedNow - lastWasteInstalled;
+        long windowNoPath = noPathNow - lastWasteNoPath;
+        // Judge installs against searches that could have produced a path, not against every search.
+        long windowDispatched = Math.max(0L, (dispatchedNow - lastWasteDispatched) - windowNoPath);
         lastWasteDispatched = dispatchedNow;
         lastWasteInstalled = installedNow;
+        lastWasteNoPath = noPathNow;
         // Any window that is not itself bad breaks the run, including one too quiet to judge.
         // Otherwise a burst, a quiet window that absorbs its late installs, and an unrelated burst
         // much later would count as two consecutive bad windows and warn on windows that were not
@@ -384,6 +409,7 @@ public final class PathWeaverRuntime {
         lastWasteDispatched = dispatched.get();
         lastWasteInstalled = installedCount();
         wasteReported = false;
+        lastWasteNoPath = outcomeCount(dev.pathweaver.async.RequestOutcome.NO_PATH);
     }
 
     /** Test seam. */

@@ -209,6 +209,12 @@ public final class PathNavigationRoutingGameTest {
                 "airborne recompute must account the superseded pre-change request");
 
             coordinateMob.setOnGround(true);
+
+            // These mobs use WalkNodeEvaluator, whose prepare/done are onPathfindingStart/Done hooks
+            // rather than a malus save/restore pair, so the owed-epilogue dispatch guard deliberately
+            // does not apply to them and supersede-then-redispatch within a tick still works. The
+            // guard is scoped to AmphibiousNodeEvaluator and its Frog subclass; see
+            // EntityInstallSink.owesEpilogue.
             check(helper, queryNav.moveTo(target.getX() + 0.5, target.getY(),
                 target.getZ() + 0.5, -0.25),
                 "movement must be accepted again after the airborne recompute supersedes old work");
