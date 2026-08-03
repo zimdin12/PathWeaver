@@ -229,8 +229,17 @@ class EntityInstallSinkTest {
     }
 
     @Test void throwingCallbackDuringClearCannotStrandOtherRegistrations() {
+        // The anonymous subclass used to have an EMPTY body, so nothing in the call graph threw and
+        // this asserted only that clear() removes registrations -- which two other tests already
+        // cover. Deleting EntityInstallSink's catch around rollbackOptimisticTarget did not fail it.
+        // A foreign mixin throwing from a navigation callback is the whole scenario named in the
+        // method title, so the fixture now actually throws.
         EntityInstallSink sink = new EntityInstallSink();
         FakeNav throwing = new FakeNav() {
+            @Override public void pathweaver$rollbackOptimisticTarget() {
+                super.pathweaver$rollbackOptimisticTarget();
+                throw new IllegalStateException("a foreign mixin threw from the rollback");
+            }
         };
         FakeNav other = new FakeNav();
         sink.register(key(1L, 3L, 5), throwing);
@@ -456,8 +465,14 @@ class EntityInstallSinkTest {
     }
 
     @Test void throwingDoneCallbackCannotEscapeTerminalCancellation() {
+        // Same empty-body problem as above. Every terminal path below routes through the rollback,
+        // so a fixture that throws there is what makes "cannot escape" mean anything.
         EntityInstallSink sink = new EntityInstallSink();
         FakeNav throwing = new FakeNav() {
+            @Override public void pathweaver$rollbackOptimisticTarget() {
+                super.pathweaver$rollbackOptimisticTarget();
+                throw new IllegalStateException("a foreign mixin threw from the rollback");
+            }
         };
 
         sink.register(key(1L, 4L, 18), throwing);

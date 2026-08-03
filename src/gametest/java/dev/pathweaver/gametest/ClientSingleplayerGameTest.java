@@ -40,6 +40,19 @@ import net.minecraft.world.level.pathfinder.PathType;
  */
 public final class ClientSingleplayerGameTest implements FabricClientGameTest {
 
+    // Captured on the server thread, asserted on the client thread. Same JVM: this is an integrated
+    // server, so there is no serialisation boundary between the two.
+    private static volatile int acceptedCount;
+    private static volatile long dispatchedDelta;
+    private static volatile long installedBefore;
+    private static volatile int drownedId = -1;
+    private static volatile float drownedMalusBefore = Float.NaN;
+    private static volatile float drownedMalusInFlight = Float.NaN;
+
+    private static void check(boolean condition, String message) {
+        if (!condition) throw new AssertionError("client singleplayer: " + message);
+    }
+
     @Override
     public void runTest(ClientGameTestContext context) {
         try (TestSingleplayerContext singleplayer = context.worldBuilder().create()) {
@@ -80,6 +93,7 @@ public final class ClientSingleplayerGameTest implements FabricClientGameTest {
 
                 record Subject(String label, EntityType<?> type) { }
                 long dispatchedBefore = PathWeaverRuntime.get().dispatchedCount();
+                installedBefore = PathWeaverRuntime.get().installedCount();
                 List<Mob> spawned = new ArrayList<>();
                 float malusBefore = Float.NaN;
                 float malusInFlight = Float.NaN;
@@ -106,7 +120,11 @@ public final class ClientSingleplayerGameTest implements FabricClientGameTest {
                     BlockPos target = origin.offset(10, 1, 0);
                     boolean accepted = mob.getNavigation().moveTo(
                         target.getX() + 0.5, target.getY(), target.getZ() + 0.5, 1.0);
-                    if (s.label().equals("drowned")) malusInFlight = mob.getPathfindingMalus(PathType.WALKABLE);
+                    if (s.label().equals("drowned")) {
+                        malusInFlight = mob.getPathfindingMalus(PathType.WALKABLE);
+                        drownedId = mob.getId();
+                    }
+                    if (accepted) acceptedCount++;
                     report.add(s.label() + " accepted=" + accepted
                         + " registered=" + PathWeaverRuntime.get().entitySink().isRegistered(mob.getId())
                         + " alive=" + mob.isAlive() + " removed=" + mob.isRemoved()
@@ -117,11 +135,28 @@ public final class ClientSingleplayerGameTest implements FabricClientGameTest {
                             : mob.getNavigation().getPath().getNodeCount() + "n")
                         + " difficulty=" + level.getDifficulty());
                 }
-                report.add("dispatchedDelta=" + (PathWeaverRuntime.get().dispatchedCount() - dispatchedBefore));
+                dispatchedDelta = PathWeaverRuntime.get().dispatchedCount() - dispatchedBefore;
+                drownedMalusBefore = malusBefore;
+                drownedMalusInFlight = malusInFlight;
+                report.add("dispatchedDelta=" + dispatchedDelta);
                 report.add("drownedMalus " + malusBefore + " -> " + malusInFlight);
                 return report;
             });
             for (String line : results) System.out.println("PW_CLIENT " + line);
+
+            // Everything above this point used to be report-only. The test spawned three mobs,
+            // moved them, drew the settings screen, printed what happened and passed unconditionally
+            // -- so the one path no other harness covers, singleplayer on an integrated server, had
+            // no failing coverage at all. Making PathNavigationMixin return immediately on an
+            // integrated server, or AutoConfigClient.getConfigScreen return null, would both have
+            // been reported and both have passed.
+            check(acceptedCount == 3,
+                "all three mobs must accept a move on an integrated server, got " + acceptedCount);
+            check(dispatchedDelta >= 3,
+                "the integrated server must dispatch off-thread; dispatchedDelta=" + dispatchedDelta);
+            check(drownedMalusInFlight == 6.0F,
+                "the amphibious prologue must run on the main thread before dispatch, in-flight "
+                    + "WALKABLE cost was " + drownedMalusInFlight);
 
             context.waitTicks(60);
 
@@ -130,6 +165,31 @@ public final class ClientSingleplayerGameTest implements FabricClientGameTest {
                 "discarded=" + PathWeaverRuntime.get().discardedCount(),
                 "dispatched=" + PathWeaverRuntime.get().dispatchedCount()));
             for (String line : after) System.out.println("PW_CLIENT " + line);
+
+            List<String> settled = singleplayer.getServer().computeOnServer(server -> {
+                long installedNow = PathWeaverRuntime.get().installedCount();
+                boolean stillPending =
+                    PathWeaverRuntime.get().entitySink().isRegistered(drownedId);
+                float malusNow = Float.NaN;
+                var level = server.overworld();
+                if (level.getEntity(drownedId) instanceof Mob drowned) {
+                    malusNow = drowned.getPathfindingMalus(PathType.WALKABLE);
+                }
+                return List.of(String.valueOf(installedNow), String.valueOf(stillPending),
+                    String.valueOf(malusNow));
+            });
+            long installedNow = Long.parseLong(settled.get(0));
+            boolean stillPending = Boolean.parseBoolean(settled.get(1));
+            float malusNow = Float.parseFloat(settled.get(2));
+
+            check(installedNow > installedBefore,
+                "at least one search must install on the integrated server; installed went "
+                    + installedBefore + " -> " + installedNow);
+            check(!stillPending,
+                "the drowned's request must reach a terminal state within 60 ticks");
+            check(malusNow == drownedMalusBefore,
+                "the amphibious epilogue must give the mob its pathfinding cost back: expected "
+                    + drownedMalusBefore + ", found " + malusNow);
 
             // The settings screen, drawn by the real client on the real render thread. Client-only
             // code that no dedicated-server test can even class-load.
@@ -142,6 +202,8 @@ public final class ClientSingleplayerGameTest implements FabricClientGameTest {
             String screenName = context.computeOnClient(client ->
                 client.screen == null ? "<none>" : client.screen.getClass().getName());
             System.out.println("PW_CLIENT configScreen=" + screenName);
+            check(!"<none>".equals(screenName),
+                "the settings screen must actually render; this is the only test that draws it");
             System.out.println("PW_CLIENT screenshot="
                 + context.takeScreenshot("pathweaver-config-general"));
 

@@ -147,7 +147,10 @@ class PathWeaverConfigSerializerTest {
     }
 
     @Test void absentTierTakesTheShippedDefault() throws Exception {
-        assertTier("{\"configVersion\":2,\"enabled\":true}", new PathWeaverConfig().compatibilityTier);
+        // Literal, not new PathWeaverConfig().compatibilityTier. Asserting against the same
+        // expression the production code uses is what let the overrideCompatibilityScan bug ship,
+        // and this sibling still had the shape after that one was fixed.
+        assertTier("{\"configVersion\":2,\"enabled\":true}", CompatibilityTier.UNSAFE);
     }
 
     /**
@@ -196,7 +199,9 @@ class PathWeaverConfigSerializerTest {
                 CompatibilityTier.AUDITED, "STRICT was inert on every real pack; AUDITED is the "
                 + "nearest tier that still checks"),
             new Shape("{\"configVersion\":2,\"enabled\":true,\"compatibilityTier\":\"UNSAFE\"}",
-                CompatibilityTier.UNSAFE, "an explicit UNSAFE is kept"));
+                CompatibilityTier.UNSAFE, "an explicit UNSAFE is kept"),
+            new Shape("{\"configVersion\":2,\"enabled\":true}",
+                CompatibilityTier.UNSAFE, "an absent tier takes the shipped default, stated as a literal"));
 
         for (Shape shape : shapes) {
             assertTier(shape.json(), shape.expected());

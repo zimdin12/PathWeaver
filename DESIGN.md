@@ -122,3 +122,45 @@ moved without changing what mobs decide. The residue is synchronous by construct
 oversight. Reopening this needs a different lever — an upstream change letting a behaviour express
 "ask me again next tick" without it meaning "unreachable" — not more work on this side of the
 boundary.
+
+## 11. Rejected: making an in-flight navigation report itself as "in progress"
+
+A review observed that `moveTo` can return `true` while `isDone()` is also `true`, and proposed
+closing it. The observation is correct, the mechanism is real, and the fix is worse than the problem
+in both available forms.
+
+**The mechanism.** When a mob dispatches with no existing path, `this.path` stays null until the
+result installs. `PathNavigation.isDone()` is `path == null || path.isDone()`, so it answers `true`
+on a navigation whose `moveTo` just reported success. `RandomStrollGoal.canContinueToUse()` — and
+`MeleeAttackGoal`'s and `FollowMobGoal`'s — is `!navigation.isDone() && ...`, so if the worker does
+not finish before the goal ticks again, the goal stops, `stop()` fires
+`pathweaver$invalidateStoppedRequest`, and the request is cancelled as `NAVIGATION_STOPPED`.
+
+**Why `isDone()` cannot be made to lie.** `PathNavigation.tick()` returns early *because of*
+`isDone()`:
+
+```
+21: isDone()
+25: ifeq 29        // not done -> fall through
+28: return         // done -> stop here
+29: canUpdatePath()
+37: followThePath()
+```
+
+and `followThePath()` dereferences `this.path` immediately (`getNextNodePos()` at offset 49, then
+`getNextNode()` and `advance()`). Reporting "in progress" with a null path therefore does not defer a
+goal — it NPEs the entity tick on the very next tick, for every mob that dispatches without a prior
+path. A fabricated placeholder path avoids the NPE by handing mods and vanilla a route the search
+never produced, which is a worse lie in a system whose entire claim is that async and sync searches
+agree.
+
+**Why the conservative form costs more than it saves.** Restricting dispatch to navigations that
+already hold a live path removes the whole first-move case — the largest single category of
+navigation requests — to recover a fraction of one. Measured on a live 317-mod client: 2920
+dispatched, 2838 installed, and 70 `NAVIGATION_STOPPED`. That is **2.4%**, and it is 2.4% only in the
+subset where the worker did not finish inside the dispatch tick.
+
+**And the outcome is not waste.** `NAVIGATION_STOPPED` is already documented as "overwhelmingly the
+ordinary case: it arrived, or lost interest", and `/pathweaver status` says so on screen. A mob whose
+goal moved on is a mob behaving normally; the search that was cancelled was work that had stopped
+being wanted. Spending correctness risk to reclaim it would be paying for the wrong thing.

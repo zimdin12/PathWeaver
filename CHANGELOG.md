@@ -141,6 +141,22 @@
   `ClassValue`, past `SafetyGate.isAllowed`, and out of the entity tick, before the dispatch path's
   protective `try`. A gate whose failure mode is a server crash is worse than the risk it screens for.
 
+### Fixed (tests that could not fail)
+
+- **The client singleplayer game test had no assertions at all.** Every observation was reported and
+  printed; its only two `assert`/`check` matches were inside comments. It covered the one path no
+  other harness reaches — an integrated server, which is how nearly everyone runs this — and would
+  have passed with dispatch disabled or the settings screen failing to open. It now asserts that all
+  three mobs accept a move, that the integrated server dispatches, that the amphibious prologue raised
+  the cost and the epilogue gave it back, that a search actually installed, and that the config screen
+  really rendered. Verified by mutation: disabling dispatch now fails it.
+- **Two tests named "throwing…" used fixtures that threw nothing** — anonymous subclasses with empty
+  bodies. Both `catch (Throwable)` blocks around the navigation callbacks had no coverage; deleting
+  either changed nothing. The fixtures now throw, and removing the catch fails both.
+- **`absentTierTakesTheShippedDefault` was still a tautology** after its sibling was fixed, asserting
+  against the same expression the production code uses. Now a literal, and added to the legacy-shape
+  table.
+
 ### Known limitation (documented, not fixed)
 
 - **`SHARED_PATHFINDING_TARGETS` is incomplete, and its javadoc no longer claims otherwise.** It
