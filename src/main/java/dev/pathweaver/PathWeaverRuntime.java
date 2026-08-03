@@ -1,6 +1,7 @@
 package dev.pathweaver;
 
 import dev.pathweaver.async.EntityInstallSink;
+import java.util.List;
 import dev.pathweaver.async.PathWorkerPool;
 import dev.pathweaver.async.RequestKey;
 import dev.pathweaver.async.ResultInstaller;
@@ -132,6 +133,15 @@ public final class PathWeaverRuntime {
         PathWeaver.LOG.info("PathWeaver runtime started: epoch={}, {} worker thread(s), maxInFlight={}.",
             epoch, pool.threads(), pool.maxInFlight());
         warnAboutSelfDefeatingSettings(c);
+        if (c.enabled) {
+            List<String> coreAdvice =
+                lowCoreAdvice(Runtime.getRuntime().availableProcessors(), pool.threads());
+            if (!coreAdvice.isEmpty()) {
+                PathWeaver.LOG.warn("======================== PathWeaver ========================");
+                for (String line : coreAdvice) PathWeaver.LOG.warn(line);
+                PathWeaver.LOG.warn("============================================================");
+            }
+        }
         reportWhetherItIsDoingAnything(c);
         PathWeaver.LOG.info("Mob-origin CodeSource probe: Mob={}, Zombie={}, moddedBypass={}.",
             MobOriginGate.isAllowed(Mob.class, false), MobOriginGate.isAllowed(Zombie.class, false),
@@ -254,6 +264,52 @@ public final class PathWeaverRuntime {
     static final double MIN_USEFUL_STALENESS_BLOCKS = 1.0;
     /** Above this, measurement showed most finished searches arriving too late to be wanted. */
     static final int MAX_USEFUL_IN_FLIGHT = 256;
+
+    /** At or below this, there is no core for a worker to use that the game does not already want. */
+    static final int CORES_WITH_NO_HEADROOM = 2;
+    /** At or below this, one worker is all the auto-sizer produces and the win is marginal. */
+    static final int CORES_WITH_LITTLE_HEADROOM = 4;
+
+    /**
+     * Recommend turning the mod off on a machine with too few cores to benefit from it.
+     *
+     * <p>This mod does not make pathfinding cheaper. It moves the same A* work onto another thread so
+     * the server thread has more headroom, and it adds a little work of its own on the way — the
+     * prologue, the epilogue and the install all run on the main thread, and every discarded search is
+     * CPU spent for nothing. That trade only pays when there is a core free for the worker to use.
+     * On two cores there is not: the worker competes with the server thread for the same silicon, so
+     * the A* is not removed from the critical path, it is handed sideways with extra bookkeeping.
+     *
+     * <p>Stated as a recommendation rather than enforced, and the mod is not switched off
+     * automatically — the same reason the self-defeating settings above are reported rather than
+     * clamped. It is also honest about its own basis: this is a structural argument from how the work
+     * is scheduled, not a measurement taken on a two-core machine. Both benchmarks behind this
+     * project's published numbers ran on many-core hardware.
+     *
+     * @return the lines to log, empty when the machine has enough headroom to be worth it
+     */
+    static List<String> lowCoreAdvice(int availableProcessors, int workers) {
+        if (availableProcessors > CORES_WITH_LITTLE_HEADROOM) return List.of();
+        if (availableProcessors <= CORES_WITH_NO_HEADROOM) {
+            return List.of(
+                "This machine reports " + availableProcessors + " processor(s), and PathWeaver is "
+                    + "running " + workers + " worker thread(s) on it.",
+                "PathWeaver does not make pathfinding cheaper. It moves the work to another thread "
+                    + "so the server thread has room.",
+                "With this few cores there is no free core for a worker to use, so the work is not "
+                    + "taken off the critical path -- it is handed sideways, and costs a little "
+                    + "extra on the way.",
+                "RECOMMENDATION: set enabled=false. You are unlikely to gain anything here and may "
+                    + "lose a little. Nothing is switched off automatically.");
+        }
+        return List.of(
+            "This machine reports " + availableProcessors + " processor(s), giving " + workers
+                + " worker thread(s). That is the smallest useful size.",
+            "Expect a small benefit at best: the worker has little room to run in parallel with the "
+                + "server thread, and PathWeaver's own main-thread work is not free.",
+            "If /pathweaver status shows little of the work being used, enabled=false is a "
+                + "reasonable choice.");
+    }
 
     /**
      * Warn when a setting is configured to a value measured to defeat the mod.

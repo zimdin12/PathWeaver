@@ -142,6 +142,64 @@
   `ClassValue`, past `SafetyGate.isAllowed`, and out of the entity tick, before the dispatch path's
   protective `try`. A gate whose failure mode is a server crash is worse than the risk it screens for.
 
+### Added (also)
+
+- **A world-start recommendation on machines too small to benefit.** PathWeaver does not make
+  pathfinding cheaper — it moves the work off the server thread and adds a little of its own on the
+  way, so the trade only pays when a core is free for the worker. At **2 cores or fewer** it now says
+  so and recommends `enabled=false`; at **4 or fewer** it warns the benefit will be small and points
+  at `/pathweaver status`. Nothing is switched off automatically, for the same reason the
+  self-defeating settings are reported rather than clamped. Stated as a structural argument about
+  scheduling rather than as a measurement, because both published benchmarks ran on many-core
+  hardware — which is precisely why it is advice and not enforcement.
+
+### Fixed (found by release bug hunts)
+
+- **A superseded request left its epilogue owed, and nothing stopped the same mob starting a second
+  search while it stood — permanently corrupting amphibious mobs' pathfinding costs.**
+  `AmphibiousNodeEvaluator.prepare` saves the mob's `WALKABLE` and `WATER_BORDER` costs and writes
+  6.0/4.0; `done` restores what it saved. `supersede()` deliberately keeps the epilogue owed because a
+  worker may still be inside the search, but the dispatch guard only checked `isRegistered`, so a
+  second `prepare` could run against the same live mob. It then saved 6.0/4.0 as "the originals", and
+  since epilogues run in completion order the mob was left carrying search-time costs **permanently**
+  — self-perpetuating, because every later request captured them too. Axolotls, turtles, frogs and
+  drowned; the malus is not serialised, so it lasts the mob's loaded lifetime; nothing was logged. The
+  existing test pinned that exact interleaving and passed, because it counted `done()` invocations
+  rather than the values. Dispatch now refuses while such an epilogue is owed and falls back to
+  synchronous, which nests correctly. Scoped to that evaluator family on purpose — Walk/Swim/Fly/
+  Creaking use `onPathfindingStart`/`Done` hooks rather than a save/restore pair.
+- **The waste sampler counted `NO_PATH` as waste**, the exact conflation `RequestOutcome` and
+  `discardedCount()` exist to prevent, and would have sent operators to tune `maxInFlight` for
+  searches that were never late.
+- **`/pathweaver status` told users they were taking a risk they were not taking.** The waiver became
+  conditional on the scan succeeding, but the report still derived it from the tier alone — so after a
+  scan failure it announced uninspected code running on workers while every family was in fact
+  synchronous, inventing a risk and concealing that the mod was inert.
+- **Per-outcome shares could exceed 100%.** `POOL_SATURATED` is neither a dispatch nor a discard and
+  is recorded before `markDispatched()`, yet its share used `dispatched` as the denominator — printing
+  e.g. `34000 admission refused (17000.0%)` on the row that means "your configuration is the
+  bottleneck", in green, under a footer reading "only the amber rows are wasted work".
+- **`/pathweaver mobs` ignored the master switch and the land-provider latch**, reporting every mob
+  type eligible with the mod switched off. Its summary now says "eligible" rather than "can path
+  off-thread": eligibility means nothing blocks dispatch, not that a mob's AI routes through a
+  dispatching call site — brain-driven movement and wall-climber chases are synchronous by design.
+- **Unbounded `ERROR` spam** from `logCompletionFailure` on the worker completion path, twice per
+  request when the fallback also threw. Now rate-limited like its sibling.
+- **One-shot log flags survived world boundaries**, silencing the *first* failure of every later world
+  in the same JVM. Re-armed in `clear()`.
+- **`SERVER_RESET` counts were zeroed by the same method that recorded them**; counters are now
+  cleared first, and a non-zero count is logged, since it only happens after an unclean stop.
+- **The sources jar was a loadable pseudo-mod** — `fabric.mod.json` with an unexpanded version
+  placeholder plus the mixin config and no classes, so dropping it into `mods/` was a duplicate mod id
+  crash naming PathWeaver. Loader metadata is now excluded from it.
+- `defaultRequire` raised from 0 to 1, so a future injector added without an explicit `require` fails
+  loudly rather than silently not applying.
+- Resolved a direct contradiction about the release's central risk decision: `CompatibilityTier` said
+  `Unsafe` "can be a crash or a corrupted world" while `PathWeaverConfig`, the README and this file
+  said "not a crash and not a corrupt region file". The reassuring version was the overclaim, and it
+  was the one being used to argue for the default. Nothing has been proven about code that was never
+  inspected.
+
 ### Fixed (tests that could not fail)
 
 - **The client singleplayer game test had no assertions at all.** Every observation was reported and

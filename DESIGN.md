@@ -164,3 +164,32 @@ subset where the worker did not finish inside the dispatch tick.
 ordinary case: it arrived, or lost interest", and `/pathweaver status` says so on screen. A mob whose
 goal moved on is a mob behaving normally; the search that was cancelled was work that had stopped
 being wanted. Spending correctness risk to reclaim it would be paying for the wrong thing.
+
+
+## 12. Direction for the next version: stop producing discards
+
+Recorded as intent, not as a design. 0.5.0's priority is stability; this is what comes after it.
+
+A discard is a finished search that nobody wanted by the time it landed — the mob stopped, its target
+moved, the world changed under it, or the pool admitted more than it could deliver in time. Measured
+on a live 317-mod client: 2920 dispatched, 2838 installed, 82 discarded. That is a 2.8% waste rate and
+it is not the problem; the problem is that discards are *CPU spent for nothing*, and on a machine
+without a spare core that spending comes out of the same budget the mod exists to protect. It is also
+the mechanism behind the low-core recommendation in `PathWeaverRuntime.lowCoreAdvice`: the fewer cores
+there are, the more a wasted search costs relative to what it saves.
+
+Directions worth exploring, none committed:
+
+- **Do not start a search that is already unwanted.** Most `NAVIGATION_STOPPED` discards are known to
+  be pointless before the worker begins, not after — the goal that asked has already moved on. A
+  cheap pre-flight re-check at the moment a worker picks the task up, rather than only at install,
+  would cancel those without computing them.
+- **Admit by predicted latency rather than by depth.** `maxInFlight` bounds the queue, not the age of
+  what comes out of it. Admitting only what the pool can finish inside `maxResultAgeTicks` at its
+  current rate would convert most `ARRIVED_STALE` into a refusal that costs nothing.
+- **Make supersession cheap.** A superseded request runs to completion today. A cooperative
+  cancellation flag checked between A* iterations would let the worker abandon it.
+
+Any of these changes what the counters mean, so they need the accounting rework that landed in 0.5.0
+to stay honest, and they need the discard split described under finding `ARRIVED_STALE` — five causes
+currently share one label, and none of the above can be evaluated until they are told apart.

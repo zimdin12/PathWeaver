@@ -17,6 +17,21 @@ Whichever you land on, the game log says so at world start and names the mods re
 
 See the [version-exact compatibility matrix](COMPATIBILITY.md) for audited verdicts, artifact hashes, and the evidence boundary. Future or modified artifacts fail closed — at `AUDITED`. The shipped default does not consult this at all.
 
+## It will tell you if your machine is too small for it
+
+PathWeaver does not make pathfinding cheaper. It moves the same A* work onto another thread so the
+server thread has room, and it adds a little of its own on the way — the prologue, the epilogue and
+the install all run on the main thread, and every discarded search is CPU spent for nothing. That
+trade only pays when a core is free for the worker to use.
+
+On **2 cores or fewer** it says so at world start and recommends `enabled=false`. On **4 or fewer**
+it warns that the benefit will be small and points you at `/pathweaver status` to decide. Nothing is
+switched off automatically.
+
+This is a structural argument about how the work is scheduled, not a measurement taken on a small
+machine — both benchmarks on this page ran on many-core hardware, and that is exactly why the
+recommendation is stated rather than enforced.
+
 ## What it does
 
 Minecraft runs mob A* path searches on the server thread. PathWeaver runs eligible ones on a small worker pool instead, so a server that is falling behind because of pathfinding can keep up.
