@@ -249,18 +249,32 @@ public final class PathWeaverRuntime {
                 blockers.size());
             PathWeaver.LOG.warn("  {}", String.join(", ", blockers));
         }
-        PathWeaver.LOG.warn("");
-        PathWeaver.LOG.warn("This is what compatibilityTier=AUDITED gives you: unverified code");
-        PathWeaver.LOG.warn("is not run on worker threads. It is NOT the shipped default -- you");
-        PathWeaver.LOG.warn("opted into it. On a heavily-modded pack it usually means no benefit.");
-        PathWeaver.LOG.warn("");
-        PathWeaver.LOG.warn("Two ways to run anyway, both unsafe, both needing a restart:");
-        PathWeaver.LOG.warn("  - add some of the mods above to trustedMods, which accepts only");
-        PathWeaver.LOG.warn("    those and leaves the scan armed for anything you install later;");
-        PathWeaver.LOG.warn("  - or set compatibilityTier=UNSAFE, which waives every check there");
-        PathWeaver.LOG.warn("    is, now and in future. Back up your world either way.");
-        if (!trusted.isEmpty()) {
-            PathWeaver.LOG.warn("Already trusted: {}", String.join(", ", trusted));
+        // Blame the tier only when the tier is what refused. `isAllowed` is
+        // `allowlisted && !denied && canClone`, so a family that failed ONLY the clone check -- a JVM
+        // refusing setAccessible, a NoClassDefFoundError swallowed while resolving -- used to get the
+        // full "you opted into AUDITED" lecture plus advice to edit trustedMods, none of which would
+        // change anything. Fixing this method to stop lying about COUNTS gave it a new way to lie
+        // about CAUSE.
+        if (blockers.isEmpty()) {
+            PathWeaver.LOG.warn("");
+            PathWeaver.LOG.warn("No mod was blamed for this. The families above were refused for a");
+            PathWeaver.LOG.warn("reason other than the compatibility scan -- most likely their");
+            PathWeaver.LOG.warn("evaluator could not be cloned on this JVM. Changing compatibilityTier");
+            PathWeaver.LOG.warn("or trustedMods will NOT help. Please report it with your log.");
+        } else {
+            PathWeaver.LOG.warn("");
+            PathWeaver.LOG.warn("This is what compatibilityTier=AUDITED gives you: unverified code");
+            PathWeaver.LOG.warn("is not run on worker threads. It is NOT the shipped default -- you");
+            PathWeaver.LOG.warn("opted into it. On a heavily-modded pack it usually means no benefit.");
+            PathWeaver.LOG.warn("");
+            PathWeaver.LOG.warn("Two ways to run anyway, both unsafe, both needing a restart:");
+            PathWeaver.LOG.warn("  - add some of the mods above to trustedMods, which accepts only");
+            PathWeaver.LOG.warn("    those and leaves the scan armed for anything you install later;");
+            PathWeaver.LOG.warn("  - or set compatibilityTier=UNSAFE, which waives every check there");
+            PathWeaver.LOG.warn("    is, now and in future. Back up your world either way.");
+            if (!trusted.isEmpty()) {
+                PathWeaver.LOG.warn("Already trusted: {}", String.join(", ", trusted));
+            }
         }
         PathWeaver.LOG.warn("Run /pathweaver status in game for the same answer at any time.");
         PathWeaver.LOG.warn("============================================================");

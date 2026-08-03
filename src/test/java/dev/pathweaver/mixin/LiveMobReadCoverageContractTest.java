@@ -183,7 +183,14 @@ class LiveMobReadCoverageContractTest {
                     @Override
                     public void visitMethodInsn(int opcode, String callOwner, String called,
                                                 String calledDescriptor, boolean isInterface) {
-                        if (callOwner.equals("net/minecraft/world/entity/Mob")
+                        // Any live-entity receiver, not the literal `Mob`. Keying on one owner
+                        // meant a future version that emitted the same call with a `LivingEntity`
+                        // or `Entity` static type would empty the declared side, leaving every
+                        // assertion in this class passing over a live attribute race. On 26.1.2
+                        // every such call does have owner `Mob`, so this changes nothing today and
+                        // closes a version boundary that this release line has now tripped over
+                        // three times.
+                        if (callOwner.startsWith("net/minecraft/world/entity/")
                                 && CONFINED_MOB_READS.contains(called)) {
                             found.add(new Site(owner, declaring,
                                 callOwner + "." + called + calledDescriptor));
@@ -263,8 +270,19 @@ class LiveMobReadCoverageContractTest {
                                     // A redirect that does not have to bind is not coverage. Mixin
                                     // silently skips an unmatched injector at require = 0, so without
                                     // this a typo'd target reads as protection.
-                                    if (require[0] != null && require[0] < 1) {
-                                        weakRequire.add(targetedClass[0] + " -> " + call[0]);
+                                    // ASM only visits values PRESENT in the annotation, so an
+                                    // omitted `require` arrives as null -- and treating null as
+                                    // safe was itself the hole. What makes omission safe today is
+                                    // `injectors.defaultRequire` in the shipped config; Mixin's own
+                                    // fallback is 0. Resolve it the way Mixin does instead of
+                                    // assuming the config still carries that block.
+                                    int effective = require[0] != null ? require[0] : defaultRequire();
+                                    if (effective < 1) {
+                                        weakRequire.add(targetedClass[0] + " -> " + call[0]
+                                            + (require[0] == null
+                                                ? " (require omitted; injectors.defaultRequire="
+                                                    + defaultRequire() + ")"
+                                                : " (require=" + require[0] + ")"));
                                     }
                                     for (String m : methods) {
                                         sites.add(new Site(targetedClass[0], m, call[0]));
@@ -299,6 +317,26 @@ class LiveMobReadCoverageContractTest {
         int paren = signature.indexOf('(', dot + 1);
         if (dot < 0 || paren < 0) return signature;
         return signature.substring(dot + 1, paren);
+    }
+
+    /**
+     * {@code injectors.defaultRequire} from the shipped config, or Mixin's own fallback of 0.
+     *
+     * <p>Read rather than assumed: the whole point of this contract is that a redirect Mixin may
+     * silently skip is not coverage, and whether it may skip depends on this field.
+     */
+    private static int defaultRequire() {
+        try (InputStream in = LiveMobReadCoverageContractTest.class
+                .getResourceAsStream("/pathweaver.mixins.json")) {
+            if (in == null) return 0;
+            JsonObject root = JsonParser.parseString(
+                new String(in.readAllBytes(), StandardCharsets.UTF_8)).getAsJsonObject();
+            JsonObject injectors = root.getAsJsonObject("injectors");
+            if (injectors == null || !injectors.has("defaultRequire")) return 0;
+            return injectors.get("defaultRequire").getAsInt();
+        } catch (IOException e) {
+            return 0;
+        }
     }
 
     private static Set<String> shippedMixinClassNames() throws IOException {

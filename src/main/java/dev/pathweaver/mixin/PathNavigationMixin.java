@@ -92,11 +92,38 @@ public abstract class PathNavigationMixin implements PWNavigation {
      * against the destination the caller had already abandoned — silently discarding a move its goal
      * was told succeeded.
      *
-     * <p>It is consumed in two places, because vanilla has two outcomes worth reaching and they need
-     * opposite treatment: the guard re-applies it only when no path is installed, and the
-     * {@code createPath} wrap re-applies it on the branch where vanilla genuinely recomputes. The
-     * case in between — a claim re-applied while a route to somewhere else is still installed — is
-     * the 0.5.1 bug, and neither site can produce it.
+     * <p>It is consumed in two places, and vanilla has FOUR exits, not two. Getting that count wrong
+     * is how 0.5.2 shipped a fix that covered one branch and how 0.5.1 shipped one that corrupted
+     * another, so the whole table is written out rather than summarised:
+     *
+     * <pre>{@code
+     *  16: ifle 73            cooldown not elapsed -- the injection never fires, nothing captured
+     *  20: canUpdatePath()    <- @Inject here
+     *  23: ifeq 73            false: hasDelayedRecomputation = true; path and targetPos untouched
+     *  26: getfield targetPos
+     *  30: ifnull 78          return; createPath is never called
+     *  33: path = null
+     *  48: createPath(...)    <- @WrapOperation here
+     * }</pre>
+     *
+     * <table>
+     *   <caption>What happens to a claim C</caption>
+     *   <tr><th>path at guard</th><th>canUpdatePath</th><th>outcome</th></tr>
+     *   <tr><td>null</td><td>false</td><td>guard applies C; delayed retry will search for it</td></tr>
+     *   <tr><td>null</td><td>true</td><td>guard applies C; wrap re-applies it; vanilla searches C</td></tr>
+     *   <tr><td>non-null</td><td>true</td><td>wrap applies C after vanilla nulls path at 33</td></tr>
+     *   <tr><td>non-null</td><td>false</td><td><b>C is dropped</b> — see below</td></tr>
+     * </table>
+     *
+     * <p>Every one of those leaves {@code targetPos} and {@code path} naming the same destination, so
+     * the 0.5.1 pairing cannot recur. But the last row is not complete, and saying otherwise here is
+     * what a reviewer caught: with a route already installed and vanilla declining to recompute, the
+     * claim is dropped and the mob keeps walking to the destination it abandoned until its goal
+     * re-issues. Re-applying C here is exactly the 0.5.1 bug, so the fix is not a condition change —
+     * it needs the request to carry its origin so the delayed recompute can pick the claim up, which
+     * is the same change DESIGN.md §13 needs and is deliberately not being rushed into a patch.
+     *
+     * <p>This is not a regression: 0.5.0 dropped the claim on all three of those branches.
      */
     @Unique private BlockPos pathweaver$recomputeTargetClaim;
 
@@ -478,9 +505,15 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // mob ran next on that thread -- which is the same class of bug as the race it fixes.
             Callable<Path> search = () -> {
                 if (!requestStartGate.awaitStart()) return null;
-                PathWeaverThread.setWorkerStepHeight(capturedStepHeight);
-                PathWeaverThread.setWorkerMaxFallDistance(capturedMaxFall);
+                // Both sets INSIDE the try. If the second throws -- only an OutOfMemoryError can,
+                // since it boxes an int and may allocate a ThreadLocalMap entry -- the first would
+                // otherwise stay published on a pooled thread that outlives this search, and the
+                // next mob scheduled onto it would inherit another mob's step height. That is
+                // precisely the failure both these javadocs spend paragraphs warning about, so it
+                // should not have a window at all.
                 try {
+                    PathWeaverThread.setWorkerStepHeight(capturedStepHeight);
+                    PathWeaverThread.setWorkerMaxFallDistance(capturedMaxFall);
                     return finder.findPath(region, theMob, targetsCopy, fRange, rRange, mult);
                 } finally {
                     PathWeaverThread.clearWorkerStepHeight();

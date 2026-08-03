@@ -173,11 +173,6 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         dev.pathweaver.PathWeaverRuntime.get().markOutcome(reason);
     }
 
-    /**
-     * Undo the optimistic targetPos written at dispatch. Every route that reaches here ended
-     * without installing a path, so leaving it in place would pair the new target with the old
-     * path and make vanilla's reuse short-circuit hand back a stale path forever.
-     */
     /** Install threw: clear any partially-applied path AND restore the pre-dispatch target. */
     private void abortFailedInstall(Registration registration) {
         try {
@@ -194,6 +189,11 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         }
     }
 
+    /**
+     * Undo the optimistic targetPos written at dispatch. Every route that reaches here ended
+     * without installing a path, so leaving it in place would pair the new target with the old
+     * path and make vanilla's reuse short-circuit hand back a stale path forever.
+     */
     private void rollbackOptimisticTarget(Registration registration) {
         try {
             registration.navigation().pathweaver$rollbackOptimisticTarget();

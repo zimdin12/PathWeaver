@@ -46,7 +46,7 @@ would prove no path reaches one at all.
 
 ## 1. Make AUDITED usable — the tier decision, answered with measurement
 
-Measured on the live 317-jar pack (`build/scan_pack.py`, an offline replica of the scanner):
+Measured on the live 317-jar pack (`tools/scan_pack.py`, an offline replica of the scanner):
 
 ```
 21 mods claim a watched pathfinding target -> each one alone denies all six families
@@ -137,6 +137,17 @@ per-generation deadline and, at minimum, a log line rather than silence.
 
 ---
 
+**2g. The recompute seam drops a claim on the fourth exit.** *(new, found by the v0.5 cumulative
+review)* With a route already installed and `canUpdatePath()` false, the supersede rolls `targetPos`
+back and nothing re-applies the claimed destination — so a mob whose goal was told "yes, going to C"
+keeps walking to the B it abandoned until the goal re-issues (10–20 ticks for `MeleeAttackGoal`;
+`RandomStrollGoal` calls `moveTo` once and would not re-issue at all). `targetPos` and `path` stay
+consistent, so this is not the 0.5.1 pairing and not a regression — 0.5.0 dropped the claim on all
+three branches. Re-applying it there IS the 0.5.1 bug, so the condition cannot simply be widened.
+The fix is the same one 2a needs: have the registration carry its origin so `hasDelayedRecomputation`
+can be re-armed against the claim. Deliberately not rushed into a patch — this seam has now been got
+wrong twice by changing it without a fixture that reaches the branch.
+
 **2f. `Mob.getPathfindingMalus()` is the largest live-mob read still crossing the thread boundary.**
 *(new, raised by the 0.5.2 review)* The worker reads the live `pathfindingMalus` map while
 `AmphibiousNodeEvaluator.prepare` can `Map.put` into it on the main thread — reachable because the
@@ -190,6 +201,46 @@ meaning "unreachable". Worth raising with Fabric/Mojang rather than working arou
 chase route is fully synchronous because that override never calls `super`. Wrapping its `createPath`
 call site would be a fifth arm. Small, self-contained, and honest to do because `/pathweaver mobs`
 counts those mobs as eligible.
+
+---
+
+## 4b. The reachability engine, and what measuring it taught
+
+Prototyped in `src/test/java/dev/pathweaver/reach/`. It walks the call graph from every method of the
+six admitted evaluators plus `PathFinder` and reports paths reaching `AttributeInstance.getValue`,
+`SynchedEntityData.get` or a `RandomSource`.
+
+**The naive version is useless, not merely imprecise, and that is the finding worth keeping.**
+Expanding virtual calls to every implementor lets `BlockGetter.getBlockEntity` reach
+`WorldGenRegion`, then `LevelChunk.setBlockEntity`, then block-entity load, explosions and the client
+renderer: 14,944 reachable methods, 3,174 classes, 1,220 "hazards", nearly all nonsense. An analysis
+that flags everything is worth exactly as much as one that flags nothing.
+
+Two constraints make it tractable, and both are facts about PathWeaver rather than guesses about
+Minecraft:
+
+- **`RECEIVER_UNIVERSE`** — a worker is handed a `PathNavigationRegion` and nothing else, because
+  dispatch constructs it. Constraining `BlockGetter`/`LevelReader`/`CollisionGetter` to that one
+  concrete type, and `Level`/`ServerLevel`/`LevelAccessor` to nothing, gives 1,897 methods and 25
+  hazards over 10,208 indexed classes in ~1s.
+- **`cutting(edges)`** — subtract the call edges the shipped mixins sever. 25 becomes 12. The contract
+  worth asserting is not "vanilla reaches no sink" but "vanilla reaches no sink *after confinement*".
+
+Of the 12 survivors: the `AttributeInstance` count is **zero**, which independently corroborates the
+hand inventory; `Creaking.getHomePos` is the read `SafetyGate` already documents and deliberately
+accepts; the `getPathfindingMalus` chain is 2f and is worse than 2f describes, because it reaches
+`SynchedEntityData` through `getControlledVehicle()` before it ever touches the `EnumMap`; and four
+19–22 hop `RandomSource` chains through `getCollisionShape → MovingPistonBlock.getBlockEntity` are
+almost certainly residual over-approximation and are **not** being reported as defects until triaged.
+
+**It found no unknown bug.** That is the honest result and it is still the argument for finishing it:
+it independently rediscovered every read a human had to reason about, without being told what to look
+for, which is precisely what the three hand-written lists failed to do.
+
+Remaining work before it can gate anything: triage the four long chains, decide the `SynchedEntityData`
+policy (it is a pure read of a non-volatile field — staleness, not corruption, unlike the attribute
+RMW), derive the cut set from `pathweaver.mixins.json` instead of hard-coding it, and only then wire
+it to `CONFINED_MOB_READS` and to the foreign-claim decision in item 1.
 
 ---
 

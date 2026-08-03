@@ -62,14 +62,23 @@ class PathNavigationRepathContractTest {
         setTargetPos(mixin, rolledBack);
 
         BlockPos[] searchedFor = new BlockPos[1];
+        BlockPos[] targetDuringCall = new BlockPos[1];
         Operation<Path> observe = args -> {
             searchedFor[0] = (BlockPos) args[1];
+            // Read it HERE, not after the call returns. `pathweaver$asyncCreatePath` runs inside
+            // this operation and reads `this.targetPos` for vanilla's reuse short-circuit
+            // (`targets.contains(targetPos)`) and for Feature B, so a write that lands after the
+            // call is a different behaviour that an after-the-fact assertion cannot see.
+            targetDuringCall[0] = targetPosUnchecked(mixin);
             return null;
         };
         wrapper().invoke(mixin, null, rolledBack, 7, observe);
 
         assertEquals(claimed, searchedFor[0],
             "vanilla must search for the claimed destination, not the pre-dispatch one");
+        assertEquals(claimed, targetDuringCall[0],
+            "targetPos must already name the claimed destination WHILE createPath runs, because "
+                + "the interceptor reads it for the reuse short-circuit inside that call");
         assertEquals(claimed, targetPos(mixin),
             "targetPos must name the destination actually searched for");
     }
@@ -102,6 +111,15 @@ class PathNavigationRepathContractTest {
         var f = PathNavigationMixin.class.getDeclaredField("targetPos");
         f.setAccessible(true);
         f.set(mixin, pos);
+    }
+
+    /** Same read, usable from inside a lambda where a checked exception cannot escape. */
+    private static BlockPos targetPosUnchecked(PathNavigationMixin mixin) {
+        try {
+            return targetPos(mixin);
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
     }
 
     private static BlockPos targetPos(PathNavigationMixin mixin) throws Exception {

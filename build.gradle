@@ -35,6 +35,12 @@ dependencies {
     compileOnly("com.terraformersmc:modmenu:${mod_menu_version}") { transitive false }
     testRuntimeOnly("com.terraformersmc:modmenu:${mod_menu_version}") { transitive false }
 
+    // Explicit, not transitive. The contract tests read Mixin annotations with ASM because those
+    // annotations are RetentionPolicy.CLASS and reflection cannot see them; ASM currently arrives
+    // via fabric-loader, so a loader bump could drop it off the test classpath and take the
+    // strongest safety contract in the suite with it.
+    testImplementation "org.ow2.asm:asm:9.7"
+    testImplementation "org.ow2.asm:asm-tree:9.7"
     testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"
     // Compile-time too, not just runtime: MinecraftBootstrapListener implements
     // LauncherSessionListener so Minecraft's registries boot before the first test class is loaded.
