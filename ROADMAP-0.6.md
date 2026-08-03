@@ -44,39 +44,58 @@ would prove no path reaches one at all.
 
 ---
 
-## 1. Reduce, don't add
+## 1. Make AUDITED usable — the tier decision, answered with measurement
 
-The strongest external criticism of 0.5.x, from an independent senior review, is that the safety
-machinery is large and mostly inert in the shipped configuration:
+Measured on the live 317-jar pack (`build/scan_pack.py`, an offline replica of the scanner):
 
-> "`AUDITED` is measured to leave 0 of 187 mob types eligible on a 222-mod pack. `UNSAFE` is the
-> default. So `compatibilityTier` has exactly one useful setting and one setting that turns the mod
-> off — which is what `enabled=false` already does."
+```
+21 mods claim a watched pathfinding target -> each one alone denies all six families
+   6 have a hand-written audit in PathWeaver
+  15 do not                                 <- so AUDITED can never allow anything
+```
 
-That is a fair reading and it deserves a real decision rather than a defence.
+That is the whole of the 0/187 result, and it will not be fixed by writing more audits: the next
+pack has a different fifteen. **Per-mod auditing does not scale, and shipping a tier that is
+structurally always-empty is worse than not shipping it.**
 
-**1a. Decide the fate of the tier system.** Either delete `compatibilityTier` and keep `enabled` +
-`trustedMods`, or keep the tier and accept that five per-mod audit classes
-(`FabricSwimCompatibility`, `AuditedMixinCompatibility`, `FarmersDelightStoveCompatibility`,
-`DiagonalBlocksCompatibility`, `LithiumPathfindingCompatibility` — roughly 2000 lines pinned to
-artifact hashes) are permanent maintenance debt that goes stale whenever those mods update.
+The finding that shows the gate is asking the wrong question: **9 of those 15 claim only
+`BlockBehaviour$BlockStateBase`** — FerriteCore, ModernFix, Tectonic, Balm, SereneSeasons,
+ScalableLux, ExpandAbility, terrain_slabs, vehicleupgrade. Not one is a pathfinding mod. They are
+ordinary block/performance mods being treated as pathfinding hazards because the gate asks *"did
+anyone touch this class?"* rather than *"does the injected code do anything unsafe on a worker?"*
 
-Argument for keeping: `trustedMods` only means something because the scan still runs, and the scan
-only means something because the audits define what "audited" is. Argument for deleting: the shipped
-default consults none of it.
+**1a. Replace hash pinning with runtime property verification.** *(supersedes the old "decide the
+fate of the tier")* Every audit currently pins an exact mod version and jar hash, so a Fabric API or
+Lithium update silently turns the mod off with no actionable error. The audit classes already read
+bytecode with ASM — the pin is applied *before* that work as a gate. Invert it: define the property
+that makes each shape safe and verify it against whatever bytes are loaded. Any version that still
+satisfies the property passes; one that does not fails loudly and specifically. The hashes become
+provenance in the log, not a precondition.
 
-**Not a code decision — a product one. Steven's call.**
+**1b. Narrow watching from class-level to method-level.** A mixin into `BlockStateBase` matters only
+if the method it injects is on a path a search actually calls. Resolve the injected method from the
+injector annotation and test membership in the set the worker can reach, instead of denying on the
+class. On this pack that alone should clear 9 of 15 without weakening anything real.
 
-**1b. `SHARED_PATHFINDING_TARGETS` is knowingly incomplete.** *(carried)* It lists
-`PathNavigationRegion` but not the rest of the block read — `LevelChunk`, `LevelChunkSection`,
-`PalettedContainer`, `BlockGetter`. On an ordinary performance pack that is not hypothetical: Lithium
-`@Overwrite`s `LevelChunk.getBlockState`, Lithium and FerriteCore both remove `PalettedContainer`'s
-threading detector, and ServerCore mixes into `BlockGetter` through a config PathWeaver already pins
-by hash — so the audit read the file and looked past the target.
+**1c. One verifier, two directions.** 1a and 1b need the same engine as item 0 — walk a method's call
+graph and decide whether it can reach a live-mutable sink. Item 0 points it at vanilla to find
+hazards PathWeaver must confine; this points it at foreign mixins to decide whether a claim is
+actually dangerous. Build it once.
 
-Measured: adding those classes makes `AUDITED` deny every family on any pack containing Lithium. That
-is the gate working correctly, and it is why this is a product decision rather than a bug fix. It
-interacts directly with 1a — if the tier goes, this question goes with it.
+**Honest ceiling, to be stated in the README rather than discovered by a user.** This cannot be a
+proof. It will be sound for the common shapes — an injector that reads only its arguments and
+immutable data — and must keep failing closed on reflection, indirect call sites, and anything
+reaching a live `Level` or entity. Mods that genuinely read live world state during node evaluation
+(stormiespiders is the standing example) *should* keep denying: that is the gate working. The
+realistic target is "most families eligible on an ordinary pack", not 187/187.
+
+**Still Steven's call, but now an informed one:** if 1a–1c do not get an ordinary pack to mostly-
+eligible, the tier should be deleted rather than shipped as decoration.
+
+**1d. `SHARED_PATHFINDING_TARGETS` is knowingly incomplete.** *(carried)* It lists
+`PathNavigationRegion` but not `LevelChunk`, `LevelChunkSection`, `PalettedContainer`, `BlockGetter`.
+Completing it makes the coarse gate deny even more, which is why it is blocked behind 1b — with
+method-level resolution the completion becomes affordable instead of fatal.
 
 ---
 
