@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.5.1 — The half-fixed race
+
+Hotfix for 0.5.0, published the same day. Two independent reviews of the shipped code found a
+blocker and a behavioural bug that eight earlier rounds had missed.
+
+### Fixed
+
+- **`Mob.maxUpStep()` was still being called from worker threads by four mob families.** 0.5.0's
+  `WalkNodeEvaluatorMixin` redirects the two calls inside `WalkNodeEvaluator` and its javadoc declares
+  the attribute race eliminated. It was eliminated for two of the six admitted families.
+  `AmphibiousNodeEvaluator` **overrides** `getNeighbors` and makes its own `maxUpStep()` call at
+  offset 72 of its own bytecode, and a mixin transforms only its target class — so axolotls, turtles,
+  drowned and frogs kept racing a read-modify-write on non-volatile attribute state from inside the
+  A* loop. `require = 1` passed on `WalkNodeEvaluator` and said nothing about the subclass.
+
+  Fixed by `AmphibiousNodeEvaluatorMixin`, and guarded generally: `LiveMobReadCoverageContractTest`
+  now scans every allowlisted evaluator for live-mob reads it *declares itself* and fails unless a
+  mixin exists for that exact class. A seventh evaluator, or Mojang moving a call into a subclass,
+  now breaks the build instead of going quiet.
+- **A recompute discarded a movement request the caller had been told succeeded.** The supersede in
+  `pathweaver$supersedeBeforeRecomputeGuard` rolls the optimistic `targetPos` back to its pre-dispatch
+  value — and vanilla reads `targetPos` two bytecodes later to decide where to recompute. So a mob
+  that had just accepted a move to A re-pathed to the destination it had abandoned, silently. The
+  claimed destination is now preserved across the supersede, pinned by the routing game test.
+- **The startup report printed a false family count.** `"PathWeaver is doing NOTHING on this pack.
+  All N movement families…"` printed the size of the *denial set*, not the number of families — and
+  `isDenied` matches with `isAssignableFrom`, so denying `WalkNodeEvaluator` alone blocks five
+  families while the set size says one. A pack denying only Swim announced that nothing was running
+  while five families dispatched. It now asks the gate per family and reports partial states.
+- The land-registry diagnostic counter is a `LongAdder` rather than an `AtomicLong`. Fabric injects
+  that lookup once per block position a search examines, so every worker in the pool was contending
+  on a single cache line thousands of times per search — costing worker throughput, which surfaces as
+  a worse install ratio.
+
+### Documentation
+
+- **DESIGN.md §9 carried a 0.2.2-era micro-benchmark reporting the mod as a net loss** (2.927 ms OFF
+  vs 3.012 ms ON). It described the *rejected* engine of §8, was labelled "not a user-real benchmark"
+  with "noisy pairs", and sat unchanged for three releases — long enough that a senior reviewer read
+  it as the project's performance evidence and concluded the mod does not pay off. Replaced with
+  measurements from the shipped jar, including what they do *not* establish. §1–§7 are now marked as a
+  0.2.x record; they still claimed flying and amphibious were ineligible.
+- `EvaluatorCloner`'s no-arg guard was commented as though it refused to rebuild a subclass carrying
+  its own state. It does not — the fallback reaches the same constructor — and it could not, since
+  every land evaluator declares scratch fields. The comment now describes what it actually does and
+  names the real limitation.
+- **New §13 records a known gap rather than patching it badly.** A recompute-originated dispatch
+  leaves the mob pathless for a tick, because vanilla nulls `path` before calling `createPath`.
+  Returning the pre-null path was implemented, and broke the exact-Swim witness: a non-null
+  `this.path` re-enables the vanilla reuse short-circuit and Feature B elision on a seam where neither
+  may fire. The correct fix needs the request to carry its origin, which belongs in a release that can
+  be soaked.
+
+### Measured
+
+`repathToleranceBlocks` swept at 0/1/4/8, two runs each, order-reversed: **no measurable effect on
+tick time.** A first pass appeared to show `1` as clearly worst, which turned out to be a single
+outlier run inflating a mean over n=2.
+
+268 unit tests, four server harnesses, the client harness, and an amphibious session run at
+`repathToleranceBlocks=1`: 28,648 dispatched, 28,625 installed, **0 cost drift over 288 checks**.
+
 ## 0.5.0 — Works on arrival
 
 ### Changed

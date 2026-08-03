@@ -208,6 +208,15 @@ public final class PathNavigationRoutingGameTest {
             check(helper, runtimeCounter("discarded") == baseDiscarded + 1,
                 "airborne recompute must account the superseded pre-change request");
 
+            // The supersede above rolls the optimistic target back to its pre-dispatch value, and
+            // vanilla reads targetPos two bytecodes after the injection point that did it. Without
+            // re-applying the claim, a recompute re-paths the mob to the destination it had already
+            // abandoned -- silently discarding a move whose moveTo returned true. Assert the claimed
+            // destination survived, since that is the value vanilla is about to act on.
+            check(helper, target.equals(targetPos(queryNav)),
+                "the destination the caller was told it got must survive a recompute supersede; "
+                    + "found " + targetPos(queryNav) + " instead of " + target);
+
             coordinateMob.setOnGround(true);
 
             // These mobs use WalkNodeEvaluator, whose prepare/done are onPathfindingStart/Done hooks

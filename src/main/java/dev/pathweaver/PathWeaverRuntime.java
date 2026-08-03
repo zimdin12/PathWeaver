@@ -207,8 +207,21 @@ public final class PathWeaverRuntime {
             return;
         }
         java.util.List<String> blockers = dev.pathweaver.gate.ForeignMixinScanner.blockingModIds();
-        int denied = dev.pathweaver.gate.SafetyGate.deniedBySafety.size();
-        int eligible = dev.pathweaver.gate.SafetyGate.allowlisted().size() - denied;
+        // Ask the gate per family rather than counting the denial set.
+        //
+        // The denial set holds CLASSES, not families, and SafetyGate.isDenied matches with
+        // isAssignableFrom -- so denying WalkNodeEvaluator alone actually blocks five families while
+        // the set size says one. The old code printed that size as "All {} movement families", which
+        // meant a pack denying only Swim announced "PathWeaver is doing NOTHING on this pack. All 1
+        // movement families are running on the server thread" while five families were dispatching
+        // and installing paths. Wrong in both directions, in the block most likely to be pasted into
+        // a bug report, from the method whose whole purpose is to stop this mod lying about itself.
+        int total = dev.pathweaver.gate.SafetyGate.allowlisted().size();
+        int eligible = 0;
+        for (Class<?> family : dev.pathweaver.gate.SafetyGate.allowlisted()) {
+            if (dev.pathweaver.gate.SafetyGate.isAllowed(family)) eligible++;
+        }
+        int denied = total - eligible;
 
         java.util.List<String> trusted = dev.pathweaver.gate.ForeignMixinScanner.trustedModIdsInUse();
         if (denied == 0) {
@@ -222,8 +235,14 @@ public final class PathWeaverRuntime {
             return;
         }
         PathWeaver.LOG.warn("======================== PathWeaver ========================");
-        PathWeaver.LOG.warn("PathWeaver is doing NOTHING on this pack. All {} movement", denied);
-        PathWeaver.LOG.warn("families are running on the server thread, exactly as vanilla.");
+        if (eligible == 0) {
+            PathWeaver.LOG.warn("PathWeaver is doing NOTHING on this pack. All {} movement", total);
+            PathWeaver.LOG.warn("families are running on the server thread, exactly as vanilla.");
+        } else {
+            PathWeaver.LOG.warn("PathWeaver is PARTLY active: {} of {} movement families can path",
+                eligible, total);
+            PathWeaver.LOG.warn("off-thread; the other {} run on the server thread as vanilla.", denied);
+        }
         if (!blockers.isEmpty()) {
             PathWeaver.LOG.warn("");
             PathWeaver.LOG.warn("{} mod(s) modify pathfinding code and have not been audited:",

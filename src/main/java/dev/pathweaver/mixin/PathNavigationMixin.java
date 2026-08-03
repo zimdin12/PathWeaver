@@ -80,6 +80,17 @@ public abstract class PathNavigationMixin implements PWNavigation {
     @Unique private int pathweaver$navigationRequestDepth;
     @Unique private long pathweaver$targetRevision;
     @Unique private boolean pathweaver$recomputeInvalidated;
+    /**
+     * The navigation's target and path as they stood when {@code recomputePath} was entered.
+     *
+     * <p>Both are captured at the {@code canUpdatePath()} injection point, which is upstream of two
+     * things vanilla does immediately afterwards: reading {@code targetPos} to decide where to
+     * recompute, and setting {@code path = null}. Superseding an in-flight request at that point
+     * rolls the optimistic {@code targetPos} back to the pre-dispatch value, so without this the
+     * recompute would run against the destination the caller had already abandoned — silently
+     * discarding a move its goal was told succeeded.
+     */
+    @Unique private BlockPos pathweaver$recomputeTargetClaim;
 
     @Inject(method = "moveTo(DDDD)Z", at = @At("HEAD"), require = 1, expect = 1)
     private void pathweaver$captureCoordinateSpeed(double x, double y, double z, double speed,
@@ -154,12 +165,22 @@ public abstract class PathNavigationMixin implements PWNavigation {
     )
     private void pathweaver$supersedeBeforeRecomputeGuard(
             org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+        // Captured before the supersede below, because that supersede rolls the optimistic target
+        // back, and vanilla reads targetPos two bytecodes after this injection point.
+        this.pathweaver$recomputeTargetClaim = this.targetPos;
         if (this.level instanceof ServerLevel) {
             EntityInstallSink sink = PathWeaverRuntime.get().entitySink();
             int entityId = this.mob.getId();
             this.pathweaver$recomputeRequestSpeed = sink.isRegistered(entityId, this)
                 ? this.pathweaver$pendingInstallSpeed : this.speedModifier;
             if (sink.supersede(entityId)) this.pathweaver$targetRevision++;
+            // Put the claimed destination back. The rollback restored the PRE-dispatch target, which
+            // is correct when a request is abandoned outright -- but here vanilla is about to
+            // recompute, and the destination it should recompute toward is the one the caller was
+            // told it got, not the one it moved on from. A no-op when nothing was in flight.
+            if (this.pathweaver$recomputeTargetClaim != null) {
+                this.targetPos = this.pathweaver$recomputeTargetClaim;
+            }
         }
     }
 
@@ -468,6 +489,13 @@ public abstract class PathNavigationMixin implements PWNavigation {
             sink.armEpilogue(submittedKey, freshEval, requestStartGate);
 
             // Keep moving on the current path this tick; the async result installs next tick.
+            //
+            // KNOWN GAP on the recompute seam, deliberately not patched here -- see DESIGN.md 13.
+            // `this.path` is already null when this runs, because vanilla nulls it immediately before
+            // calling createPath, so a recompute-originated dispatch leaves the mob pathless until
+            // the result drains. Returning the pre-null path was tried and is worse: a non-null
+            // this.path re-enables the vanilla reuse short-circuit and Feature B elision on a seam
+            // where neither may fire, which broke the exact-Swim witness in the routing game test.
             this.pathweaver$acceptedDeferred = true;
             cir.setReturnValue(this.path);
             authorizeSearch = true;

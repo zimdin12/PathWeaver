@@ -1,4 +1,10 @@
-# PathWeaver post-0.2.3 design status
+# PathWeaver design status
+
+**Sections 1–7 describe 0.2.x and are retained as a record of that design, not as current
+documentation.** They still say only Walk and Swim are candidates and that flying and amphibious are
+ineligible; that stopped being true in 0.4.0, when those evaluators' live-mob writes were found to
+live only in `prepare()`/`done()` and were hoisted onto the main thread. All six concrete vanilla
+evaluators dispatch today. Sections 8 onward are current.
 
 **Target:** Minecraft 26.1.2, Fabric Loader 0.19.3, Java 25
 
@@ -77,9 +83,47 @@ The engine is cancelled, not pending implementation. The only plausible future a
 
 ## 9. Performance evidence
 
-The retained four-pair test-only denial-cleared Spark benchmark proves only that the isolated engine path can offload server-thread A*: Walk evaluator inclusive samples fell 90.97% and `PathFinder` samples moved off the server thread. It is not a user-real benchmark under the current required dependency graph and does not prove net MSPT improvement: mean MSPT averaged 2.927 ms OFF and 3.012 ms ON with noisy pairs.
+**Superseded text warning.** This section used to carry a 0.2.2-era micro-benchmark reporting mean
+MSPT of 2.927 ms OFF against 3.012 ms ON — i.e. the mod costing more than it saved. That number was
+about the *rejected private snapshot engine* of §8, was explicitly labelled "not a user-real
+benchmark" with "noisy pairs", and measured a load so small that the difference was inside its own
+noise. It sat here unchanged for three releases, and in review a senior reader took it as the
+project's performance evidence and concluded from it that the mod does not pay off. That is a fair
+reading of what was written, and the fault is the document's.
 
-No load/scaling matrix is claimed for an engine that will not be built.
+Measured on the shipped 0.5.0 jar. 1024 zombies in a walled maze, all retargeted every 6 ticks, four
+paired runs interleaved and order-reversed so machine drift cannot fake a result:
+
+| | Synchronous | With PathWeaver |
+|---|---|---|
+| Tick interval, mean | 89.3–93.7 ms | **50.0–58.2 ms** |
+| Tick interval, p99 | 827–893 ms | **371–492 ms** |
+| Effective TPS | 10.7–11.2 | **17.2–20.0** |
+
+Mean **−40.9%**, p99 **−49.8%**. Compared against the same benchmark on 0.4.0 by ratio rather than raw
+figures — the host was ~7% slower on the later day, visible in the sync arm — 0.4.0 achieved −32.5% /
+−40.1%, so 0.5.0 is at least as good and measures better on both axes. With n=2 per arm and the
+0.5.0 async runs themselves spanning 50.0–58.2 ms, "no regression" is the confident claim and
+"improved" is the tentative one.
+
+Profiled with spark on an identical drive, only the master switch differing:
+
+| | Off | On |
+|---|---|---|
+| Server-thread time in `PathFinder.findPath` | **52.83%** of busy time | **0.58%** |
+| Server-thread busy time | 5,224 ms | 2,780 ms |
+| PathWeaver's own main-thread cost | — | 24 ms per 45 s |
+
+Two captures from a real 510-mod client two minutes apart, only the master switch differing, agree in
+direction: TPS 18.90 → 20.00, mean tick 27.29 → 20.38 ms, blocking `findPath` −33.4%. Background CPU
+differed between those two captures (57.1% vs 43.0%) in a way that favours the ON arm, so treat those
+magnitudes as approximate.
+
+**What this does and does not establish.** It establishes that under pathfinding-heavy load on a
+many-core host the mod removes most A* from the server thread and cuts tail latency substantially. It
+does not establish a benefit on a small host — see `PathWeaverRuntime.lowCoreAdvice`, which
+recommends turning the mod off at two cores or fewer — nor on a pack where little pathfinding
+happens, where the honest expectation is no measurable change either way.
 
 ## 10. Rejected async `MoveToTargetSink` (brain-driven walk targets)
 
@@ -193,3 +237,40 @@ Directions worth exploring, none committed:
 Any of these changes what the counters mean, so they need the accounting rework that landed in 0.5.0
 to stay honest, and they need the discard split described under finding `ARRIVED_STALE` — five causes
 currently share one label, and none of the above can be evaluated until they are told apart.
+
+## 13. Known gap: a recompute-originated dispatch leaves the mob pathless for a tick
+
+Two independent reviews found this from different angles, and the obvious fix is worse than the gap,
+so it is written down rather than patched.
+
+**The gap.** Vanilla's `recomputePath` sets `this.path = null` immediately before calling
+`createPath`. When PathWeaver intercepts that call and dispatches asynchronously, it returns
+`this.path` — which is already null — so `recomputePath` assigns null, stamps `timeLastRecompute`
+and clears `hasDelayedRecomputation`. Vanilla now believes the recompute succeeded and will not retry
+for 20 ticks, on a mob that has no path at all. Vanilla in that same situation still had its old
+path. The mob visibly stops until the result drains at end of tick, and if the result is superseded,
+arrives stale, or returns no path, it stands still for up to a second.
+
+This is distinct from §11, which is about a mob dispatching with *no* existing path. This one is a
+mob that *had* a path and lost it, and it is the more visible of the two.
+
+**Why the obvious fix is wrong.** Capturing the pre-null path at the `canUpdatePath()` injection
+point and returning that instead was implemented and tested. It fixes the stall and breaks something
+else: a non-null `this.path` re-enables both the vanilla reuse short-circuit
+(`path != null && !path.isDone() && targets.contains(targetPos)`) and Feature B's tolerance elision
+(guarded on `this.path != null`) on a seam where neither may fire. The exact-Swim witness in
+`PathNavigationRoutingGameTest` failed on it — 3 of 10 requests discarded rather than installed. The
+correct-looking change silently altered which searches ran.
+
+**What was fixed instead.** The narrower half of the same problem: the supersede in
+`pathweaver$supersedeBeforeRecomputeGuard` rolled the optimistic `targetPos` back to its pre-dispatch
+value, and vanilla reads `targetPos` two bytecodes later to decide where to recompute — so the mob
+re-pathed to a destination it had already abandoned, discarding a move whose `moveTo` had returned
+`true`. The claimed destination is now preserved across the supersede, and the routing game test
+asserts it.
+
+**The direction for a real fix** is to re-arm `hasDelayedRecomputation` when a recompute-originated
+request reaches a terminal state without installing, so vanilla's own retry takes over instead of
+waiting out its 20-tick cooldown. That needs the registration to carry its origin, which is a change
+to the request record rather than a one-line patch, and it belongs in a release that can be soaked
+rather than a hotfix.

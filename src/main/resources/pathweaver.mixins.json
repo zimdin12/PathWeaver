@@ -9,7 +9,8 @@
     "LandPathTypeRegistryMixin",
     "PathNavigationMixin",
     "FlyNodeEvaluatorMixin",
-    "WalkNodeEvaluatorMixin"
+    "WalkNodeEvaluatorMixin",
+    "AmphibiousNodeEvaluatorMixin"
   ],
   "client": [],
   "injectors": {

@@ -98,10 +98,22 @@ public final class EvaluatorCloner {
 
     private static Rebuilder resolveOrThrow(Class<?> type) {
         Constructor<?> noArgs = declaredConstructor(type);
-        // Only when nothing else needs configuring. A subclass that keeps its own state and also
-        // offers a convenience no-arg constructor would otherwise be rebuilt with that constructor's
-        // defaults rather than the mob's actual settings -- so the async search would use one
-        // configuration and every synchronous fallback another, for the same mob.
+        // A PREFERENCE, not a refusal, and the difference matters.
+        //
+        // This used to be commented as though it prevented a subclass with its own state from being
+        // rebuilt by a bare no-arg constructor. It does not: when no single-argument constructor
+        // resolves, the fallback below reaches the same no-arg constructor with this check skipped.
+        // It could not do otherwise -- every land evaluator declares scratch fields
+        // (pathTypesByPosCacheByMob, collisionCache, reusableNeighbors), so hasUnaccountedState is
+        // true for WalkNodeEvaluator itself and refusing would refuse the vanilla case.
+        //
+        // What it actually does is prefer a constructor that carries configuration over one that
+        // discards it, when both exist. The honest limitation is therefore: a third-party evaluator
+        // that configures itself AFTER construction, and offers no single-argument constructor
+        // exposing that state, is rebuilt with defaults -- the async search then uses a different
+        // cost model from the synchronous fallback, for the same mob. That only arises at the unsafe
+        // tier, which admits third-party evaluators, and it is the "quietly different answer" this
+        // class's javadoc calls the least likely failure to be noticed.
         if (noArgs != null && !hasUnaccountedState(type)) {
             return src -> (NodeEvaluator) noArgs.newInstance();
         }

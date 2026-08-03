@@ -2,6 +2,7 @@ package dev.pathweaver.gate;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Process-lifetime publication barrier for Fabric's land path-type provider registry.
@@ -85,7 +86,22 @@ public final class FabricLandPathRegistryLatch {
         private final AtomicBoolean providerRegistrationObserved = new AtomicBoolean();
         private final AtomicBoolean certifiedProviderObserved = new AtomicBoolean();
         private final AtomicBoolean auditedDynamicProviderObserved = new AtomicBoolean();
-        private final AtomicLong workerProviderLookupBypasses = new AtomicLong();
+        /**
+         * A {@link LongAdder}, not an {@code AtomicLong}, because this is incremented from inside the
+         * A* loop.
+         *
+         * <p>Fabric API injects the land-registry lookup into both
+         * {@code WalkNodeEvaluator.getPathTypeFromState} and
+         * {@code PathfindingContext.getPathTypeFromState} — once per block position a search
+         * examines, and not short-circuited by the per-search {@code PathTypeCache} on the Fabric
+         * side. Every worker in the pool therefore hit one shared cache line thousands of times per
+         * search. That does not cost TPS; it costs worker throughput, which surfaces as later results
+         * and a worse install ratio — the exact number the waste sampler diagnoses.
+         *
+         * <p>It is a diagnostic counter read once per run, so contended-write throughput matters and
+         * read cost does not, which is precisely what LongAdder is for.
+         */
+        private final LongAdder workerProviderLookupBypasses = new LongAdder();
         private volatile boolean hooksVerified;
 
         void beforeProviderMutation() {
@@ -105,11 +121,11 @@ public final class FabricLandPathRegistryLatch {
         }
 
         void recordWorkerProviderLookupBypass() {
-            workerProviderLookupBypasses.incrementAndGet();
+            workerProviderLookupBypasses.increment();
         }
 
         long workerProviderLookupBypasses() {
-            return workerProviderLookupBypasses.get();
+            return workerProviderLookupBypasses.sum();
         }
 
         void publishHooksVerified(boolean verified) {
