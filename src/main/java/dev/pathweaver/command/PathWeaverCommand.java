@@ -218,8 +218,9 @@ public final class PathWeaverCommand {
                 + "the per-type rules. Enable it and run this again.");
             return;
         }
-        if (!dev.pathweaver.gate.FabricLandPathRegistryLatch.allowsWalkDispatch()
-                && !cfg.bypassesCompatibilityScan()) {
+        // Shared with dispatch, the banner and status. This was a fourth open-coded copy of the
+        // same rule, which is exactly the drift the shared predicate exists to prevent.
+        if (dev.pathweaver.gate.SafetyGate.landRegistryBlocksWalkFamilies()) {
             say(source, "§6PathWeaver mobs");
             say(source, "  §ca mod registered an uncertified land path-type rule, so every "
                 + "walk-derived family runs on the server thread no matter what the per-type rules "

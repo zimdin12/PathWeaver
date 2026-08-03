@@ -166,9 +166,27 @@ public final class SafetyGate {
      * the gates actually do.
      */
     public static boolean canDispatch(Class<?> evaluatorClass) {
-        if (!isAllowed(evaluatorClass)) return false;
-        return !requiresEmptyLandRegistry(evaluatorClass)
-            || FabricLandPathRegistryLatch.allowsWalkDispatch();
+        return isAllowed(evaluatorClass)
+            && landRegistryPermits(evaluatorClass,
+                ActiveCompatibilityPolicy.bypassesScan(),
+                FabricLandPathRegistryLatch.allowsWalkDispatch());
+    }
+
+    /**
+     * The land-registry half of the decision, as a pure function so it can actually be tested.
+     *
+     * <p>Split out because the composite reads three pieces of process-wide state and so could only
+     * be exercised by whatever the surrounding test environment happened to be — which is how a
+     * predicate that gates both dispatch and every reporting site ended up with no coverage at all.
+     *
+     * @param bypassesScan the operator waived compatibility checking entirely
+     * @param latchAllows Fabric's land path-type registry is verified and still empty
+     */
+    static boolean landRegistryPermits(Class<?> evaluatorClass, boolean bypassesScan,
+                                       boolean latchAllows) {
+        boolean landDerived = net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class
+            .isAssignableFrom(evaluatorClass);
+        return !(landDerived && !bypassesScan) || latchAllows;
     }
 
     /**
@@ -181,5 +199,17 @@ public final class SafetyGate {
         return net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class
                 .isAssignableFrom(evaluatorClass)
             && !ActiveCompatibilityPolicy.bypassesScan();
+    }
+
+    /**
+     * True when the land registry is currently keeping every walk-derived family on the main thread.
+     *
+     * <p>Exists so {@code /pathweaver mobs} stops open-coding the rule. It was the fourth copy, and
+     * the whole point of the shared predicate is that a reporting site cannot answer a more
+     * optimistic question than dispatch asks.
+     */
+    public static boolean landRegistryBlocksWalkFamilies() {
+        return !ActiveCompatibilityPolicy.bypassesScan()
+            && !FabricLandPathRegistryLatch.allowsWalkDispatch();
     }
 }
