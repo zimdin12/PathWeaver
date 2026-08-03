@@ -118,6 +118,19 @@ per-generation deadline and, at minimum, a log line rather than silence.
 
 ---
 
+**2f. `Mob.getPathfindingMalus()` is the largest live-mob read still crossing the thread boundary.**
+*(new, raised by the 0.5.2 review)* The worker reads the live `pathfindingMalus` map while
+`AmphibiousNodeEvaluator.prepare` can `Map.put` into it on the main thread — reachable because the
+dispatch guard falls back to a *synchronous* search for a mob that already has an async one in
+flight. It is an `EnumMap` (array-backed, no rehash), so the realistic worst case is a stale float
+rather than structural corruption, and `DESIGN.md` already admits it in prose. That is exactly the
+problem: admitted in prose, pinned by no test. Either give it the confined-value treatment the step
+height and fall distance now have — capture the maluses the evaluators actually query at dispatch —
+or write down why an `EnumMap` slot race is acceptable and close it. Item 0's reachability pass will
+surface it anyway, so decide before it does.
+
+---
+
 ## 3. Stop producing discards
 
 *(Steven's stated priority for the next version. Detail in DESIGN.md §12.)*
@@ -163,9 +176,18 @@ counts those mobs as eligible.
 
 ## 5. Test and process debt
 
-**5a. Make the remaining hand-maintained sets self-checking.** `LiveMobReadCoverageContractTest`'s
-`MIXED_IN` set is maintained by hand and will rot the same way `SHARED_PATHFINDING_TARGETS` did.
-Derive it from the mixin config rather than restating it.
+**5a. Invert the confined-read list from allow to deny.** *(sharpened by the 0.5.2 review)*
+`CONFINED_MOB_READS` currently gates BOTH sides of the coverage comparison, so a one-line edit to the
+test's own literal can uncover a real hazard — and 0.5.3 had to add a pin for `getRandom` precisely
+because deleting it from the list and from its redirect shrank both sides symmetrically and stayed
+green. Collect *every* live-entity-receiver call the evaluators make, and require each to be either
+redirected or on an explicit `KNOWN_SAFE` list carrying a one-line reason. That is the same
+default-deny principle `SafetyGate` already applies to evaluator classes, applied to reads.
+
+**5a-ii. Widen the receiver filter beyond `Mob`.** The declared side matches only
+`net/minecraft/world/entity/Mob` receivers, so a hazard reached through any other type is invisible —
+`Creaking$HomeNodeEvaluator` calls `Creaking.getHomePos()` (`SynchedEntityData`-backed) and the
+contract says nothing about it.
 
 **5b. A benchmark arm per shipped default.** The tolerance sweep only happened because a reviewer
 noticed the maintainer's live config differed from the shipped one. Every config value the mod ships

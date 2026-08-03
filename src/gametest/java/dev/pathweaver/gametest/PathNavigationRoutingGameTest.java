@@ -210,17 +210,25 @@ public final class PathNavigationRoutingGameTest {
 
             // On THIS branch vanilla recomputes nothing: canUpdatePath() is false, so it jumps
             // straight to hasDelayedRecomputation without reading targetPos and without nulling
-            // path. targetPos must therefore be left as the rollback put it, paired with the path
-            // that is still installed. 0.5.1 re-applied the claimed destination here instead, which
-            // paired a new target with an old path and made vanilla's reuse short-circuit hand back
-            // the stale path indefinitely -- and this assertion originally pinned that as correct.
-            check(helper, queryNav.getPath() == null
-                    || targetPos(queryNav) == null
-                    || !target.equals(targetPos(queryNav))
-                    || queryNav.getPath().getTarget() == null,
-                "when vanilla does not recompute, targetPos must not be left naming a destination "
-                    + "the installed path does not lead to: targetPos=" + targetPos(queryNav)
-                    + " path=" + queryNav.getPath());
+            // path.
+            //
+            // The assertion that stood here through 0.5.2 was a four-way disjunction beginning with
+            // `getPath() == null`, and in this fixture the path IS null -- the async request was
+            // superseded before it could install. So it short-circuited on its first term and passed
+            // identically whether the claim was re-applied or not. It was mutation-tested in 0.5.3 by
+            // reintroducing 0.5.1's bug: all three game tests still passed. An assertion that cannot
+            // fail is worse than no assertion, because it is counted as coverage.
+            //
+            // So state the precondition explicitly, then assert the invariant that actually belongs
+            // to this case. With no path installed there is no route for a target to contradict, so
+            // the claimed destination must SURVIVE -- otherwise the mob is left with neither a path
+            // nor a target while its goal was already told the move succeeded.
+            check(helper, queryNav.getPath() == null,
+                "fixture precondition: the superseded request must not have installed a path here, "
+                    + "otherwise this arm is silently testing the other case");
+            check(helper, target.equals(targetPos(queryNav)),
+                "with no path installed, the claimed destination must survive the rollback: "
+                    + "targetPos=" + targetPos(queryNav) + " expected=" + target);
 
             coordinateMob.setOnGround(true);
 
@@ -304,6 +312,66 @@ public final class PathNavigationRoutingGameTest {
                                 .isRegistered(coordinateMob.getId()),
                             "eligible master OFF must not create a worker registration");
                         cfg.enabled = true;
+
+                        // ---- the recompute seam's OTHER branch: a mob that already has a path ----
+                        //
+                        // This is the case 0.5.1 actually corrupted, and until 0.5.3 no fixture had
+                        // ever produced it. The airborne arm above reaches the recompute with
+                        // `path == null`, so the invariant that matters here was asserted by a
+                        // disjunction that short-circuited on its first term and passed whether the
+                        // claim was re-applied or not -- mutation-proven by reintroducing the bug and
+                        // watching all three tests still pass.
+                        //
+                        // It lives inside this test rather than in its own, because game tests in a
+                        // batch run CONCURRENTLY against one global PathWeaverConfig: a second test
+                        // that set and restored maxResultAgeTicks pulled it back to 40 underneath
+                        // this one mid-flight and made it fail on staleness. One config owner.
+                        Mob seamMob = helper.spawnWithNoFreeWill(EntityType.ZOMBIE, 1, 2, 5);
+                        seamMob.setOnGround(true);
+                        PathNavigation seamNav = seamMob.getNavigation();
+                        BlockPos seamA = helper.absolutePos(new BlockPos(8, 2, 5));
+                        BlockPos seamB = helper.absolutePos(new BlockPos(8, 2, 0));
+
+                        // Install the route to A synchronously, so no extra polling is needed to get
+                        // a real path in place.
+                        cfg.enabled = false;
+                        check(helper, seamNav.moveTo(seamA.getX() + 0.5, seamA.getY(),
+                            seamA.getZ() + 0.5, 1.0), "seam fixture: the route to A must install");
+                        Path seamPathToA = seamNav.getPath();
+                        check(helper, seamPathToA != null,
+                            "seam fixture precondition: a live path to A must be installed");
+                        BlockPos seamTargetAfterInstall = targetPos(seamNav);
+
+                        // Now ask for B. This dispatches and optimistically writes targetPos = B.
+                        cfg.enabled = true;
+                        seamMob.setOnGround(true);
+                        check(helper, seamNav.moveTo(seamB.getX() + 0.5, seamB.getY(),
+                            seamB.getZ() + 0.5, 1.0),
+                            "seam fixture: the move to B must be accepted so a claim exists to roll back");
+                        check(helper, PathWeaverRuntime.get().entitySink().isRegistered(seamMob.getId()),
+                            "seam fixture: the move to B must be in flight, otherwise there is no "
+                                + "optimistic target for the recompute to roll back");
+
+                        seamMob.setOnGround(false);
+                        setTimeLastRecompute(seamNav, -100L);
+                        seamNav.recomputePath();
+
+                        check(helper, seamNav.getPath() == seamPathToA,
+                            "seam fixture precondition: vanilla must not have replaced the path on the "
+                                + "branch where canUpdatePath() is false -- otherwise this proves nothing");
+                        BlockPos seamAfter = targetPos(seamNav);
+                        check(helper, !seamB.equals(seamAfter),
+                            "with a route to A still installed, the claimed destination B must NOT be "
+                                + "re-applied: that pairing is what makes vanilla's reuse short-circuit "
+                                + "hand back the stale path indefinitely. targetPos=" + seamAfter
+                                + " claimed=" + seamB);
+                        check(helper, java.util.Objects.equals(seamAfter, seamTargetAfterInstall),
+                            "targetPos must be left exactly as the rollback put it: targetPos="
+                                + seamAfter + " expected=" + seamTargetAfterInstall);
+                        seamMob.setOnGround(true);
+                        seamMob.discard();
+                        // ---- end recompute seam arm ----
+
                         synchronized (SafetyGate.deniedBySafety) {
                             SafetyGate.deniedBySafety.clear();
                             SafetyGate.deniedBySafety.addAll(oldDenials);

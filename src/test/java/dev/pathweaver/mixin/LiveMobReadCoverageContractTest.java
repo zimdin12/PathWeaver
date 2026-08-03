@@ -61,6 +61,15 @@ class LiveMobReadCoverageContractTest {
     private static final Set<String> CONFINED_MOB_READS =
         Set.of("maxUpStep", "getRandom", "getMaxFallDistance");
 
+    /**
+     * A call site keyed on everything that decides whether a redirect actually applies.
+     *
+     * <p>{@code call} is the full {@code owner.name descriptor} of the invoked method, not the bare
+     * name. Keying on the name alone let a redirect whose {@code at.target} named the wrong owner
+     * ({@code LivingEntity} instead of {@code Mob}) or the wrong return descriptor be counted as
+     * covering a site it could never bind to — and paired with {@code require = 0} that is
+     * behaviourally identical to deleting the mixin, which this contract exists to catch.
+     */
     private record Site(String owner, String method, String call) {
         @Override public String toString() { return owner + "#" + method + " -> " + call; }
     }
@@ -109,20 +118,54 @@ class LiveMobReadCoverageContractTest {
             "no @Redirect sites were resolved from the shipped mixins");
     }
 
+    /**
+     * Every confined-read redirect must be required to bind.
+     *
+     * <p>Coverage is derived from annotations, so an injector Mixin is permitted to skip counts as
+     * protection while providing none. {@code require = 0} plus a target string with the wrong owner
+     * or descriptor is behaviourally identical to deleting the mixin — the exact failure the rest of
+     * this class exists to prevent, arriving through the one door it did not watch.
+     */
+    @Test
+    void everyConfinedReadRedirectMustBeRequiredToBind() throws Exception {
+        redirectedSitesFromShippedMixinConfig();
+        assertTrue(WEAK_REQUIRE.isEmpty(),
+            "these confined-read redirects can be silently skipped by Mixin, so they are not "
+                + "coverage: " + WEAK_REQUIRE);
+    }
+
     @Test
     void theAmphibiousEvaluatorDeclaresItsOwnStepHeightRead() throws IOException {
         assertTrue(confinedReadsDeclaredBy(
                 net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator.class).stream()
-                .anyMatch(s -> s.call().equals("maxUpStep")),
+                .anyMatch(s -> bareName(s.call()).equals("maxUpStep")),
             "AmphibiousNodeEvaluator is expected to declare its own maxUpStep() call — the fact that "
                 + "shipped broken in 0.5.0");
+    }
+
+    /**
+     * The third entry in {@link #CONFINED_MOB_READS} needs a pin like the other two.
+     *
+     * <p>Without one, deleting {@code "getRandom"} from the literal AND deleting
+     * {@code FlyNodeEvaluatorMixin}'s redirect shrinks both sides of the comparison symmetrically and
+     * every other test in this class stays green — the hazard is reintroduced and nothing objects.
+     * Each name in that set must be anchored to the real bytecode that makes it a hazard.
+     */
+    @Test
+    void flyDeclaresTheSharedRandomSourceReadFromItsStartNodeChoice() throws IOException {
+        assertTrue(confinedReadsDeclaredBy(
+                net.minecraft.world.level.pathfinder.FlyNodeEvaluator.class).stream()
+                .anyMatch(s -> bareName(s.call()).equals("getRandom")),
+            "FlyNodeEvaluator is expected to declare getRandom() — it draws its start candidate from "
+                + "the mob's shared RandomSource, which is the reason flying mobs pathed "
+                + "synchronously before it was confined");
     }
 
     @Test
     void walkDeclaresTheMaxFallDistanceReadReachedFromTheSearch() throws IOException {
         assertTrue(confinedReadsDeclaredBy(
                 net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class).stream()
-                .anyMatch(s -> s.call().equals("getMaxFallDistance")),
+                .anyMatch(s -> bareName(s.call()).equals("getMaxFallDistance")),
             "WalkNodeEvaluator is expected to declare getMaxFallDistance() — it shipped unredirected "
                 + "in both 0.5.0 and 0.5.1 and affects every admitted family");
     }
@@ -142,7 +185,8 @@ class LiveMobReadCoverageContractTest {
                                                 String calledDescriptor, boolean isInterface) {
                         if (callOwner.equals("net/minecraft/world/entity/Mob")
                                 && CONFINED_MOB_READS.contains(called)) {
-                            found.add(new Site(owner, declaring, called));
+                            found.add(new Site(owner, declaring,
+                                callOwner + "." + called + calledDescriptor));
                         }
                     }
                 };
@@ -159,8 +203,12 @@ class LiveMobReadCoverageContractTest {
      * make this whole contract compare a populated set against an empty one and pass only when the
      * production side was equally empty.
      */
+    /** Redirects that Mixin is allowed to skip silently. Populated by the scan below. */
+    private static final Set<String> WEAK_REQUIRE = new LinkedHashSet<>();
+
     private static Set<Site> redirectedSitesFromShippedMixinConfig() throws Exception {
         Set<Site> sites = new LinkedHashSet<>();
+        Set<String> weakRequire = WEAK_REQUIRE;
         for (String simple : shippedMixinClassNames()) {
             Class<?> mixin = Class.forName("dev.pathweaver.mixin." + simple);
             String[] targetedClass = new String[1];
@@ -187,7 +235,11 @@ class LiveMobReadCoverageContractTest {
                             if (!desc.equals(REDIRECT_DESC)) return null;
                             List<String> methods = new ArrayList<>();
                             String[] call = new String[1];
+                            Integer[] require = new Integer[1];
                             return new AnnotationVisitor(Opcodes.ASM9) {
+                                @Override public void visit(String key, Object v) {
+                                    if (key.equals("require")) require[0] = (Integer) v;
+                                }
                                 @Override public AnnotationVisitor visitArray(String key) {
                                     if (!key.equals("method")) return null;
                                     return new AnnotationVisitor(Opcodes.ASM9) {
@@ -200,12 +252,20 @@ class LiveMobReadCoverageContractTest {
                                     if (!key.equals("at")) return null;
                                     return new AnnotationVisitor(Opcodes.ASM9) {
                                         @Override public void visit(String k, Object v) {
-                                            if (k.equals("target")) call[0] = calledNameOf((String) v);
+                                            if (k.equals("target")) call[0] = signatureOf((String) v);
                                         }
                                     };
                                 }
                                 @Override public void visitEnd() {
-                                    if (call[0] == null || !CONFINED_MOB_READS.contains(call[0])) return;
+                                    if (call[0] == null || !CONFINED_MOB_READS.contains(bareName(call[0]))) {
+                                        return;
+                                    }
+                                    // A redirect that does not have to bind is not coverage. Mixin
+                                    // silently skips an unmatched injector at require = 0, so without
+                                    // this a typo'd target reads as protection.
+                                    if (require[0] != null && require[0] < 1) {
+                                        weakRequire.add(targetedClass[0] + " -> " + call[0]);
+                                    }
                                     for (String m : methods) {
                                         sites.add(new Site(targetedClass[0], m, call[0]));
                                     }
@@ -219,12 +279,26 @@ class LiveMobReadCoverageContractTest {
         return sites;
     }
 
-    /** {@code Lnet/minecraft/world/entity/Mob;maxUpStep()F} -> {@code maxUpStep}. */
-    private static String calledNameOf(String atTarget) {
+    /**
+     * {@code Lnet/minecraft/world/entity/Mob;maxUpStep()F} ->
+     * {@code net/minecraft/world/entity/Mob.maxUpStep()F}.
+     *
+     * <p>Owner and descriptor are kept. They are exactly what decides whether the injector binds.
+     */
+    private static String signatureOf(String atTarget) {
         int semi = atTarget.indexOf(';');
         int paren = atTarget.indexOf('(', semi + 1);
-        if (semi < 0 || paren < 0) return null;
-        return atTarget.substring(semi + 1, paren);
+        if (semi < 0 || paren < 0 || !atTarget.startsWith("L")) return null;
+        String owner = atTarget.substring(1, semi);
+        return owner + "." + atTarget.substring(semi + 1);
+    }
+
+    /** {@code net/minecraft/world/entity/Mob.maxUpStep()F} -> {@code maxUpStep}. */
+    private static String bareName(String signature) {
+        int dot = signature.lastIndexOf('.');
+        int paren = signature.indexOf('(', dot + 1);
+        if (dot < 0 || paren < 0) return signature;
+        return signature.substring(dot + 1, paren);
     }
 
     private static Set<String> shippedMixinClassNames() throws IOException {

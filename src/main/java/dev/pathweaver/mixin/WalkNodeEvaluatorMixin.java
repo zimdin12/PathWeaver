@@ -8,7 +8,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
- * Keeps the live mob's step-height attribute off the worker thread.
+ * Keeps the live mob's attribute-backed reads off the worker thread — step height and max fall
+ * distance, which reach the same sink by different routes.
  *
  * <p>{@code Mob.maxUpStep()} reads like an accessor and is not one. Verified against the 26.1.2
  * bytecode, it resolves to {@code LivingEntity.getAttributeValue(STEP_HEIGHT)} →

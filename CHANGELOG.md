@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.5.3 — The branch the fix did not reach
+
+Review of the shipped 0.5.2. It found that the release's headline fix was correct about the branch it
+covered, silent about a third one, and shipped with no test that executed it at all.
+
+### Fixed
+
+- **`recomputePath` has three exits, and 0.5.2 handled two.** The bytecode is
+  `canUpdatePath()` → `ifeq` (no recompute) → `getfield targetPos` → **`ifnull` → return** →
+  `path = null` → `createPath`. 0.5.2 moved the claimed-target re-apply into the wrap on
+  `createPath`, which is correct for the recomputing branch and unreachable on the `targetPos == null`
+  early return. When the pre-dispatch target was null — an idle mob handed its first destination
+  asynchronously — the supersede rolls `targetPos` back to null, vanilla returns without recomputing,
+  and the claim is dropped: the mob is left with neither a path nor a target while its goal was
+  already told the move succeeded. It re-issues after its own cooldown, so this is a stall of a few
+  ticks rather than 0.5.1's indefinite stale path, but it is a stall PathWeaver caused.
+  The re-apply is now also done at the guard, conditioned on `path == null` — which is not a
+  heuristic but the precondition of the 0.5.1 bug, negated: vanilla's reuse short-circuit is
+  `path != null && !path.isDone() && targets.contains(targetPos)`, so with no path installed there is
+  no route for a re-applied target to contradict.
+
+### Changed
+
+- **The recompute seam now has tests that can fail.** 0.5.2's replacement game-test assertion was a
+  four-way disjunction beginning with `getPath() == null`, and in that fixture the path *is* null — so
+  it short-circuited on its first term and passed whether the claim was re-applied or not. This was
+  proven by reintroducing 0.5.1's bug and watching all three game tests pass. Separately, no test in
+  the repo executed the wrap's re-apply at all: the claim field was left at its default `null`
+  everywhere, so the headline fix of 0.5.2 shipped with zero coverage.
+  There are now two arms — one per branch — and unit coverage of the wrap itself. All of it is
+  mutation-tested: reintroducing 0.5.1's behaviour fails the installed-path arm, and reverting to
+  0.5.2's fails the no-path arm.
+- **The coverage contract keys on full call signatures and requires redirects to bind.** It compared
+  bare method names, so a `@Redirect` whose target named the wrong owner (`LivingEntity` for `Mob`) or
+  the wrong descriptor counted as covering a site it could never bind to — and with `require = 0` that
+  is behaviourally identical to deleting the mixin, which is the failure this contract exists to
+  catch. Owner and descriptor are now compared, and every confined-read redirect must declare
+  `require >= 1`. Both forgeries are mutation-tested.
+- `FlyNodeEvaluator`'s `getRandom()` read gained the non-vacuity pin the other two hazards already
+  had; without it, deleting that name from the list *and* its redirect shrank both sides of the
+  comparison symmetrically and stayed green.
+
+### Not changed, and stated
+
+`Mob.getPathfindingMalus()` reads the live malus map from a worker while `AmphibiousNodeEvaluator`'s
+prepare can write it on the main thread — reachable because a synchronous search can run for a mob
+that already has an async one in flight. It is an `EnumMap`, so the worst case is a stale float rather
+than structural corruption, and it is already admitted in `DESIGN.md` as a live read. It is now an
+explicit 0.6 item rather than a sentence in prose: it is the largest live-mob read still crossing the
+thread boundary and no test pins it.
+
+274 unit tests, four server harnesses, the client harness.
+
 ## 0.5.2 — What the guard did not cover
 
 Review of the 0.5.1 hotfix. It found that the hotfix was incomplete, that one of its fixes was a

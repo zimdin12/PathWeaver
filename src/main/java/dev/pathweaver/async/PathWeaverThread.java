@@ -93,6 +93,10 @@ public final class PathWeaverThread {
      * all six admitted families hit it, and it fires precisely when a mob has a target — hostile mobs
      * chasing a player, which is when async pathfinding is busiest. The corrupted value is the mob's
      * cached MAX_HEALTH.
+     *
+     * <p>Precisely: that describes {@code Mob.getMaxFallDistance()}. {@code Creeper} overrides it and
+     * reads only {@code getHealth()} ({@code SynchedEntityData}, no attribute). The redirect is on the
+     * call site rather than the implementation, so it covers both regardless.
      */
     private static final ThreadLocal<Integer> WORKER_MAX_FALL = new ThreadLocal<>();
 
@@ -163,6 +167,15 @@ public final class PathWeaverThread {
         WORKER_STEP_HEIGHT.remove();
     }
 
+    /**
+     * Publish the max fall distance this search must use, captured on the main thread at dispatch.
+     *
+     * <p>Same contract as {@link #setWorkerStepHeight(float)} and it matters for the same reason:
+     * call from the worker, inside the search, paired with {@link #clearWorkerMaxFallDistance()} in a
+     * finally. Pooled threads outlive a search, so a value left behind would be silently reused by
+     * the next mob to run on that thread — a wrong fall tolerance for an unrelated mob, with nothing
+     * in any log to connect it to pathfinding.
+     */
     public static void setWorkerMaxFallDistance(int maxFall) {
         WORKER_MAX_FALL.set(maxFall);
     }

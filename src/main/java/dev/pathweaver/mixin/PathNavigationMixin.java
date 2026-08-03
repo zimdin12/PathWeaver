@@ -81,14 +81,22 @@ public abstract class PathNavigationMixin implements PWNavigation {
     @Unique private long pathweaver$targetRevision;
     @Unique private boolean pathweaver$recomputeInvalidated;
     /**
-     * The navigation's target and path as they stood when {@code recomputePath} was entered.
+     * The navigation's target as it stood when {@code recomputePath} was entered.
      *
-     * <p>Both are captured at the {@code canUpdatePath()} injection point, which is upstream of two
-     * things vanilla does immediately afterwards: reading {@code targetPos} to decide where to
-     * recompute, and setting {@code path = null}. Superseding an in-flight request at that point
-     * rolls the optimistic {@code targetPos} back to the pre-dispatch value, so without this the
-     * recompute would run against the destination the caller had already abandoned — silently
-     * discarding a move its goal was told succeeded.
+     * <p>Only the target. An earlier version of this paragraph claimed the path was captured here
+     * too; it never was, and the sentence outlived two rewrites of the code it described.
+     *
+     * <p>Captured at the {@code canUpdatePath()} injection point, which is upstream of everything
+     * vanilla does next. Superseding an in-flight request there rolls the optimistic
+     * {@code targetPos} back to the pre-dispatch value, so without this the recompute would run
+     * against the destination the caller had already abandoned — silently discarding a move its goal
+     * was told succeeded.
+     *
+     * <p>It is consumed in two places, because vanilla has two outcomes worth reaching and they need
+     * opposite treatment: the guard re-applies it only when no path is installed, and the
+     * {@code createPath} wrap re-applies it on the branch where vanilla genuinely recomputes. The
+     * case in between — a claim re-applied while a route to somewhere else is still installed — is
+     * the 0.5.1 bug, and neither site can produce it.
      */
     @Unique private BlockPos pathweaver$recomputeTargetClaim;
 
@@ -175,6 +183,32 @@ public abstract class PathNavigationMixin implements PWNavigation {
                 ? this.pathweaver$pendingInstallSpeed : this.speedModifier;
             if (sink.supersede(entityId)) this.pathweaver$targetRevision++;
         }
+        // Vanilla has THREE exits from here, not two, and 0.5.2 only got two of them right.
+        //
+        //    20: canUpdatePath()      <- this injection point
+        //    23: ifeq 73              <- false: hasDelayedRecomputation = true, path untouched
+        //    26: getfield targetPos
+        //    30: ifnull 78            <- RETURN. createPath is never called.
+        //    33: path = null
+        //    48: createPath(...)      <- the @WrapOperation below
+        //
+        // The supersede above rolls the optimistic target back, so when the pre-dispatch target was
+        // null -- an idle mob that was handed its first destination asynchronously -- targetPos is
+        // null again by offset 26 and vanilla returns at 78. The wrap never runs, the claim is
+        // dropped, and the mob is left with neither a path nor a target while its goal was already
+        // told the move succeeded. It re-issues after its own cooldown, so this is a stall of a few
+        // ticks rather than the indefinite stale path 0.5.1 produced, but it is a stall PathWeaver
+        // caused and vanilla would not have.
+        //
+        // Re-applying here is what 0.5.1 did and it is what made `targetPos` and `path` describe
+        // different destinations. The hazard needs BOTH halves of that pairing: vanilla's reuse
+        // short-circuit is `path != null && !path.isDone() && targets.contains(targetPos)`. With no
+        // path installed there is no route for a re-applied target to contradict, so the guard below
+        // is not a heuristic -- it is the precondition of the bug, negated. `path` is still whatever
+        // was installed at this point; vanilla does not clear it until offset 33.
+        if (this.pathweaver$recomputeTargetClaim != null && this.path == null) {
+            this.targetPos = this.pathweaver$recomputeTargetClaim;
+        }
     }
 
     @WrapOperation(
@@ -196,8 +230,10 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // (path != null && !path.isDone() && targets.contains(targetPos)) and is handed the stale
         // path, self-sustainingly, until that path completes or the navigation is stopped.
         //
-        // This wrap runs only where vanilla actually recomputes, which is the one place the claim is
-        // both needed and safe -- `path` is null by the time it is consulted.
+        // This wrap runs only where vanilla actually recomputes, and `path` is null by the time it is
+        // consulted (offset 33), so the pairing hazard cannot exist here. It does NOT cover the
+        // targetPos == null early return at offset 30, which never reaches createPath at all -- the
+        // guard above handles that one, under the condition that makes it safe.
         if (this.pathweaver$recomputeTargetClaim != null) {
             this.targetPos = this.pathweaver$recomputeTargetClaim;
             target = this.pathweaver$recomputeTargetClaim;
