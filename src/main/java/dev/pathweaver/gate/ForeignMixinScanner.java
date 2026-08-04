@@ -171,7 +171,6 @@ public final class ForeignMixinScanner {
             && key.mixinClass().equals(mixinClass) && key.target().equals(target));
     }
 
-    /** Pure, testable: map fully-qualified mixin target names to the allowlisted classes they hit. */
     /**
      * The scan could not complete, so nothing can be waived.
      *
@@ -182,6 +181,8 @@ public final class ForeignMixinScanner {
     public static boolean scanFailed() {
         return lastScanReport().decision().failed() > 0;
     }
+
+    /** Pure, testable: map fully-qualified mixin target names to the allowlisted classes they hit. */
 
     public static Set<Class<?>> targetsTouchingAllowlist(Collection<String> targetClassNames) {
         Set<Class<?>> hits = new HashSet<>();

@@ -35,17 +35,19 @@ isolation were all attacked and held.
   Everything from the attribute captures through the evaluator clone runs before the request reaches
   the sink, and the catch only recorded an outcome if it had. A deterministic failure there meant the
   mod did nothing, forever, while reporting itself as working. It is now counted whether or not
-  registration happened — as `SETUP_FAILED` when the request had registered and
-  `SETUP_FAILED_PRE_DISPATCH` when it had not, because the second never reached a worker and counting
-  it as waste reported `dispatched=0 ... discarded=41028` for searches vanilla had already run — and
-  logged once per server session. The reachable trigger is a
+  registration happened — as `SETUP_FAILED` when the request had already
+  been counted as dispatched and `SETUP_FAILED_PRE_DISPATCH` when it had not. The split is at
+  `markDispatched`, not at registration — those are different events, and choosing on the wrong one
+  left a single outcome that was simultaneously "wasted dispatched work" and "not part of
+  dispatched". Logged once per server session. The reachable trigger is a
   third-party evaluator whose no-argument constructor throws when invoked outside its own
   construction path: `canClone` proves a constructor resolves, never that it runs.
 - **The coverage contract treated an omitted `require` as safe.** ASM only visits values that are
   present, so `require` arrived as null whenever it was left out — and null was read as fine. What
   makes omission safe is `injectors.defaultRequire: 1` in the shipped config, which the test read for
-  the mixin list and never consulted for this. It now resolves `require` the way Mixin does, and that
-  is mutation-tested in both directions.
+  the mixin list and never consulted for this. It now resolves `require` the way Mixin does. (That was
+  verified by hand-mutating the config both ways during development; it is not pinned by a shipped
+  test, and saying otherwise here would have been a claim the repo does not support.)
 - **That contract's declared side was gated on a literal `Mob` receiver.** Every entity call in all six
   evaluators does have owner `Mob` on 26.1.2 — verified — but a version emitting the same call with a
   `LivingEntity` static type would have emptied the declared side and left every assertion in the
@@ -86,7 +88,7 @@ isolation were all attacked and held.
   of those 15 touch only `BlockBehaviour$BlockStateBase` and are not pathfinding mods at all.
 - ASM is now an explicit test dependency instead of arriving through `fabric-loader`.
 
-292 unit tests, four server harnesses, the client harness, and a live two-server A/B on a real
+296 unit tests, four server harnesses, the client harness, and a live two-server A/B on a real
 Fabric server confirming the reported cause matches what dispatch actually does.
 
 ## 0.5.3 — The branch the fix did not reach

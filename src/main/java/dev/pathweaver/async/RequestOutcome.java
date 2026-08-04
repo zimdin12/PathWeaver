@@ -42,7 +42,7 @@ public enum RequestOutcome {
      */
     POOL_SATURATED("admission refused"),
 
-    /** Dispatch setup threw after the request registered. Vanilla ran the search synchronously. */
+    /** Dispatch setup threw after the request was counted as dispatched. Vanilla ran it synchronously. */
     SETUP_FAILED("dispatch setup failed"),
 
     /**
@@ -106,9 +106,13 @@ public enum RequestOutcome {
         // 289 tests passed while the new row printed a percentage of a total it is not part of.
         // javac refuses to compile this when a constant is added, which is what forcing actually is.
         return switch (this) {
-            case POOL_SATURATED, SETUP_FAILED, SETUP_FAILED_PRE_DISPATCH -> false;
-            case INSTALLED, NO_PATH, SUPERSEDED, NAVIGATION_STOPPED, ARRIVED_STALE, SEARCH_FAILED,
-                 HANDOFF_FAILED, INSTALL_FAILED, SERVER_RESET -> true;
+            case POOL_SATURATED, SETUP_FAILED_PRE_DISPATCH -> false;
+            // SETUP_FAILED is chosen only when dispatchCounted is true, i.e. strictly after
+            // markDispatched() -- so it is part of the dispatched total by construction. Putting it
+            // on the false arm reproduced, inside this enum, the exact symptom the split was written
+            // to remove: a row printed with no percentage while being 100% of them.
+            case SETUP_FAILED, INSTALLED, NO_PATH, SUPERSEDED, NAVIGATION_STOPPED, ARRIVED_STALE,
+                 SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED, SERVER_RESET -> true;
         };
     }
 

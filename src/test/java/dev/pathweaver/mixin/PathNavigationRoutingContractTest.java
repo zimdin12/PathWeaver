@@ -100,6 +100,19 @@ class PathNavigationRoutingContractTest {
         int[] safetyGate = {-1};
         int[] mobOriginGate = {-1};
         int[] regionConstruction = {-1};
+        // The land-registry gate. Six mutations at this call site survived the whole suite,
+        // including deleting the gate outright -- because every test asserted the PREDICATE and
+        // nothing asserted that dispatch calls it. This walks the shipped bytecode of the dispatch
+        // method itself, which is the only thing that cannot be true one hop away.
+        int[] landGate = {-1};
+        int[] latchRead = {-1};
+        boolean[] passesRealBypassFlag = {false};
+        int[] registerCall = {-1};
+        // Not just "register is called after the gate" -- that still passes when the gate's value is
+        // replaced by a constant. The last thing pushed before the call must be a LOCAL VARIABLE
+        // load, i.e. the decision itself, not ICONST_0.
+        boolean[] lastPushWasVarLoad = {false};
+        boolean[] registerGetsTheDecision = {false};
         new ClassReader(classBytes(PathNavigationMixin.class)).accept(new ClassVisitor(Opcodes.ASM9) {
             @Override public MethodVisitor visitMethod(int access, String name, String descriptor,
                                                        String signature, String[] exceptions) {
@@ -129,6 +142,26 @@ class PathNavigationRoutingContractTest {
                                 && method.equals("isAllowed")) {
                             mobOriginGate[0] = instruction[0];
                         }
+                        if (owner.equals("dev/pathweaver/gate/SafetyGate")
+                                && method.equals("requiresEmptyLandRegistry")) {
+                            landGate[0] = instruction[0];
+                        }
+                        if (owner.equals("dev/pathweaver/gate/FabricLandPathRegistryLatch")
+                                && method.equals("allowsWalkDispatch")) {
+                            latchRead[0] = instruction[0];
+                        }
+                        // The bypass argument must come from config, not a hard-coded constant --
+                        // passing `true` there disables the gate just as effectively as deleting it.
+                        if (owner.equals("dev/pathweaver/config/PathWeaverConfig")
+                                && method.equals("bypassesCompatibilityScan")) {
+                            passesRealBypassFlag[0] = true;
+                        }
+                        if (owner.equals("dev/pathweaver/async/EntityInstallSink")
+                                && method.equals("register")) {
+                            registerCall[0] = instruction[0];
+                            registerGetsTheDecision[0] = lastPushWasVarLoad[0];
+                        }
+                        lastPushWasVarLoad[0] = false;
                         next();
                     }
                     @Override public void visitTypeInsn(int opcode, String type) {
@@ -138,9 +171,15 @@ class PathNavigationRoutingContractTest {
                         }
                         next();
                     }
-                    @Override public void visitInsn(int opcode) { next(); }
+                    @Override public void visitInsn(int opcode) {
+                        lastPushWasVarLoad[0] = false;
+                        next();
+                    }
                     @Override public void visitJumpInsn(int opcode, org.objectweb.asm.Label label) { next(); }
-                    @Override public void visitVarInsn(int opcode, int varIndex) { next(); }
+                    @Override public void visitVarInsn(int opcode, int varIndex) {
+                        lastPushWasVarLoad[0] = opcode == Opcodes.ILOAD;
+                        next();
+                    }
                 };
             }
         }, 0);
@@ -149,6 +188,27 @@ class PathNavigationRoutingContractTest {
         assertTrue(safetyGate[0] > configRead[0], "evaluator family safety must run before mob origin");
         assertTrue(mobOriginGate[0] > safetyGate[0], "missing concrete-mob origin gate");
         assertTrue(regionConstruction[0] > mobOriginGate[0], "mob origin must fail closed before region capture");
+        assertTrue(landGate[0] >= 0,
+            "dispatch must consult SafetyGate.requiresEmptyLandRegistry -- without this assertion, "
+                + "deleting the land-registry gate outright leaves the whole unit suite green");
+        assertTrue(latchRead[0] >= 0,
+            "dispatch must consult FabricLandPathRegistryLatch.allowsWalkDispatch");
+        assertTrue(passesRealBypassFlag[0],
+            "the bypass argument must be read from config, not passed as a constant");
+        // Real order, read off the bytecode rather than assumed: family safety -> land registry ->
+        // mob origin -> region. My first version of this assertion had the last two swapped and the
+        // test correctly rejected it.
+        assertTrue(landGate[0] > safetyGate[0] && landGate[0] < mobOriginGate[0],
+            "the land-registry gate must run after the evaluator-family check and before the mob "
+                + "origin gate");
+        assertTrue(landGate[0] < regionConstruction[0],
+            "a land-registry refusal must cost no region capture");
+        assertTrue(registerCall[0] > landGate[0],
+            "the land-registry decision must be made before the request registers");
+        assertTrue(registerGetsTheDecision[0],
+            "sink.register must be handed the land-registry DECISION, not a constant -- it arms the "
+                + "install-time re-check, and passing false there makes a stale registry "
+                + "unobservable while every other assertion still passes");
 
         PathNavigationMixin mixin = new TestNavigationMixin();
         var depth = PathNavigationMixin.class.getDeclaredField("pathweaver$navigationRequestDepth");

@@ -138,6 +138,27 @@ public final class PathWeaverCommand {
     }
 
     /** The families dispatch would still refuse even with nothing denied — see SafetyGate.canDispatch. */
+    /**
+     * Families refused BY a denial through inheritance, so the report can name them.
+     *
+     * <p>{@code isDenied} matches with {@code isAssignableFrom}, so denying {@code WalkNodeEvaluator}
+     * alone refuses five families while the denied list names one. Round three reported the other
+     * four as "a different reason" and invented a cause for them; round four subtracted them and made
+     * them vanish, so status implied one family refused while the banner said five. Both were wrong in
+     * opposite directions. They are neither invented nor hidden now: they are named, attributed to the
+     * denial that actually causes them.
+     */
+    static List<String> familiesRefusedByInheritance(java.util.Collection<Class<?>> deniedFamilies) {
+        List<String> names = new ArrayList<>();
+        for (Class<?> family : dev.pathweaver.gate.SafetyGate.allowlisted()) {
+            if (deniedFamilies.contains(family)) continue;
+            for (Class<?> denied : deniedFamilies) {
+                if (denied.isAssignableFrom(family)) { names.add(family.getSimpleName()); break; }
+            }
+        }
+        return names;
+    }
+
     static List<String> undispatchableFamilyNames(java.util.Collection<Class<?>> deniedFamilies) {
         List<String> names = new ArrayList<>();
         for (Class<?> family : dev.pathweaver.gate.SafetyGate.allowlisted()) {
@@ -221,8 +242,14 @@ public final class PathWeaverCommand {
                 "  §7That is what Unsafe means: uninspected mod code is running on worker threads. "
                     + "Keep backups."), extra);
         }
+        List<String> inherited = familiesRefusedByInheritance(deniedFamilies);
+        int refused = denied.size() + inherited.size();
         return withExtra(List.of(
-            "  §cdenied: " + String.join(", ", denied) + " — those searches run on the server thread",
+            "  §cdenied: " + String.join(", ", denied)
+                + (inherited.isEmpty() ? "" : " (and " + String.join(", ", inherited)
+                    + " by inheritance)")
+                + " — " + refused + " of " + dev.pathweaver.gate.SafetyGate.allowlisted().size()
+                + " families run on the server thread",
             "  §7raise the compatibility risk setting, or check the startup log for the mods "
                 + "responsible"), extra);
     }

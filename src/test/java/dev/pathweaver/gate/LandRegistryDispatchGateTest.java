@@ -132,4 +132,45 @@ class LandRegistryDispatchGateTest {
         assertTrue(SafetyGate.canDispatch(SwimNodeEvaluator.class, true, false, false),
             "Swim needs only the safety gate");
     }
+
+    /**
+     * Denial is inherited, and nothing proved it.
+     *
+     * <p>{@code deniedBySafety} initialises to all six families, so in a unit environment
+     * {@code isDenied} is true for everything regardless of how it matches — which made the
+     * {@code isAssignableFrom} closure unfalsifiable. Narrowing it to identity survived the whole
+     * suite. It matters because {@code /pathweaver status} reasons about that closure to decide which
+     * refusals to attribute to which denial.
+     */
+    @Test
+    void denyingOneEvaluatorDeniesEverythingThatInheritsFromIt() {
+        java.util.Set<Class<?>> restore;
+        synchronized (SafetyGate.deniedBySafety) {
+            restore = java.util.Set.copyOf(SafetyGate.deniedBySafety);
+        }
+        try {
+            SafetyGate.replaceDenials(java.util.Set.of(WalkNodeEvaluator.class));
+            assertFalse(SafetyGate.isAllowed(FlyNodeEvaluator.class),
+                "Fly extends Walk, so denying Walk must deny Fly");
+            assertFalse(SafetyGate.isAllowed(AmphibiousNodeEvaluator.class),
+                "Amphibious extends Walk, so denying Walk must deny Amphibious");
+        } finally {
+            SafetyGate.replaceDenials(restore);
+        }
+    }
+
+    /**
+     * The predicate every cause message reads. Neutering it survived the whole suite, and every
+     * diagnostic would then blame a clone failure for a land-registry refusal.
+     */
+    @Test
+    void theLatchPredicateFollowsTheLatch() {
+        FabricLandPathRegistryLatch.publishHooksVerified(false);
+        assertTrue(SafetyGate.landRegistryBlocksWalkFamilies(),
+            "unverified hooks must read as the land registry blocking walk families");
+        FabricLandPathRegistryLatch.publishHooksVerified(true);
+        assertFalse(SafetyGate.landRegistryBlocksWalkFamilies(),
+            "verified hooks with no provider registered must not read as blocking");
+        FabricLandPathRegistryLatch.publishHooksVerified(false);
+    }
 }

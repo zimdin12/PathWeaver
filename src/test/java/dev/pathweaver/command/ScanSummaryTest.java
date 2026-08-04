@@ -158,4 +158,43 @@ class ScanSummaryTest {
             }
         }
     }
+
+    /**
+     * The count status reports must equal the count the banner reports. Nothing asserted that.
+     *
+     * <p>Three rounds fought over this line. Round three named the inherited refusals and invented a
+     * cause for them; round four subtracted them and they vanished, so on the DEFAULT AUDITED shape —
+     * Fabric API denies exactly {@code WalkNodeEvaluator}, which refuses five families by inheritance
+     * — status implied one family refused while the banner said five. A count parity assertion would
+     * have caught both versions.
+     */
+    @Test
+    void statusReportsTheSameNumberOfRefusedFamiliesAsTheBanner() {
+        Set<Class<?>> denied = Set.of(net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class);
+        int bannerRefused = 0;
+        for (Class<?> family : dev.pathweaver.gate.SafetyGate.allowlisted()) {
+            for (Class<?> d : denied) {
+                if (d.isAssignableFrom(family)) { bannerRefused++; break; }
+            }
+        }
+        List<String> inherited = PathWeaverCommand.familiesRefusedByInheritance(denied);
+        int statusRefused = denied.size() + inherited.size();
+        assertEquals(bannerRefused, statusRefused,
+            "status counted " + statusRefused + " refused families, the banner counts "
+                + bannerRefused + " — the disagreement this release exists to end. inherited="
+                + inherited);
+    }
+
+    /** The inherited families must be named, not silently dropped and not given a fabricated cause. */
+    @Test
+    void inheritedRefusalsAreNamedAndAttributedToTheDenialThatCausesThem() {
+        List<String> inherited = PathWeaverCommand.familiesRefusedByInheritance(
+            Set.of(net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class));
+        assertTrue(inherited.contains("FlyNodeEvaluator") && inherited.contains("FrogNodeEvaluator"),
+            "families refused by inheriting from a denied evaluator must be named: " + inherited);
+        assertFalse(inherited.contains("SwimNodeEvaluator"),
+            "Swim does not inherit from Walk and must not be attributed to it: " + inherited);
+        assertFalse(inherited.contains("WalkNodeEvaluator"),
+            "the denied family itself is reported as denied, not as inherited: " + inherited);
+    }
 }

@@ -200,12 +200,6 @@ public final class SafetyGate {
     }
 
     /**
-     * True when this family resolves block path types through {@code WalkNodeEvaluator}'s code and so
-     * depends on Fabric's land registry staying empty. Kept here rather than restated at each call
-     * site: testing for the exact Walk class once covered the zombie and left the other four
-     * dispatching against a registry that could have been populated.
-     */
-    /**
      * The predicate the dispatch mixin calls. There is no one-argument convenience wrapper, and that
      * is deliberate.
      *

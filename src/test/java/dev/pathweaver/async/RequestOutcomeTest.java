@@ -81,8 +81,10 @@ class RequestOutcomeTest {
     @Test
     void everyOutcomeDeclaresWhetherItIsPartOfTheDispatchedTotal() {
         for (RequestOutcome outcome : RequestOutcome.values()) {
+            // SETUP_FAILED is NOT here: the mixin selects it only after markDispatched(), so it is
+            // part of the dispatched total. This test previously enforced the opposite and so
+            // actively defended the bug.
             boolean neverDispatched = outcome == RequestOutcome.POOL_SATURATED
-                || outcome == RequestOutcome.SETUP_FAILED
                 || outcome == RequestOutcome.SETUP_FAILED_PRE_DISPATCH;
             assertEquals(!neverDispatched, outcome.countsAgainstDispatched(),
                 outcome + " is on the wrong side of the dispatched-total line, so its percentage "
