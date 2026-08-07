@@ -48,6 +48,41 @@ are pathfinding mods.
 The gate is asking the wrong question: *"did anyone touch this class?"* instead of *"does the injected
 code do anything unsafe on a worker?"*
 
+### What was attempted and reverted, and exactly why
+
+Both 6a and 6b were built, measured on the real 221-jar pack, reviewed, and **reverted**. The review
+executed its attacks rather than arguing them, and found four blockers. They are recorded here so the
+next attempt starts from them instead of rediscovering them:
+
+1. **The reachable-method walk matched the wrong owner.** It compared against
+   `BlockBehaviour$BlockStateBase`, but javac emits those calls with the owner of the *static receiver
+   type*, `BlockState`. So the set missed `isPathfindable`, `isAir`, `getFluidState` and `getValue`
+   entirely — every real call a search makes. `getCollisionShape` appeared only because
+   `BlockStateBase` happens to call it on itself. A mod injecting `isPathfindable` — the most common
+   reason to touch block state — was cleared, releasing all six families. This project's own
+   `FabricInteractionCompatibility` already uses the `BlockState` owner for exactly this reason.
+2. **Dropping the version check was a no-op.** The version stayed part of `AuditKey`, so the audit
+   emitted evidence keyed on its pinned constant while the claim looked itself up with the runtime
+   version. The two never matched and the denial was unchanged. The symptom was visible in the
+   real-pack run — it logged "Verified exact audited compatibility tuple for 'lithium'" while lithium
+   stayed in the blocker list — and was not chased.
+3. **MixinExtras annotations were skipped, not failed closed.** The "unmodelled annotation" guard only
+   fired for `org.spongepowered.*`, so every `com.llamalad7.*` injector fell through silently,
+   including `@WrapMethod`, the most powerful one MixinExtras has. `@Inject(target = @Desc(...))` was
+   invisible for the same reason.
+4. **An unannotated method in a mixin is an implicit `@Overwrite`** and never entered the annotation
+   visitor at all.
+
+Plus: dropping the whole-jar hash unpinned classes the audits' own reasoning names —
+`StarCollisionBlock`, Lithium's `BlockInfoInitializer` and `BlockStateFlagHolder`, ServerCore's
+`BlockGetterMixin` — leaving a javadoc asserting a guarantee the code no longer provided.
+
+**For the next attempt:** fix 6b first and alone — remove `version` from `AuditKey` AND add per-class
+hashes for the four classes above. That delivers the whole user-visible benefit (updates stop silently
+disabling the mod) with no new analysis. Only then consider 6a, and only with hostile-mixin fixtures
+in the test suite: five mutations survived the suite as written, including deleting every seed of the
+walk.
+
 - **6a. Narrow claims from class level to method level.** A mixin into `BlockStateBase` matters only
   if the method it injects is on a path a search actually calls. Should clear most of those 9.
 - **6b. Replace hash pinning with runtime property verification.** Every audit currently pins an exact

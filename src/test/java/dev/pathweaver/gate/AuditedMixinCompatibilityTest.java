@@ -35,25 +35,11 @@ class AuditedMixinCompatibilityTest {
         assertTrue(result.modifiedMethods().stream().allMatch(s -> s.startsWith("findPath(")));
     }
 
-    /**
-     * Every AUDITED CLASS must still fail closed on a single flipped bit — but not the module jar.
-     *
-     * <p>0.6 stopped checking the whole-jar hash. It moves whenever the mod is rebuilt for any
-     * reason, while saying nothing about whether the audited code changed, and it was the thing
-     * switching PathWeaver off on ordinary updates: a real 221-mod pack shipped Lithium 0.24.5
-     * against a 0.24.6 pin, every family was denied, and all fifteen of Lithium's pathfinding
-     * classes were byte-identical between the two releases.
-     *
-     * <p>The per-class hashes are what the audit actually rests on and they are unchanged, so this
-     * test still drives a bit-flip through each of them. Index 0 -- the module jar -- is excluded
-     * deliberately, and that exclusion is the policy change made visible rather than a weakening
-     * that slipped through.
-     */
     @Test void everyServerCoreFingerprintPartFailsClosedOnDrift() throws Exception {
         var exact = serverCoreBundle();
         byte[][] parts = {exact.moduleJar(), exact.config(), exact.fabricConfig(), exact.mixin(),
             exact.plugin(), exact.vanillaTarget()};
-        for (int changed = 1; changed < parts.length; changed++) {  // 0 = module jar, no longer pinned
+        for (int changed = 0; changed < parts.length; changed++) {
             byte[][] copy = Arrays.stream(parts).map(byte[]::clone).toArray(byte[][]::new);
             copy[changed][copy[changed].length - 1] ^= 1;
             var result = AuditedMixinCompatibility.verifyServerCore(
@@ -145,25 +131,11 @@ class AuditedMixinCompatibilityTest {
         assertTrue(table.contains("fails closed"));
     }
 
-    /**
-     * Every AUDITED CLASS must still fail closed on a single flipped bit — but not the module jar.
-     *
-     * <p>0.6 stopped checking the whole-jar hash. It moves whenever the mod is rebuilt for any
-     * reason, while saying nothing about whether the audited code changed, and it was the thing
-     * switching PathWeaver off on ordinary updates: a real 221-mod pack shipped Lithium 0.24.5
-     * against a 0.24.6 pin, every family was denied, and all fifteen of Lithium's pathfinding
-     * classes were byte-identical between the two releases.
-     *
-     * <p>The per-class hashes are what the audit actually rests on and they are unchanged, so this
-     * test still drives a bit-flip through each of them. Index 0 -- the module jar -- is excluded
-     * deliberately, and that exclusion is the policy change made visible rather than a weakening
-     * that slipped through.
-     */
     @Test void everyRabbitFingerprintPartFailsClosedOnDrift() throws Exception {
         var exact = rabbitBundle();
         byte[][] parts = {exact.moduleJar(), exact.config(), exact.mixin(), exact.vanillaTarget(),
             exact.workerEntry()};
-        for (int changed = 1; changed < parts.length; changed++) {  // 0 = module jar, no longer pinned
+        for (int changed = 0; changed < parts.length; changed++) {
             byte[][] copy = Arrays.stream(parts).map(byte[]::clone).toArray(byte[][]::new);
             copy[changed][copy[changed].length - 1] ^= 1;
             var result = AuditedMixinCompatibility.verifyRabbit(

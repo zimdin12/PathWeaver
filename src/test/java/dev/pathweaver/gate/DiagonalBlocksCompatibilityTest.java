@@ -62,11 +62,7 @@ class DiagonalBlocksCompatibilityTest {
         List<String> diagnostics = DiagonalBlocksCompatibility.verify(
             new DiagonalBlocksCompatibility.Bundle(new byte[0], new byte[0],
                 overrideReadingStatic(STAR, "PROPERTY_BY_DIRECTION")));
-        // Two, not three: the module jar is no longer pinned as of 0.6, because its hash moves on
-        // any unrelated edit while proving nothing about the audited classes. The config and the
-        // WalkNodeEvaluator mixin are still pinned and still fail closed, which is the evidence the
-        // audit rests on.
-        assertEquals(2, diagnostics.stream().filter(d -> d.contains("hash mismatch")).count(),
+        assertEquals(3, diagnostics.stream().filter(d -> d.contains("hash mismatch")).count(),
             diagnostics.toString());
     }
 
