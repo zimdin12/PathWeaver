@@ -51,11 +51,20 @@ public final class SafetyGate {
     private static final Set<Class<?>> ALLOWED = allowlist();
 
     private static Set<Class<?>> allowlist() {
-        Set<Class<?>> allowed = new LinkedHashSet<>(java.util.List.of(
+        // List.of, not Set.of, so iteration order is the declaration order rather than salted per
+        // JVM -- two log excerpts from the same pack used to list the families differently. But
+        // List.of does not reject duplicates the way Set.of did, so the fail-fast is restored
+        // explicitly. Compare the LIST against the SET: an earlier version of this check read the
+        // set size after LinkedHashSet had already deduplicated, so it could never see a duplicate.
+        java.util.List<Class<?>> declared = java.util.List.of(
             WalkNodeEvaluator.class,
             SwimNodeEvaluator.class,
             FlyNodeEvaluator.class,
-            AmphibiousNodeEvaluator.class));
+            AmphibiousNodeEvaluator.class);
+        Set<Class<?>> allowed = new LinkedHashSet<>(declared);
+        if (allowed.size() != declared.size()) {
+            throw new AssertionError("duplicate entry in the evaluator allowlist: " + declared);
+        }
         addIfPresent(allowed, FROG_EVALUATOR);
         addIfPresent(allowed, CREAKING_EVALUATOR);
         return Collections.unmodifiableSet(allowed);

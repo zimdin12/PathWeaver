@@ -197,4 +197,26 @@ class ScanSummaryTest {
         assertFalse(inherited.contains("WalkNodeEvaluator"),
             "the denied family itself is reported as denied, not as inherited: " + inherited);
     }
+
+    /**
+     * The under-report direction, which nothing asserted.
+     *
+     * <p>Every existing case checked that a family was ABSENT. Replacing the closure test with
+     * "anything is denied, so subtract everything" therefore survived the whole suite — and that
+     * hides families refused for a genuinely different reason behind an unrelated denial.
+     */
+    @Test
+    void aDenialOfOneFamilyDoesNotHideFamiliesRefusedForOtherReasons() {
+        // Swim denied. Swim shares no inheritance with the land families, so none of them may be
+        // attributed to it -- they must still be reported as refused in their own right.
+        List<String> produced = PathWeaverCommand.undispatchableFamilyNames(
+            Set.of(net.minecraft.world.level.pathfinder.SwimNodeEvaluator.class));
+        for (Class<?> family : dev.pathweaver.gate.SafetyGate.allowlisted()) {
+            if (family == net.minecraft.world.level.pathfinder.SwimNodeEvaluator.class) continue;
+            if (dev.pathweaver.gate.SafetyGate.canDispatch(family)) continue;
+            assertTrue(produced.contains(family.getSimpleName()),
+                family.getSimpleName() + " is refused and does not inherit from the denied Swim "
+                    + "evaluator, so it must still be reported: " + produced);
+        }
+    }
 }

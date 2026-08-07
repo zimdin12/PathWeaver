@@ -143,7 +143,7 @@ class PathWeaverRuntimeTest {
             FakeNavigation navigation = new FakeNavigation();
             RequestKey key = runtime.nextRequestKey(77);
             runtime.entitySink().register(key, navigation,
-                RequestTarget.of(Set.of(), 0, false, 0, 0.0F));
+                RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false);
 
             runtime.onServerStopping(null);
 

@@ -365,7 +365,7 @@ class EntityInstallSinkTest {
         FakeNav nav = new FakeNav();
         RequestTarget first = RequestTarget.of(java.util.Set.of("a"), 8, false, 1, 32.0F);
         RequestTarget changed = RequestTarget.of(java.util.Set.of("b"), 8, false, 1, 32.0F);
-        sink.register(key(1L, 9L, 15), nav, first);
+        sink.register(key(1L, 9L, 15), nav, first, false);
 
         assertEquals(EntityInstallSink.PendingDecision.PRESERVE,
             sink.pendingDecision(15, nav, first));
@@ -438,7 +438,7 @@ class EntityInstallSinkTest {
         FakeNav nav = new FakeNav();
         RequestKey key = key(1L, 3L, 17);
         RequestTarget target = RequestTarget.of(java.util.Set.of("same"), 8, false, 1, 32.0F);
-        sink.register(key, nav, target);
+        sink.register(key, nav, target, false);
         installer.enqueue(key, 0L, PathOutcome.success(dummyPath()), 0.0, 0.0, 0.0);
         assertEquals(1, installer.pending(), "accepted worker result must be queued before OFF");
         try {

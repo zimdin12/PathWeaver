@@ -179,7 +179,12 @@ public final class ForeignMixinScanner {
      * moved and the copy written under it in the same commit.
      */
     public static boolean scanFailed() {
-        return lastScanReport().decision().failed() > 0;
+        return scanFailed(lastScanReport().decision());
+    }
+
+    /** Test seam: the same question against a decision built by {@link #decide}, not the live one. */
+    static boolean scanFailed(ScanDecision decision) {
+        return decision.failed() > 0;
     }
 
     /** Pure, testable: map fully-qualified mixin target names to the allowlisted classes they hit. */

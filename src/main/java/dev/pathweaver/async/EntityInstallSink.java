@@ -90,11 +90,6 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
 
     public void setTick(long tick) { this.currentTick = tick; }
 
-    /** Called from the interceptor on the main thread at dispatch time. */
-    public void register(RequestKey key, PWNavigation navigation, RequestTarget target) {
-        register(key, navigation, target, false);
-    }
-
     /** Capture whether this exact request depends on Fabric's land-provider registry staying empty. */
     public void register(RequestKey key, PWNavigation navigation, RequestTarget target,
                          boolean requiresEmptyLandRegistry) {
@@ -109,7 +104,10 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
 
     /** Package-private helper for tests whose target identity is irrelevant. */
     void register(RequestKey key, PWNavigation navigation) {
-        register(key, navigation, UNSPECIFIED_TARGET);
+        // Explicit false, not a defaulted one. The 3-arg overload this used to call defaulted the
+        // land-registry flag to fail-open and had no production caller, so a future call site that
+        // forgot the argument would have silently disarmed the install-time re-check.
+        register(key, navigation, UNSPECIFIED_TARGET, false);
     }
 
     public boolean isRegistered(int entityId) {
