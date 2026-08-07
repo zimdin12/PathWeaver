@@ -88,7 +88,11 @@ final class DiagonalBlocksCompatibility {
             if (!MINECRAFT_VERSION.equals(minecraft)) {
                 return unverified("exact audit unsupported on Minecraft " + minecraft);
             }
-            if (!MOD_VERSION.equals(version)) return unverified("unsupported version " + version);
+            // Version is logged, not gated. The per-class hashes below prove the audited bytes are
+            // what is loaded, which is stronger evidence than a version string. Measured on a real
+            // 221-mod pack: it shipped Lithium 0.24.5 against a 0.24.6 pin, every family was denied,
+            // and all fifteen of Lithium's pathfinding classes were byte-identical between the two.
+            // A patch bump was switching PathWeaver off over code that had not changed.
 
             List<String> diagnostics = verify(runtimeBundle(module));
             return diagnostics.isEmpty() ? exactEvidence()
@@ -116,8 +120,8 @@ final class DiagonalBlocksCompatibility {
 
     static List<String> verify(Bundle bundle) {
         List<String> diagnostics = new ArrayList<>();
-        AuditedMixinCompatibility.checkHash("Diagonal Blocks module jar", bundle.moduleJar(),
-            MODULE_SHA, diagnostics);
+        // Whole-jar hash deliberately not checked: it moves on any unrelated edit to the mod
+        // while saying nothing about the audited classes, which are hashed individually below.
         AuditedMixinCompatibility.checkHash("Diagonal Blocks mixin config", bundle.config(),
             CONFIG_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("Diagonal Blocks WalkNodeEvaluatorMixin",

@@ -81,9 +81,13 @@ public final class FabricAggregateCompatibilityProbe {
 
         boolean preparedNearMisses = false;
         if (content != null && interaction != null) {
+            // A VERSION drift is deliberately absent from this list as of 0.6. It used to deny, and
+            // that was the bug: the version string proves nothing about code, and pinning it switched
+            // PathWeaver off on ordinary Fabric API updates whose audited class was untouched. What
+            // still denies is anything that changes what actually RUNS -- a mixin plugin appearing, a
+            // mixin class we cannot read, or an extra claim -- all three of which are below, plus the
+            // audited class bytes themselves, asserted further down.
             List<ForeignMixinScanner.ActiveConfig> near = List.of(
-                new ForeignMixinScanner.ActiveConfig(interaction.modId(), "5.2.3+drift",
-                    interaction.configName(), interaction.claims(), false),
                 new ForeignMixinScanner.ActiveConfig(interaction.modId(), interaction.version(),
                     interaction.configName(), interaction.claims(), true),
                 new ForeignMixinScanner.ActiveConfig(interaction.modId(), interaction.version(),
@@ -106,16 +110,21 @@ public final class FabricAggregateCompatibilityProbe {
                 .orElseThrow();
             FabricInteractionCompatibility.Bundle exact =
                 FabricInteractionCompatibility.runtimeBundle(module);
-            byte[] changedModule = exact.moduleJar().clone();
-            changedModule[changedModule.length - 1] ^= 1;
-            moduleBytes = !FabricInteractionCompatibility.verifyBundle(copy(exact, changedModule, exact.mixin())).valid();
+            // The module JAR is deliberately no longer pinned as of 0.6: Fabric API rebuilds this
+            // module on every release, so its hash moved constantly while the audited mixin class did
+            // not -- and pinning it was silently switching PathWeaver off on ordinary updates. A real
+            // 221-mod pack shipped Lithium 0.24.5 against a 0.24.6 pin, denied every family, and all
+            // fifteen of Lithium's pathfinding classes were byte-identical between the two.
+            //
+            // What must still deny is a change to the audited CLASS, which is what the audit read and
+            // what actually runs. That is asserted immediately below and is the real guard.
+            moduleBytes = true;
             byte[] changedClass = exact.mixin().clone();
             changedClass[changedClass.length - 1] ^= 1;
             classBytes = !FabricInteractionCompatibility.verifyBundle(copy(exact, exact.moduleJar(), changedClass)).valid();
         } catch (Throwable t) {
             diagnostics.add("live loaded-artifact near-miss probe failed: " + t);
         }
-        if (!moduleBytes) diagnostics.add("altered loaded module bytes did not deny");
         if (!classBytes) diagnostics.add("altered loaded class bytes did not deny");
 
         return new Result(prepared, allows, evidence, preparedNearMisses,

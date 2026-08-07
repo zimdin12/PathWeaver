@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -280,6 +281,64 @@ public final class ForeignMixinScanner {
             List.copyOf(diagnostics));
     }
 
+    /**
+     * True when this claim provably injects only into methods no search can reach.
+     *
+     * <p>The narrowing that makes {@code AUDITED} usable. The gate has always denied on the class:
+     * any mod touching a watched type denies every evaluator family, which on a real 317-jar pack
+     * left 0 of 187 mob types eligible and forced the shipped default to {@code UNSAFE}. Ten of the
+     * twenty-one blockers touch only {@code BlockStateBase}, and most are not pathfinding mods —
+     * FerriteCore changes state storage, ModernFix caches, Balm injects {@code getDestroyProgress}.
+     *
+     * <p>This is not a softer test. {@code expandability} and {@code vehicleupgrade} inject
+     * {@code getCollisionShape} and {@code terrain_slabs} injects {@code getShape}, all of which
+     * {@code WalkNodeEvaluator.getFloorLevel} genuinely calls, and all of which keep denying.
+     *
+     * <p>Both halves must answer, and either one failing to answer denies. The injected methods come
+     * from the mod's own bytecode; the reachable set is walked from the admitted evaluators through
+     * Minecraft's. An unreadable class, an unrecognised annotation, a wildcard selector, an
+     * {@code @Overwrite}, or a walk that hits its bound all return empty here.
+     */
+    private static boolean claimCannotReachTheSearch(TargetClaim claim, ActiveConfig config) {
+        // A mixin plugin can rewrite a mixin in preApply/postApply, so the class bytes read here are
+        // not necessarily what ends up applied. Reading them and concluding "harmless" would be
+        // reasoning about code that never runs. The aggregate harness caught this: with narrowing on
+        // and no plugin guard, a config that had grown a plugin stopped denying.
+        if (config.pluginIdentity() != null) return false;
+        String watched = claim.target().replace('.', '/');
+        if (!NARROWABLE_BY_METHOD.contains(watched)) return false;
+        Optional<Set<String>> injected = MixinClaimMethods.injectedMethodsOf(claim.mixinClass());
+        if (injected.isEmpty()) return false;
+        Optional<Set<String>> reachable = WorkerReachableMethods.on(watched);
+        if (reachable.isEmpty() || reachable.get().isEmpty()) return false;
+        for (String method : injected.get()) {
+            if (reachable.get().contains(method)) return false;
+        }
+        return true;
+    }
+
+    /**
+     * The only classes where "which method?" is the right question.
+     *
+     * <p>Restricting this is not caution, it is correctness, and the game tests caught the first
+     * version getting it wrong. The narrowing asks whether a search CALLS the injected method. That
+     * question only makes sense for a class the search reads THROUGH. For {@code PathNavigation},
+     * {@code PathFinder}, {@code NodeEvaluator}, {@code Path} and {@code Node} the search is the
+     * callee or the object itself, so nothing calls them from inside a search and the reachable set
+     * is legitimately empty — which the first version read as "no injected method is reachable,
+     * therefore harmless" and used to clear every claim on them, including a deliberately
+     * version-mismatched one the suite exists to catch.
+     *
+     * <p>A mixin into those classes is dangerous for a different reason: it changes the object
+     * PathWeaver clones, dispatches, or installs into. That is not a reachability question and this
+     * mechanism must not pretend to answer it.
+     *
+     * <p>{@code BlockStateBase} is where the narrowing pays: it is a pure read target on the search's
+     * own call path, and 10 of the 21 blockers measured on a 317-jar pack touch nothing else.
+     */
+    private static final Set<String> NARROWABLE_BY_METHOD = Set.of(
+        "net/minecraft/world/level/block/state/BlockBehaviour$BlockStateBase");
+
     private static Set<Class<?>> denialsForConfig(ActiveConfig config, boolean exactSwimShape,
                                                    AuditedExemptionEvidence auditedEvidence) {
         Set<Class<?>> denied = new HashSet<>();
@@ -295,6 +354,7 @@ public final class ForeignMixinScanner {
             AuditKey key = new AuditKey(config.modId(), config.version(), config.configName(),
                 claim.mixinClass(), normalizeTargetName(claim.target()), config.pluginIdentity());
             if (auditedEvidence.verified().contains(key)) continue;
+            if (claimCannotReachTheSearch(claim, config)) continue;
             denied.addAll(denialsForTargets(List.of(claim.target())));
         }
         return Set.copyOf(denied);

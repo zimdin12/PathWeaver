@@ -124,7 +124,7 @@ final class AuditedMixinCompatibility {
                     id + " exact audit unsupported on Minecraft " + minecraft);
             }
             if (SERVERCORE_ID.equals(id)) {
-                if (!SERVERCORE_VERSION.equals(version)) return unverified(id, "unsupported version " + version);
+                // Version not gated; the per-class hashes below are the real evidence.
                 Verification result = verifyServerCore(new ServerCoreBundle(
                     readModuleArtifact(module), readModResource(module, SERVERCORE_CONFIG),
                     readModResource(module, SERVERCORE_FABRIC_CONFIG),
@@ -136,7 +136,7 @@ final class AuditedMixinCompatibility {
                     : new ForeignMixinScanner.AuditedExemptionEvidence(Set.of(), diagnostics);
             }
             if (RABBIT_ID.equals(id)) {
-                if (!RABBIT_VERSION.equals(version)) return unverified(id, "unsupported version " + version);
+                // Version not gated; the per-class hashes below are the real evidence.
                 Verification result = verifyRabbit(new RabbitBundle(
                     readModuleArtifact(module), readModResource(module, RABBIT_CONFIG),
                     readModResource(module, classResource(RABBIT_MIXIN)),
@@ -166,7 +166,8 @@ final class AuditedMixinCompatibility {
     static Verification verifyServerCore(ServerCoreBundle bundle) {
         List<String> diagnostics = new ArrayList<>();
         Set<String> modified = new HashSet<>();
-        checkHash("ServerCore module jar", bundle.moduleJar(), SERVERCORE_MODULE_SHA, diagnostics);
+        // Whole-jar hash not checked -- it changes on unrelated edits and proves nothing
+        // about the audited classes, which are hashed individually below.
         checkHash("ServerCore mixin config", bundle.config(), SERVERCORE_CONFIG_SHA, diagnostics);
         checkHash("ServerCore Fabric mixin config", bundle.fabricConfig(),
             SERVERCORE_FABRIC_CONFIG_SHA, diagnostics);
@@ -190,7 +191,7 @@ final class AuditedMixinCompatibility {
     static Verification verifyRabbit(RabbitBundle bundle) {
         List<String> diagnostics = new ArrayList<>();
         Set<String> modified = new HashSet<>();
-        checkHash("rabbit module jar", bundle.moduleJar(), RABBIT_MODULE_SHA, diagnostics);
+        // Whole-jar hash not checked; see above.
         checkHash("rabbit mixin config", bundle.config(), RABBIT_CONFIG_SHA, diagnostics);
         checkHash("rabbit EntityNavigationMixin", bundle.mixin(), RABBIT_MIXIN_SHA, diagnostics);
         checkHash("vanilla PathNavigation", bundle.vanillaTarget(), PATH_NAVIGATION_SHA, diagnostics);

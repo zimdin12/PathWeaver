@@ -47,7 +47,10 @@ class FabricInteractionCompatibilityTest {
         byte[][] parts = { exact.moduleJar(), exact.config(), exact.mixin(), exact.blockStateBase(),
             exact.pathFinder(), exact.nodeEvaluator(), exact.walkNodeEvaluator(), exact.pathContext(),
             exact.pathTypeCache(), exact.pathRegion() };
-        for (int changed = 0; changed < parts.length; changed++) {
+        // From index 1: the module jar (index 0) is no longer pinned. Fabric API rebuilds this
+        // module on every release, so its jar hash moved constantly while the audited mixin class
+        // did not -- and that mixin is still hashed, and still fails closed, below.
+        for (int changed = 1; changed < parts.length; changed++) {
             byte[][] copy = Arrays.stream(parts).map(byte[]::clone).toArray(byte[][]::new);
             copy[changed][copy[changed].length - 1] ^= 1;
             var result = FabricInteractionCompatibility.verifyBundle(new FabricInteractionCompatibility.Bundle(

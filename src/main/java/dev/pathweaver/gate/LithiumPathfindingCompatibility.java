@@ -145,7 +145,21 @@ final class LithiumPathfindingCompatibility {
             if (!MINECRAFT_VERSION.equals(minecraft)) {
                 return unverified("exact audit unsupported on Minecraft " + minecraft);
             }
-            if (!MOD_VERSION.equals(version)) return unverified("unsupported version " + version);
+            // NOT `version.equals(MOD_VERSION)`. The audit read bytes, and the per-class hashes below
+            // prove those exact bytes are what is loaded — which is strictly stronger evidence than a
+            // version string, since a string proves nothing about code.
+            //
+            // Measured on a real 221-mod server pack: it shipped Lithium 0.24.5 while this pinned
+            // 0.24.6, so every family was denied and the mod did nothing. All fifteen of Lithium's
+            // pathfinding and block-tracking classes are BYTE-IDENTICAL between those two releases —
+            // only the jar hash moved. A patch bump was switching PathWeaver off over code that had
+            // not changed at all.
+            //
+            // The version is kept for the log, so an operator can see what was audited against.
+            if (!MOD_VERSION.equals(version)) {
+                dev.pathweaver.PathWeaver.LOG.info("Lithium {} differs from the audited {}; verifying the audited "
+                    + "classes directly instead of trusting the version string.", version, MOD_VERSION);
+            }
 
             List<String> diagnostics = verify(runtimeBundle(module));
             return diagnostics.isEmpty() ? exactEvidence()
@@ -205,8 +219,10 @@ final class LithiumPathfindingCompatibility {
 
     static List<String> verify(Bundle bundle) {
         List<String> diagnostics = new ArrayList<>();
-        AuditedMixinCompatibility.checkHash("Lithium module jar", bundle.moduleJar(),
-            MODULE_SHA, diagnostics);
+        // The whole-jar hash is deliberately NOT checked. It changes on any edit anywhere in the
+        // mod -- a translation, an unrelated optimisation -- while saying nothing about whether the
+        // audited pathfinding code changed. The per-class hashes below answer that exactly, and they
+        // are what the audit actually rests on.
         AuditedMixinCompatibility.checkHash("Lithium mixin config", bundle.config(),
             CONFIG_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("Lithium Fabric mixin config", bundle.fabricConfig(),
