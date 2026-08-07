@@ -98,6 +98,14 @@ class PathWeaverRuntimeTest {
     }
 
     private static final class FakeNavigation implements PWNavigation {
+        double lastMovementSpeed = Double.NaN;
+        @Override public void pathweaver$beginMovementRequest(double speed) {
+            lastMovementSpeed = speed;
+        }
+        int movementDepth = 0;
+        @Override public void pathweaver$enterMovementRequest() { movementDepth++; }
+        @Override public void pathweaver$exitMovementRequest() { movementDepth--; }
+
         @Override public void pathweaver$rollbackOptimisticTarget() { }
         @Override public void pathweaver$abortFailedInstall() { }
 

@@ -8,6 +8,7 @@
     "PathfindingContextMixin",
     "LandPathTypeRegistryMixin",
     "PathNavigationMixin",
+    "WallClimberNavigationMixin",
     "FlyNodeEvaluatorMixin",
     "WalkNodeEvaluatorMixin",
     "AmphibiousNodeEvaluatorMixin"

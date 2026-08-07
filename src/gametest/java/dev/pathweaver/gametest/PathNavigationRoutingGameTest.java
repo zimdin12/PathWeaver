@@ -313,6 +313,35 @@ public final class PathNavigationRoutingGameTest {
                             "eligible master OFF must not create a worker registration");
                         cfg.enabled = true;
 
+                        // ---- spiders: a navigation subclass that OVERRIDES a movement entry point ----
+                        //
+                        // WallClimberNavigation overrides moveTo(Entity, double) and never calls
+                        // super, so PathNavigationMixin's inject -- which marks that a genuine
+                        // movement request is starting -- never ran for it. Every spider chasing a
+                        // player pathed on the server thread while /pathweaver mobs counted spiders
+                        // as eligible. A headless A/B could not show this: with no player on the
+                        // server a spider never acquires a target, so moveTo(Entity, ...) is never
+                        // called. Driving it directly is the only deterministic proof.
+                        Mob spider = helper.spawnWithNoFreeWill(EntityType.SPIDER, 1, 2, 3);
+                        spider.setOnGround(true);
+                        PathNavigation spiderNav = spider.getNavigation();
+                        check(helper, spiderNav instanceof
+                                net.minecraft.world.entity.ai.navigation.WallClimberNavigation,
+                            "fixture precondition: a spider must use WallClimberNavigation, or this "
+                                + "arm proves nothing about the override");
+                        long beforeSpider = runtimeCounter("dispatched");
+                        check(helper, spiderNav.moveTo(targetMob, 1.0),
+                            "a spider's entity move must be accepted");
+                        check(helper, PathWeaverRuntime.get().entitySink().isRegistered(spider.getId()),
+                            "the spider's chase must dispatch async -- if this fails the override is "
+                                + "bypassing the movement marker again and spiders are silently "
+                                + "pathing on the server thread");
+                        check(helper, runtimeCounter("dispatched") == beforeSpider + 1,
+                            "exactly one dispatch for the spider's chase");
+                        spiderNav.stop();
+                        spider.discard();
+                        // ---- end spider arm ----
+
                         // ---- the recompute seam's OTHER branch: a mob that already has a path ----
                         //
                         // This is the case 0.5.1 actually corrupted, and until 0.5.3 no fixture had

@@ -11,6 +11,14 @@ import static org.junit.jupiter.api.Assertions.*;
 class EntityInstallSinkTest {
 
     static class FakeNav implements PWNavigation {
+        double lastMovementSpeed = Double.NaN;
+        @Override public void pathweaver$beginMovementRequest(double speed) {
+            lastMovementSpeed = speed;
+        }
+        int movementDepth = 0;
+        @Override public void pathweaver$enterMovementRequest() { movementDepth++; }
+        @Override public void pathweaver$exitMovementRequest() { movementDepth--; }
+
         int rollbacks, aborts;
         boolean pathCleared;
         @Override public void pathweaver$abortFailedInstall() {

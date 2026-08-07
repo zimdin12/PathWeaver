@@ -157,6 +157,25 @@ public abstract class PathNavigationMixin implements PWNavigation {
         pathweaver$acceptedDeferred = false;
     }
 
+    /**
+     * Public entry point for the same marker, for navigation subclasses whose movement override the
+     * base inject cannot reach. See {@link WallClimberNavigationMixin}.
+     */
+    @Override
+    public void pathweaver$beginMovementRequest(double speed) {
+        pathweaver$beginMovement(speed);
+    }
+
+    @Override
+    public void pathweaver$enterMovementRequest() {
+        pathweaver$navigationRequestDepth++;
+    }
+
+    @Override
+    public void pathweaver$exitMovementRequest() {
+        pathweaver$navigationRequestDepth--;
+    }
+
     @Unique
     private void pathweaver$beginMovement(double speed) {
         pathweaver$requestSpeed = speed;

@@ -13,6 +13,31 @@ public interface PWNavigation {
      * the tail of vanilla {@code createPath} (targetPos / reachRange / resetStuckTimeout). Callback
      * completion is owned centrally by the request registration so install exceptions are also balanced.
      */
+    /**
+     * Main thread: mark that a genuine movement request is starting, and bind its speed.
+     *
+     * <p>Exists for subclasses of {@code PathNavigation} that OVERRIDE a movement entry point rather
+     * than inherit it. A mixin transforms only its target class, so the inject on
+     * {@code PathNavigation.moveTo(Entity, double)} never ran for {@code WallClimberNavigation}'s
+     * override, and spiders resolved every chase path synchronously while the mod reported them as
+     * eligible.
+     */
+    void pathweaver$beginMovementRequest(double speed);
+
+    /**
+     * Main thread: open and close the window in which an inner {@code createPath} counts as a genuine
+     * movement request rather than a query.
+     *
+     * <p>Capturing the speed is not enough on its own. Dispatch keys on this depth, and the base
+     * mixin raises it with a {@code @WrapOperation} around the {@code createPath} call sites inside
+     * {@code PathNavigation}'s own movement methods. A subclass that overrides one of those methods
+     * makes the call from its own body, which no wrap covers — so the request looked like a
+     * query-only path lookup and stayed synchronous. A game test caught exactly that.
+     */
+    void pathweaver$enterMovementRequest();
+
+    void pathweaver$exitMovementRequest();
+
     void pathweaver$install(Path path);
 
     /** Main thread: true if the owning mob is gone or has moved too far from the dispatch position. */
