@@ -133,47 +133,50 @@ does not establish a benefit on a small host — see `PathWeaverRuntime.lowCoreA
 recommends turning the mod off at two cores or fewer — nor on a pack where little pathfinding
 happens, where the honest expectation is no measurable change either way.
 
-## 10. Rejected async `MoveToTargetSink` (brain-driven walk targets)
+## 10. Async `MoveToTargetSink` — reopened, and the stated reason for rejecting it was wrong
 
-The largest remaining block of server-thread A* on a real 317-mod client is not a gap in coverage.
-It is structural, and this section records why, because the profile makes it look like low-hanging
-fruit and it is not.
+This section previously said the idea was structurally impossible. A bytecode investigation in 0.5.4
+showed the argument it made was about a different idea, so it is rewritten rather than amended.
 
-**What the profile shows.** Client spark capture, PathWeaver active, all six families dispatching,
-120 s of ordinary play: `PathFinder.findPath` still runs on the server thread for 3984 ms (3.32% of
-wall time; ~8% of the server's non-idle work). Of that, 3456 ms — **86%** — is one call site,
-`MoveToTargetSink.checkExtraStartConditions` → `tryComputePath` → `PathNavigation.createPath`.
-Everything else is noise by comparison: `AcquirePoi.findPathToPois` 408 ms, stormiespiders 96 ms,
-MCA's archer task 64 ms.
+**What it used to say:** deferring the answer to `checkExtraStartConditions` makes the behaviour set
+`CANT_REACH_WALK_TARGET_SINCE` and send the mob wandering; and speculation cannot help because 99.7%
+of the cost is the behaviour starting on a target set the same tick. Both are true — of *deferring*.
+They say nothing about *answering optimistically*, i.e. returning true immediately and dispatching.
 
-**Why deferring the return value is not an option.** `tryComputePath` is not a request for a path,
-it is a question whose answer is consumed in the same tick. Read from the 26.1.2 bytecode:
+**The kill condition it should have tested, and the answer.** If `start()` re-pathed, an optimistic
+answer would cost a second search and the idea would be dead. It does not: `start` reads the `path`
+field `tryComputePath` already wrote (offsets 7-11 and 18-22) and calls `moveTo(Path, double)`. It
+never calls `createPath`. So the optimistic answer converts one synchronous search into one
+asynchronous search — it adds nothing.
 
-- a null or unreachable result **sets `CANT_REACH_WALK_TARGET_SINCE`** on the brain, which other
-  behaviours read — so a "not ready yet" is indistinguishable from "this target is unreachable";
-- it then runs a **second synchronous `createPath`** to a `DefaultRandomPos.getPosTowards` position,
-  sending the mob wandering away from the goal it was given.
+**The real blocker, which this section never identified.** `Brain.tick` runs
+`startEachNonRunningBehavior` and `tickEachRunningBehavior` in the *same tick*, and `canStillUse`
+begins with `if (this.path == null) return false` (offsets 0-15). A behaviour told "yes, reachable"
+with no path yet is therefore started and torn down within that tick, before any worker can return —
+and `stop()` calls `navigation.stop()`, which PathWeaver's own `pathweaver$invalidateStoppedRequest`
+turns into a cancellation of the request just dispatched. **The naive version cancels its own search
+every time.** Making it work needs a second injection that keeps `canStillUse` true while a request
+is pending, plus a reconciliation path that knows about brain memories.
 
-So returning null early is not a one-tick delay. It is a wrong answer that propagates into brain
-memory and produces visibly different mob behaviour. Measured on the same capture, the fallback
-branch currently fires almost never (128 ms, no A* beneath it), meaning these searches are
-overwhelmingly *succeeding* today. Deferring them would convert ~3.4 s of successful pathfinding per
-two minutes into "unreachable" verdicts. It would make the mod worse in a way a benchmark that only
-counts off-thread searches would score as an improvement.
+**Measured payoff.** `MoveToTargetSink.checkExtraStartConditions` is 3456 ms of a 120 s capture, i.e.
+~1.44 ms per tick averaged, ~5-7% of tick time. Real, not transformative, and less than that in
+practice once the main-thread prologue and lost registration races are subtracted.
 
-**Why speculative pre-computation does not rescue it.** The obvious repair is to compute the path a
-tick early and serve it from cache. It does not apply to the case that matters:
-`checkExtraStartConditions` accounts for 3456 ms and `tick()` for 12 ms — **99.7% of the cost is the
-behaviour starting**, which happens because another behaviour set a *new* `WALK_TARGET` during the
-current tick. A target that did not exist a tick ago cannot be pathed a tick ago. Speculation could
-only serve `tick()`, which is already 0.01% because vanilla elides its own repaths whenever the
-target moved 2 blocks or less (`distSqr(lastTargetPos) > 4.0`).
+**The risk, and why this is not being rushed.** `CANT_REACH_WALK_TARGET_SINCE` left set for 1200
+ticks makes `SetWalkTargetFromBlockMemory` call `villager.releasePoi(...)` — the villager
+**permanently loses its workstation or bed**, silently, with no crash and no log line. That is the
+worst-shaped bug this mod could ship, and it would be guarded by one line of reconciliation logic.
 
-**Conclusion.** On this pack PathWeaver has taken essentially all of the pathfinding that can be
-moved without changing what mobs decide. The residue is synchronous by construction, not by
-oversight. Reopening this needs a different lever — an upstream change letting a behaviour express
-"ask me again next tick" without it meaning "unreachable" — not more work on this side of the
-boundary.
+**Blocked on:** the request must carry its origin before a brain-origin result can reconcile brain
+memories. That is the same refactor §13 and roadmap 2a/2g need and have deliberately deferred.
+Building this feature first would mean doing that refactor under feature pressure, which is exactly
+how 0.5.1 and 0.5.2 each shipped a half-covered fix to the recompute seam.
+
+**Prerequisite for shipping it:** a game test asserting the whole
+`CANT_REACH_WALK_TARGET_SINCE` transition table — erased on `canReach`, set once with the dispatch
+game time when unreachable, erased on arrival, never surviving a later successful search. If that
+test cannot be written, the feature must not ship.
+
 
 ## 11. Rejected: making an in-flight navigation report itself as "in progress"
 

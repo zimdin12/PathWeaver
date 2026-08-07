@@ -191,7 +191,11 @@ Directions, none committed:
 
 ## 4. Coverage the mod does not have
 
-**4a. Brain-driven movement stays synchronous.** *(structural, DESIGN.md §10)* On a real 317-mod
+**4a. Brain-driven movement stays synchronous.** *(NOT structural — DESIGN.md §10 was wrong and is
+rewritten. `start()` does not re-path, so an optimistic answer costs no extra search. The real
+blocker is that `Brain.tick` starts and ticks in the same tick and `canStillUse` returns false on a
+null path, so the naive version cancels its own request. Feasible; blocked on the origin-carrying
+refactor; gated on a `CANT_REACH_WALK_TARGET_SINCE` transition-table game test.)* On a real 317-mod
 client, 86% of the remaining server-thread A* is
 `MoveToTargetSink.checkExtraStartConditions` — villagers, piglins, axolotls, frogs, allays, the
 warden. It is a synchronous question, not a request: a deferred answer sets
