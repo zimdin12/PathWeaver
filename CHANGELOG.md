@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.6.0 — Diagnostics that agree with the gates
+## 0.5.4 — Diagnostics that agree with the gates
+
+*Numbered as a patch, not a minor. It adds no capability, no coverage and no speed — the only
+user-visible change is that the mod stops misreporting its own state. Calling it 0.6 would have
+promised something it does not contain.*
 
 Not published. Built and committed for testing.
 
