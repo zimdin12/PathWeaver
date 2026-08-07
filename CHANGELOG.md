@@ -1,10 +1,20 @@
 # Changelog
 
-## 0.5.4 — Diagnostics that agree with the gates
+## 0.6.0 — Most mobs, safely *(in development)*
 
-*Numbered as a patch, not a minor. It adds no capability, no coverage and no speed — the only
-user-visible change is that the mod stops misreporting its own state. Calling it 0.6 would have
-promised something it does not contain.*
+*The diagnostics work below was briefly numbered 0.5.4 and held back rather than published: on its
+own it added no capability, no coverage and no speed, and nobody should update a modpack for a
+release that only stops the mod misreporting itself. It ships as part of 0.6 instead.*
+
+### Coverage
+
+- **Spiders path off-thread.** `WallClimberNavigation` overrides `moveTo(Entity, double)` without
+  calling `super`, so the dispatch marker never ran for it and every spider chasing a player resolved
+  its path on the server thread — while `/pathweaver mobs` counted spiders as eligible. Third
+  instance of one mixin mistake; `NavigationOverrideCoverageTest` now derives the overriding
+  navigation subclasses from Minecraft's own bytecode so a future one cannot silently opt out.
+
+### Diagnostics that agree with the gates
 
 Not published. Built and committed for testing.
 
@@ -84,7 +94,7 @@ isolation were all attacked and held.
   guarantee. Those are fixed — it now resolves interface defaults, records every truncation instead
   of swallowing it, and no longer maps a receiver onto a type that does not implement it. The numbers
   moved from 1,735 reachable / 0 unresolved / 12 hazards to 2,060 / 168 / 45, which is what an honest
-  version of the same walk looks like. Details in `ROADMAP-0.6.md` §6. It found no unknown bug. What building it taught is
+  version of the same walk looks like. Details in `docs/ROADMAP-0.6-archive.md` §6. It found no unknown bug. What building it taught is
   recorded there too: the naive version is useless rather than imprecise, reporting 1,220 hazards
   including the client renderer.
 - **`tools/scan_pack.py`**, which measured why `AUDITED` leaves nothing eligible: 21 mods in a real

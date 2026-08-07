@@ -1,3 +1,7 @@
+> **Archived.** Superseded by [ROADMAP.md](../ROADMAP.md), which reorganises this into the 0.6-1.0
+> ladder. Kept because the measurements and the rejected-approach reasoning here are still the
+> evidence behind those decisions.
+
 # PathWeaver 0.6 — roadmap
 
 Working document. Items are added as they are found, with the evidence that justifies them, so the
