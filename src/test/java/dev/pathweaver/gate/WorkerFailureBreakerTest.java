@@ -239,4 +239,51 @@ class WorkerFailureBreakerTest {
             () -> WorkerFailureBreaker.recordSearchFailure(WalkNodeEvaluator.class, hostile),
             "a mechanism that cannot record a failure must never turn that failure into a crash");
     }
+
+    /**
+     * The diagnostic must name the runtime cause, not the scan's.
+     *
+     * <p>Without its own branch, a tripped family falls through {@code isAllowed} to
+     * {@code evaluatorReason}, which explains a refusal as "whose family the compatibility scan
+     * denied" — and the scan denied nothing. That sends an operator to edit {@code trustedMods} over
+     * a problem no setting will fix, which is the invented-cause defect the last four review rounds
+     * were all about.
+     */
+    @Test
+    void theMobDiagnosticNamesTheRuntimeCauseRatherThanTheScan() {
+        java.util.Set<Class<?>> savedDenials;
+        synchronized (SafetyGate.deniedBySafety) {
+            savedDenials = java.util.Set.copyOf(SafetyGate.deniedBySafety);
+        }
+        try {
+            SafetyGate.replaceDenials(java.util.Set.of());
+            fail(WalkNodeEvaluator.class);
+            fail(WalkNodeEvaluator.class);
+            fail(WalkNodeEvaluator.class);
+
+            var verdict = dev.pathweaver.command.MobEligibility.of(
+                net.minecraft.world.entity.Mob.class, WalkNodeEvaluator.class, null, true,
+                dev.pathweaver.command.MobEligibility.LandRegistry.PERMITS);
+            assertFalse(verdict.eligible(), "a tripped family is not eligible");
+            assertTrue(verdict.reason().contains("threw on a worker"),
+                "and the reason must be the one that happened: " + verdict.reason());
+            assertFalse(verdict.reason().contains("scan"),
+                "blaming the compatibility scan for a runtime trip sends the operator to a setting "
+                    + "that cannot help: " + verdict.reason());
+        } finally {
+            SafetyGate.replaceDenials(savedDenials);
+        }
+    }
+
+    /** Silence until something actually fails; a permanent "breaker: armed" line is noise. */
+    @Test
+    void nothingIsReportedUntilSomethingFails() {
+        assertTrue(SafetyGate.runtimeFailureDenials().isEmpty(),
+            "a healthy server must have nothing to report");
+        fail(WalkNodeEvaluator.class);
+        assertTrue(SafetyGate.runtimeFailureDenials().isEmpty(),
+            "and one failure below the threshold is still not a trip -- reporting it as one would "
+                + "tell an operator the mod had switched off while it is still dispatching");
+    }
+
 }

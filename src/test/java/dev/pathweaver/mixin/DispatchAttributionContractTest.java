@@ -77,4 +77,52 @@ class DispatchAttributionContractTest {
                 + "result still installs, and every test still passes -- but a worker failure is then "
                 + "attributed to no family, so the breaker counts nothing and can never trip.");
     }
+
+    /**
+     * A dispatch refused by a trip must be counted, not silently skipped.
+     *
+     * <p>Deleting the {@code markOutcome} call left the whole suite green. The consequence is not
+     * cosmetic: a tripped family then shows up as {@code dispatched} simply ceasing to rise, with no
+     * row anywhere saying why — which is precisely the vanishing setup failure 0.6.0 had to fix,
+     * where the mod did nothing indefinitely while reporting itself healthy.
+     */
+    @Test
+    void aDispatchRefusedByTheBreakerIsCounted() throws Exception {
+        boolean[] asksTheBreaker = {false};
+        boolean[] countsTheRefusal = {false};
+
+        try (InputStream in = DispatchAttributionContractTest.class
+                .getResourceAsStream("/dev/pathweaver/mixin/PathNavigationMixin.class")) {
+            assertNotNull(in, "PathNavigationMixin.class not readable");
+            new ClassReader(in.readAllBytes()).accept(new ClassVisitor(Opcodes.ASM9) {
+                @Override public MethodVisitor visitMethod(int a, String n, String d, String sg,
+                                                           String[] ex) {
+                    return new MethodVisitor(Opcodes.ASM9) {
+                        @Override public void visitMethodInsn(int opcode, String owner, String method,
+                                                              String desc, boolean isInterface) {
+                            if (owner.equals("dev/pathweaver/gate/SafetyGate")
+                                    && method.equals("isDeniedByRuntimeFailure")) {
+                                asksTheBreaker[0] = true;
+                            }
+                        }
+                        @Override public void visitFieldInsn(int opcode, String owner, String name,
+                                                             String desc) {
+                            if (owner.equals("dev/pathweaver/async/RequestOutcome")
+                                    && name.equals("BREAKER_OPEN")) {
+                                countsTheRefusal[0] = true;
+                            }
+                        }
+                    };
+                }
+            }, ClassReader.SKIP_FRAMES);
+        }
+
+        assertTrue(asksTheBreaker[0],
+            "the dispatch gate must distinguish a runtime trip from a scan denial; without that, a "
+                + "trip is reported as something no setting can fix");
+        assertTrue(countsTheRefusal[0],
+            "and it must record BREAKER_OPEN for the refusal, or a switched-off family is invisible "
+                + "in /pathweaver status except as a number that stopped going up");
+    }
+
 }
