@@ -927,6 +927,13 @@ public final class ForeignMixinScanner {
             PathWeaver.LOG.warn("That is a trade, not a safety claim. Set compatibilityTier=AUDITED");
             PathWeaver.LOG.warn("for full checking, or name specific mods in trustedMods to keep the");
             PathWeaver.LOG.warn("scan armed for everything else.");
+            PathWeaver.LOG.warn("");
+            // What an operator should actually DO. The block above states a risk and leaves them
+            // with no procedure, which is how a warning becomes noise people scroll past.
+            PathWeaver.LOG.warn("Suggested: try it on a copy of your world. If mobs path normally");
+            PathWeaver.LOG.warn("and nothing looks wrong after a few sessions, keep this setting. If");
+            PathWeaver.LOG.warn("anything does look wrong, switch to AUDITED and report it -- that");
+            PathWeaver.LOG.warn("is the evidence this project does not otherwise have.");
             if (!unauditedNowRunning.isEmpty()) {
                 PathWeaver.LOG.warn("");
                 PathWeaver.LOG.warn("The {} unaudited mod(s) now running on worker threads:",

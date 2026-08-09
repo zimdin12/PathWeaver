@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.0 — Most mobs, safely *(in development)*
+## 0.6.0 — Spiders, and diagnostics that tell the truth
 
 *The diagnostics work below was briefly numbered 0.5.4 and held back rather than published: on its
 own it added no capability, no coverage and no speed, and nobody should update a modpack for a
@@ -13,6 +13,17 @@ release that only stops the mod misreporting itself. It ships as part of 0.6 ins
   its path on the server thread — while `/pathweaver mobs` counted spiders as eligible. Third
   instance of one mixin mistake; `NavigationOverrideCoverageTest` now derives the overriding
   navigation subclasses from Minecraft's own bytecode so a future one cannot silently opt out.
+
+### The default now explains itself
+
+- **The startup log says WHY `UNSAFE` is the shipped default.** It already warned that the denial had
+  been ignored and that searches run alongside unaudited code. What it never said is the reason, which
+  is what turns that from "this mod ships recklessly" into a trade an operator can evaluate: the
+  checked tier denies every family on an ordinary modded pack — measured at **0 of 187 eligible mob
+  types** on a 221-mod pack — so shipping it as the default would ship a mod that does nothing. It is
+  now stated as a trade, explicitly not as a safety claim, and followed by what to actually do: run it
+  on a copy of your world, keep the setting if nothing looks wrong after a few sessions, switch to
+  `AUDITED` and report it if something does.
 
 ### Diagnostics that agree with the gates
 
@@ -102,7 +113,8 @@ isolation were all attacked and held.
   of those 15 touch only `BlockBehaviour$BlockStateBase` and are not pathfinding mods at all.
 - ASM is now an explicit test dependency instead of arriving through `fabric-loader`.
 
-300 unit tests, four server harnesses, the client harness, and a live two-server A/B on a real
+302 unit tests, four server harnesses, the client harness, a benchmark showing no change
+against 0.5.3, and verification on a real 221-mod server pack.
 Fabric server confirming the reported cause matches what dispatch actually does.
 
 ## 0.5.3 — The branch the fix did not reach
