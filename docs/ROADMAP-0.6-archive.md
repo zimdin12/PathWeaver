@@ -93,7 +93,7 @@ reaching a live `Level` or entity. Mods that genuinely read live world state dur
 (stormiespiders is the standing example) *should* keep denying: that is the gate working. The
 realistic target is "most families eligible on an ordinary pack", not 187/187.
 
-**Still Steven's call, but now an informed one:** if 1a–1c do not get an ordinary pack to mostly-
+**Still the maintainer's call, but now an informed one:** if 1a–1c do not get an ordinary pack to mostly-
 eligible, the tier should be deleted rather than shipped as decoration.
 
 **1d. `SHARED_PATHFINDING_TARGETS` is knowingly incomplete.** *(carried)* It lists
@@ -171,7 +171,7 @@ surface it anyway, so decide before it does.
 
 ## 3. Stop producing discards
 
-*(Steven's stated priority for the next version. Detail in DESIGN.md §12.)*
+*(The maintainer's stated priority for the next version. Detail in DESIGN.md §12.)*
 
 A discard is CPU spent for nothing. Measured on a live 317-mod client: 2920 dispatched, 2838
 installed, 82 discarded — 2.8%, which is not alarming, but on a machine without a spare core that

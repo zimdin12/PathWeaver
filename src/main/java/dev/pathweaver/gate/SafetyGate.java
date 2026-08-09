@@ -236,7 +236,7 @@ public final class SafetyGate {
      * with the install-time re-check disarmed too. That is verbatim the bug these tests claim to
      * prevent, invisible because they were asserting the other copy.
      */
-    static boolean isLandDerived(Class<?> evaluatorClass) {
+    public static boolean isLandDerived(Class<?> evaluatorClass) {
         return net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class
             .isAssignableFrom(evaluatorClass);
     }

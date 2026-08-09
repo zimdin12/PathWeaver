@@ -34,6 +34,26 @@ isolation were all attacked and held.
 
 ### Fixed
 
+- **`/pathweaver mobs` called every land family eligible while dispatch refused all five.** Removing
+  the command's early return so swim mobs stopped being under-reported had a cost nobody priced: the
+  table is now printed in the one state where asking `SafetyGate.isAllowed` alone is wrong. Measured,
+  not argued — `isAllowed(Walk)=true` against `canDispatch(Walk)=false`. The verdict consults the land
+  registry, the command reads the live latch rather than a constant, and both halves are pinned by
+  mutations that were compiled and observed to fail.
+- **`deniedFamilies` meant two different things in two places.** On the same server in the same second,
+  the startup log said `deniedFamilies=0` and `/pathweaver status` said `deniedFamilies=6`. Both were
+  right — the log counts what is *enforced*, status counted what the scan *found* before the tier
+  waived it — and one label with two meanings is the class of defect this release exists to end. Status
+  now prints `deniedByScan=` and `enforced=` separately; the log keeps the name the README teaches.
+- **A mob held back by its `PathFinder` was blamed on a mod, including when it was vanilla's.** The
+  line named the class with `getSimpleName()`, which is empty for an anonymous class, so a real pack
+  produced `navigates with , a mod-supplied PathFinder`. Naming it properly showed what it was:
+  `Warden$1$1`, a `PathFinder` subclass **vanilla itself** constructs. It now falls back to the full
+  name and says "a PathFinder subclass" rather than accusing a mod.
+- **The command told operators that wall-climber chases stay synchronous** — in the release whose
+  headline is that they no longer do.
+
+
 - **The startup banner and `/pathweaver status` reported "ACTIVE, all six families" while five of the
   six were being refused every tick.** Dispatch consults Fabric's land path-type registry latch in
   addition to `SafetyGate`; the two reporting sites did not. On a pack where that verification fails,
@@ -92,7 +112,20 @@ isolation were all attacked and held.
   roadmap 2g rather than papered over. That is not a regression (0.5.0 dropped it on all three
   branches) and re-applying it there is precisely the 0.5.1 bug, so it needs the request to carry its
   origin rather than a widened condition.
-- A javadoc describing `rollbackOptimisticTarget` was sitting above `abortFailedInstall`.
+- A javadoc describing `rollbackOptimisticTarget` was sitting above `abortFailedInstall`. Two more of
+  the same: a javadoc in `RequestOutcome` and one in `PWNavigation` each sat directly above *another*
+  javadoc, documenting nothing, and an `@param dispatchCounted` named a parameter that had been
+  replaced by `stage`.
+- **The README's eligibility numbers were measured with the wrong instrument.** It quoted 187 of 187
+  at the shipped default, from a harness that never inspects the `PathFinder` a mob actually holds.
+  `/pathweaver mobs` — the thing a user can run — says **184 of 187**, holding back the two spiders and
+  the warden. Nothing regressed; the old number was optimistic. Every figure in that section has been
+  re-measured on 0.6.0 and the claim that 0.4.0 dispatched the first third-party evaluator is
+  withdrawn: it never dispatched, and direct measurement now says so.
+- `PLAN.md` was a 0.2.3 artifact sitting in the repo root, whose "Future boundary" section stated no
+  engine work remained after 0.2.2 — beside a roadmap describing 0.6 through 1.0. Archived to
+  `docs/PLAN-0.2-archive.md`. `DESIGN.md`'s product decision still said "hold publication", reversed
+  at 0.3.0 and four releases ago.
 
 ### Added
 
@@ -106,13 +139,21 @@ isolation were all attacked and held.
   version of the same walk looks like. Details in `docs/ROADMAP-0.6-archive.md` §6. It found no unknown bug. What building it taught is
   recorded there too: the naive version is useless rather than imprecise, reporting 1,220 hazards
   including the client renderer.
-- **`tools/scan_pack.py`**, which measured why `AUDITED` leaves nothing eligible: 21 mods in a real
-  221-jar server pack claim a watched target, any one of which denies everything, and 15 have no audit. Nine
-  of those 15 touch only `BlockBehaviour$BlockStateBase` and are not pathfinding mods at all.
+- **`tools/scan_pack.py`**, which measured why `AUDITED` leaves nothing eligible: 20 mods in a real
+  221-jar server pack claim a watched target, any one of which denies everything, and 14 have no audit.
+  Nine of those 14 touch only `BlockBehaviour$BlockStateBase` and are not pathfinding mods at all. The
+  tool over-approximates on purpose — it reads mixin configs, not what the injected code reaches — so
+  it flags five that PathWeaver's own scanner clears. The scanner names nine blockers on this pack; the
+  nine that touch only `BlockStateBase` are a *different* nine, which is confusing enough to be worth
+  saying out loud.
 - ASM is now an explicit test dependency instead of arriving through `fabric-loader`.
 
-309 unit tests, four server harnesses, the client harness, a benchmark showing no change
-against 0.5.3, and verification on a real 221-mod server pack.
+312 unit tests (zero skipped), three game tests, four server harnesses, the client harness, a
+benchmark showing no change against 0.5.3, and verification on a real 221-jar server pack in three
+tier configurations: `AUDITED` with nothing trusted (0 of 187 eligible, nine mods named), `AUDITED`
+with those nine trusted (184 of 187, nothing enforced, 732 searches installed), and the shipped
+`UNSAFE` default (184 of 187, 773 dispatched / 765 installed / 8 discarded, zero exceptions). All
+seven evaluator families produced node-for-node identical routes to vanilla in every run.
 
 ## 0.5.3 — The branch the fix did not reach
 
@@ -297,7 +338,7 @@ outlier run inflating a mean over n=2.
 - **The default `compatibilityTier` is now `Unsafe`, so out of the box PathWeaver runs other mods'
   uninspected pathfinding code on worker threads.** This is a risk decision and not a small one, so
   the reasoning is stated rather than buried. `Audited` honours individual bytecode audits and one
-  bounded call sample; any mod outside that evidence denies every movement family. On a 221-jar server pack
+  bounded call sample; any mod outside that evidence denies every movement family. On a 222-mod pack
   that left **0 of 187** mob types eligible, and it has been 0 since 0.3.0 — no release has improved
   it, because the limit is other mods touching block state, not anything this mod can fix. Shipping
   `Audited` shipped something indistinguishable from broken.
@@ -564,7 +605,7 @@ names deliberately: they describe what those versions actually shipped._
   switched off. The result was a mod that installs, does nothing, and never mentions it. On a
   heavily-modded pack that is the normal outcome, not an edge case. When inert, the log now names the
   mods responsible, says plainly that every movement family is running on the server thread exactly as
-  vanilla, and gives the one-line override. Measured on a 221-jar server pack: nine mods named.
+  vanilla, and gives the one-line override. Measured on a 222-mod pack: nine mods named.
 
 ### Fixed
 

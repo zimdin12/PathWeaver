@@ -20,7 +20,7 @@ Learned the hard way over 0.5.0–0.5.3, where four consecutive releases each sh
 found within a day:
 
 - **A tag is created only at publish**, on the exact commit whose jar was verified. No tags on
-  work in progress. `v0.5.3` is the last one; everything since is unreleased development.
+  work in progress.
 - **The published jar must be byte-identical to a locally verified build** — check the hash the
   registry serves against the hash that was tested.
 - **A release is gated on:** the full unit suite with zero skips, all four server harnesses, the
@@ -34,16 +34,18 @@ found within a day:
 
 ---
 
-## 0.6 — Most mobs, safely
+## 0.6 — SHIPPED: spiders, and diagnostics that agree with each other
 
-**Goal: an ordinary pack gets most of its mob types pathing off-thread, with the safety checks on.**
+The goal below — *an ordinary pack gets most of its mob types pathing off-thread with the safety checks
+on* — was **not** reached, and moves to 0.6.1. What 0.6.0 did ship: wall-climber chases dispatch, and
+every reporting site answers through the predicate dispatch actually evaluates.
 
-Today `compatibilityTier=AUDITED` leaves **0 of 187 mob types eligible** on a real 221-jar server pack, so
-the shipped default is `UNSAFE` — the mod's own safety mechanism is unusable. Measured cause
-(`tools/scan_pack.py`): 21 mods claim a watched pathfinding target, any one of which denies every
-family; PathWeaver has an audit for 6; the other 15 have none, and **9 of those 15 touch only
-`BlockBehaviour$BlockStateBase`** — FerriteCore, ModernFix, Tectonic, Balm and friends, none of which
-are pathfinding mods.
+`compatibilityTier=AUDITED` still leaves **0 of 187 mob types eligible** on a real 221-jar server pack,
+so the shipped default remains `UNSAFE` — the mod's own safety mechanism is unusable. Measured cause
+(`tools/scan_pack.py`, which over-approximates): 20 mods claim a watched pathfinding target, any one of
+which denies every family; PathWeaver has an audit for 6; the other 14 have none, and **9 of those 14
+touch only `BlockBehaviour$BlockStateBase`** — FerriteCore, ModernFix, Tectonic, Balm and friends, none
+of which are pathfinding mods. PathWeaver's own scanner names nine blockers, a different nine.
 
 The gate is asking the wrong question: *"did anyone touch this class?"* instead of *"does the injected
 code do anything unsafe on a worker?"*
@@ -92,8 +94,20 @@ walk.
 - **6c. Ship the tier that results as the default**, if and only if it reaches most families on an
   ordinary pack. If it cannot, delete the tier rather than ship decoration.
 
-**Already in this line:** spiders now dispatch (`WallClimberNavigation` override), and the startup
-banner, `/pathweaver status` and `/pathweaver mobs` no longer contradict each other or invent causes.
+**Shipped in 0.6.0:** spiders dispatch (`WallClimberNavigation` override), and the startup banner,
+`/pathweaver status` and `/pathweaver mobs` no longer contradict each other or invent causes.
+
+### 0.6.1 — carried over
+
+- **6b, then 6a**, as scoped above. This is the whole of the "most mobs, safely" goal.
+- **Coverage gaps found by review and not blocking a release.** `bodyCalls` cannot tell an invoked-
+  and-used call from an invoked-and-discarded one, and `pushesConstantInto` is both over- and
+  under-strict — both are bytecode contracts that pass for the wrong reason. Five `DispatchStage`
+  assignment-instant mutations survive the suite, two of which leak an `inFlight` registration.
+- **Spiders still do not dispatch on a pack that replaces their `PathFinder`.** stormiespiders supplies
+  an `AdvancedPathFinder`, and dispatch declines any `PathFinder` subclass before the evaluator
+  matters. The 0.6.0 override is what makes them dispatchable at all; admitting a foreign `PathFinder`
+  is a separate, larger question about what `createPath` is allowed to be.
 
 ---
 

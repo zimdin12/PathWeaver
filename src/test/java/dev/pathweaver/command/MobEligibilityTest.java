@@ -2,6 +2,7 @@ package dev.pathweaver.command;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.pathweaver.gate.SafetyGate;
@@ -133,6 +134,88 @@ class MobEligibilityTest {
             MobEligibility.of(Mob.class, WalkNodeEvaluator.class, null, false);
         assertTrue(verdict.eligible(),
             "a field this diagnostic could not read must not invent a refusal: " + verdict.reason());
+    }
+
+    /**
+     * The land registry is part of the dispatch decision, so it must be part of this verdict.
+     *
+     * <p>Round seven removed {@code /pathweaver mobs}' early return so swim mobs would stop being
+     * under-reported. That was right, and it started printing this table in the one state where
+     * asking {@code isAllowed} alone is wrong: with the latch shut, dispatch refuses all five land
+     * families on every tick while the table called every one of them eligible. Executed, not read:
+     * {@code isAllowed(Walk)=true} against {@code canDispatch(Walk)=false}.
+     */
+    @Test
+    void aLandFamilyHeldBackByTheRegistryIsNotReportedEligible() {
+        MobEligibility.Verdict blocked =
+            MobEligibility.of(Mob.class, WalkNodeEvaluator.class, null, false, true);
+        assertFalse(blocked.eligible(),
+            "with the land registry unverified, dispatch refuses every land family -- reporting "
+                + "them eligible is the banner bug 0.6.0 fixes, restated one command over");
+        assertTrue(blocked.reason().contains("land path-type registry"),
+            "and it must name the real cause rather than invent one: " + blocked.reason());
+
+        assertTrue(MobEligibility.of(Mob.class, WalkNodeEvaluator.class, null, false, false).eligible(),
+            "an open latch must leave the land families exactly as they were");
+        assertTrue(MobEligibility.of(Mob.class,
+                net.minecraft.world.level.pathfinder.SwimNodeEvaluator.class, null, false, true)
+            .eligible(),
+            "the latch gates land families only -- swim mobs dispatch either way, which is the "
+                + "under-reporting round seven removed the early return to fix");
+    }
+
+    /**
+     * The command must READ the live latch, not hand the verdict a constant.
+     *
+     * <p>The value test above passes just as happily when the caller pushes {@code false}, which is
+     * the "one hop from the call site" failure this project has now hit five times. So this walks the
+     * shipped bytecode of the method the command actually calls.
+     */
+    @Test
+    void theCommandAsksTheGateForTheLiveLatchState() throws Exception {
+        java.util.Set<String> calls = new java.util.LinkedHashSet<>();
+        try (java.io.InputStream in = MobEligibilityTest.class
+                .getResourceAsStream("/dev/pathweaver/command/PathWeaverCommand.class")) {
+            assertNotNull(in, "PathWeaverCommand.class not readable");
+            new org.objectweb.asm.ClassReader(in.readAllBytes()).accept(
+                new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                    @Override public org.objectweb.asm.MethodVisitor visitMethod(
+                            int a, String n, String d, String sg, String[] ex) {
+                        if (!n.equals("verdictFor")
+                                || !d.equals("(Lnet/minecraft/world/entity/Mob;Z)"
+                                    + "Ldev/pathweaver/command/MobEligibility$Verdict;")) {
+                            return null;
+                        }
+                        return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                            @Override public void visitMethodInsn(int op, String o, String m,
+                                                                  String md, boolean itf) {
+                                calls.add(o + "." + m);
+                            }
+                        };
+                    }
+                }, org.objectweb.asm.ClassReader.SKIP_FRAMES);
+        }
+        assertTrue(calls.contains("dev/pathweaver/gate/SafetyGate.landRegistryBlocksWalkFamilies"),
+            "/pathweaver mobs must read the live land-registry state; a hard-coded false makes the "
+                + "table announce families dispatch refuses on every tick: " + calls);
+    }
+
+    /** An anonymous mod PathFinder must still be named; a real pack printed "navigates with ,". */
+    @Test
+    void anAnonymousModPathFinderIsNamedRatherThanLeftBlank() {
+        net.minecraft.world.level.pathfinder.PathFinder anonymous =
+            new net.minecraft.world.level.pathfinder.PathFinder(new WalkNodeEvaluator(), 1) {};
+        MobEligibility.Verdict verdict = MobEligibility.of(
+            Mob.class, WalkNodeEvaluator.class, anonymous.getClass(), false);
+        assertFalse(verdict.eligible(), "a PathFinder subclass is refused");
+        assertFalse(verdict.reason().contains("mod-supplied"),
+            "vanilla builds anonymous PathFinder subclasses too -- the warden's is the third refusal "
+                + "on a real pack, and blaming a mod for it invents a cause: " + verdict.reason());
+        assertFalse(verdict.reason().contains("with ,"),
+            "an empty simple name leaves the line unable to name what is responsible: "
+                + verdict.reason());
+        assertTrue(verdict.reason().contains("MobEligibilityTest"),
+            "and the fallback must be a name a reader can act on: " + verdict.reason());
     }
 
     private static final class ForeignPathFinder

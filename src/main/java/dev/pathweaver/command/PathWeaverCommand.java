@@ -73,9 +73,16 @@ public final class PathWeaverCommand {
             tierLine += " (config says " + config.compatibilityTier + " -- restart to apply)";
         }
         say(source, tierLine);
+        // Two names, because these are two different numbers and both were called "deniedFamilies".
+        // Measured on the real pack at the shipped default, same server, same second: the startup log
+        // said deniedFamilies=0 and this line said deniedFamilies=6. Both were correct -- the log
+        // reports what is ENFORCED, this reports what the scan FOUND before the tier waived it -- and
+        // an operator reading one label with two meanings has no way to know that. README teaches the
+        // log line, so the log line keeps the name.
         say(source, "  scan: scanned=" + report.decision().scanned()
             + ", failed=" + report.decision().failed()
-            + ", deniedFamilies=" + report.decision().denied().size());
+            + ", deniedByScan=" + report.decision().denied().size()
+            + ", enforced=" + dev.pathweaver.gate.SafetyGate.deniedBySafety.size());
 
         // Report what the tier DID with the scan, not what the scan found. The unsafe tier waives
         // every denial, and printing the raw decision there told an operator that all six families
@@ -348,10 +355,14 @@ public final class PathWeaverCommand {
         // including villagers, piglins, axolotls, frogs, allays and the warden -- calls createPath
         // directly and then moveTo(Path, double). Those routes are synchronous by construction (see
         // DESIGN.md section 10), so counting them as "can path off-thread" overstates coverage.
+        // Wall-climbers were in that sentence until 0.6.0 and are not any more: WallClimberNavigation
+        // overrides moveTo(Entity, double), and this release injects into the override. Leaving them
+        // named here would have shipped the release's own headline as a caveat against itself.
         say(source, "  " + eligible + " of " + types + " mob types are eligible");
         say(source, "  §7Eligible means nothing blocks dispatch for this mob. It is not a promise "
-            + "that its AI routes through a dispatching call site — brain-driven movement and "
-            + "wall-climber chases stay synchronous by design.");
+            + "that its AI routes through a dispatching call site — brain-driven movement "
+            + "(villagers, piglins, axolotls, allays, the warden) stays synchronous by design. "
+            + "Wall-climber chases did too until 0.6.0, and now dispatch.");
         verdicts.entrySet().stream()
             .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
             .forEach(entry -> say(source,
@@ -371,12 +382,18 @@ public final class PathWeaverCommand {
     }
 
     private static MobEligibility.Verdict verdictFor(Mob mob, boolean moddedAllowed) {
+        return verdictFor(mob, moddedAllowed,
+            dev.pathweaver.gate.SafetyGate.landRegistryBlocksWalkFamilies());
+    }
+
+    private static MobEligibility.Verdict verdictFor(Mob mob, boolean moddedAllowed,
+                                                     boolean landRegistryBlocked) {
         try {
             PathNavigation navigation = mob.getNavigation();
             NodeEvaluator evaluator = evaluatorOf(navigation);
             return MobEligibility.of(mob.getClass(),
                 evaluator == null ? null : evaluator.getClass(),
-                pathFinderOf(navigation), moddedAllowed);
+                pathFinderOf(navigation), moddedAllowed, landRegistryBlocked);
         } catch (Throwable failed) {
             return new MobEligibility.Verdict(false,
                 "could not be inspected (" + failed.getClass().getSimpleName() + ")");

@@ -8,7 +8,7 @@ evaluators dispatch today. Sections 8 onward are current.
 
 **Target:** Minecraft 26.1.2, Fabric Loader 0.19.3, Java 25
 
-**Product decision:** hold publication while the required aggregate Fabric API makes every supported install fail closed
+**Product decision:** ship at `compatibilityTier=UNSAFE` by default, because the checked tier denies every family on an ordinary modded pack. The line above said "hold publication" until 0.6.0 — that decision was reversed at 0.3.0 and four releases went out under the new one.
 
 **Defaults:** schema v2, `enabled=true`, `allowModdedMobAsync=false`, `repathToleranceBlocks=0`
 
@@ -135,8 +135,10 @@ happens, where the honest expectation is no measurable change either way.
 
 ## 10. Async `MoveToTargetSink` — reopened, and the stated reason for rejecting it was wrong
 
-This section previously said the idea was structurally impossible. A bytecode investigation in 0.5.4
-showed the argument it made was about a different idea, so it is rewritten rather than amended.
+This section previously said the idea was structurally impossible. A bytecode investigation showed the
+argument it made was about a different idea, so it is rewritten rather than amended. (That
+investigation was done for a release briefly numbered 0.5.4, which was never published; the work
+shipped in 0.6.0.)
 
 **What it used to say:** deferring the answer to `checkExtraStartConditions` makes the behaviour set
 `CANT_REACH_WALK_TARGET_SINCE` and send the mob wandering; and speculation cannot help because 99.7%
@@ -223,7 +225,9 @@ being wanted. Spending correctness risk to reclaim it would be paying for the wr
 
 ## 12. Direction for the next version: stop producing discards
 
-Recorded as intent, not as a design. 0.5.0's priority is stability; this is what comes after it.
+Recorded as intent, not as a design. Scheduled for 0.7, where it depends on requests carrying their
+origin — see [ROADMAP.md](ROADMAP.md). The 2.8% below was measured before 0.6.0; the current figure on
+the 221-jar server pack is 8 discards in 773 dispatches (1.0%) at the shipped default.
 
 A discard is a finished search that nobody wanted by the time it landed — the mob stopped, its target
 moved, the world changed under it, or the pool admitted more than it could deliver in time. Measured

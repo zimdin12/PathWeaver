@@ -1,4 +1,9 @@
-# PathWeaver release plan/status
+# PathWeaver release plan/status — ARCHIVED at 0.2.3
+
+*Historical. This file tracked the 0.1–0.2 releases and its "Future boundary" section says no engine
+work remains after 0.2.2 — written before 0.3–0.6 happened. It sat in the repo root beside a roadmap
+that contradicts it. Kept because it records what was decided and when; superseded by
+[ROADMAP.md](../ROADMAP.md).*
 
 ## Shipped history
 
@@ -28,7 +33,7 @@
 
 ## v0.2.1 shipped baseline
 
-- [x] Steven chose SHIP as the honest fail-closed final form.
+- [x] The maintainer chose SHIP as the honest fail-closed final form.
 - [x] Private snapshot/A* rejected after its lower-bound capture-cost spike failed the agreed relative-cost gate.
 - [x] No load/scaling matrix for the cancelled engine.
 - [x] Standard Fabric content-registry packs remain synchronous; no broad provider trust.

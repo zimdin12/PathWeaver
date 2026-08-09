@@ -28,28 +28,47 @@ public final class MobEligibility {
      * @param evaluatorClass the evaluator the mob's navigation really holds, or null if it has none
      */
     public static Verdict of(Class<?> mobClass, Class<?> evaluatorClass, boolean moddedAllowed) {
-        return of(mobClass, evaluatorClass, null, moddedAllowed);
+        return of(mobClass, evaluatorClass, null, moddedAllowed, false);
+    }
+
+    public static Verdict of(Class<?> mobClass, Class<?> evaluatorClass, Class<?> pathFinderClass,
+                             boolean moddedAllowed) {
+        return of(mobClass, evaluatorClass, pathFinderClass, moddedAllowed, false);
     }
 
     /**
      * @param pathFinderClass the PathFinder the navigation really holds, or null when not inspected
      */
     public static Verdict of(Class<?> mobClass, Class<?> evaluatorClass, Class<?> pathFinderClass,
-                             boolean moddedAllowed) {
+                             boolean moddedAllowed, boolean landRegistryBlocked) {
         boolean originOk = MobOriginGate.isAllowed(mobClass, moddedAllowed);
         if (evaluatorClass == null) {
             return new Verdict(false, "navigates without a node evaluator");
         }
-        // Dispatch builds its own vanilla PathFinder and so refuses a mod-supplied one outright.
-        // Omitting that here let this diagnostic call a mob eligible that dispatch would decline --
-        // exactly the drift the class comment says cannot be allowed to happen, reintroduced by a
-        // gate added later. The rule is not restated: the same exact-class comparison is used.
+        // Dispatch builds its own vanilla PathFinder and so refuses any subclass outright. Omitting
+        // that here let this diagnostic call a mob eligible that dispatch would decline -- exactly
+        // the drift the class comment says cannot be allowed to happen, reintroduced by a gate added
+        // later. The rule is not restated: the same exact-class comparison is used.
+        //
+        // "mod-supplied" is NOT what this says, and used to be. Naming the class exposed the reason:
+        // on a real pack the third refusal was `Warden$1$1`, an anonymous PathFinder that VANILLA
+        // constructs inside the warden's navigation. Blaming a mod for a vanilla class is the sort of
+        // invented cause the rest of this release exists to remove.
         if (pathFinderClass != null
                 && pathFinderClass != net.minecraft.world.level.pathfinder.PathFinder.class) {
-            return new Verdict(false, "navigates with " + pathFinderClass.getSimpleName()
-                + ", a mod-supplied PathFinder rather than the vanilla one");
+            return new Verdict(false, "navigates with " + describe(pathFinderClass)
+                + ", a PathFinder subclass rather than the vanilla one");
         }
+        // The land registry is part of the dispatch decision, and asking isAllowed alone omits it.
+        // That was harmless while /pathweaver mobs returned early in the blocked state; round seven
+        // removed the early return so swim mobs would stop being under-reported, and in doing so
+        // started printing this table in exactly the state where the omission is wrong -- every land
+        // family reading "eligible" while dispatch refuses all five on every tick. The class comment
+        // above says a diagnostic must ask the gate that actually decides; this is that gate.
         boolean evaluatorOk = SafetyGate.isAllowed(evaluatorClass);
+        if (evaluatorOk && landRegistryBlocked && SafetyGate.isLandDerived(evaluatorClass)) {
+            return new Verdict(false, "held back by Fabric's land path-type registry");
+        }
         if (evaluatorOk && originOk) return new Verdict(true, ELIGIBLE);
 
         String origin = originOk ? null : "added by a mod";
@@ -69,6 +88,18 @@ public final class MobEligibility {
      * vanilla evaluator there is. The mob was refused because six mods had mixed into pathfinding
      * and the scan denied the family, which is a fact about their modlist, not about the zombie.
      */
+    /**
+     * A name for a class that always has one.
+     *
+     * <p>{@code getSimpleName()} returns the empty string for an anonymous class, and a real pack
+     * produced exactly that: "navigates with , a PathFinder subclass", in the line whose only
+     * job is to name what is responsible.
+     */
+    private static String describe(Class<?> type) {
+        String simple = type.getSimpleName();
+        return simple.isEmpty() ? type.getName() : simple;
+    }
+
     private static String evaluatorReason(Class<?> evaluatorClass) {
         String name = evaluatorClass.getSimpleName();
         if (!SafetyGate.isEvaluatorAllowed(evaluatorClass)) {

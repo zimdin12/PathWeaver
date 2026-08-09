@@ -46,7 +46,7 @@ Flying and amphibious mobs were excluded before 0.4.0, and the stated reason was
 
 ## Will it actually do anything?
 
-At the shipped `UNSAFE` default the answer is yes, on any pack, because no check can stop it. **This whole section describes `compatibilityTier=AUDITED`** — what you get when you opt back into checking.
+At the shipped `UNSAFE` default the answer is yes on almost any pack, because the tier waives every denial the scan produces. One thing it does not waive: if the scan itself *fails* — it threw, so it cannot say what is installed — every family stays synchronous at every tier, and the log says so in a block of its own. **This whole section describes `compatibilityTier=AUDITED`** — what you get when you opt back into checking.
 
 At `AUDITED`, PathWeaver scans every loaded mod at startup for mixins into pathfinding code. If a mod modifies that code and has not been audited, PathWeaver disables itself for the affected movement family and everything runs vanilla-synchronous.
 
@@ -65,7 +65,9 @@ Check your server log for:
 Foreign-mixin scan complete: scanned=…, failed=…, deniedFamilies=…
 ```
 
-`deniedFamilies=0` means PathWeaver is active — always true at the `UNSAFE` default. Any other value means it is partly or wholly inactive, and the preceding lines name each mod responsible.
+`deniedFamilies` on that line counts what is **enforced**, after the tier has had its say, so `0` means PathWeaver is active. At the `UNSAFE` default it reads `0` unless the scan failed outright. Any other value means the mod is partly or wholly inactive, and the preceding lines name each mod responsible.
+
+`/pathweaver status` prints the same scan two ways — `deniedByScan` is what the scan found, `enforced` is what survived the tier. At `UNSAFE` on the pack measured below they read `6` and `0`: nine mods tripped the scan, and the tier waived all of it.
 
 ## How many of your mobs are actually eligible
 
@@ -73,21 +75,34 @@ Two numbers from the same 221-jar server pack, because only quoting the flatteri
 
 | Tier | Eligible mob types |
 |---|---|
-| `UNSAFE` — the shipped default | **187 of 187** (0.3.0 managed 163) |
+| `UNSAFE` — the shipped default | **184 of 187** (0.3.0 managed 163) |
 | `AUDITED` | **0 of 187** |
 
-The second number has been true since 0.3.0 and no version has improved it, which is why it is no
-longer the default. Nine mods in that pack —
-balm, carpet, expandability, ferritecore, scalablelux, sereneseasons, terrain_slabs, vehicleupgrade
-and yungscavebiomes — mix into pathfinding-adjacent code, so the scan denies every movement family
-and the mod does nothing. From 0.4.0 it says exactly that at world start and names them.
+Both numbers are what `/pathweaver mobs` prints, re-measured on 0.6.0 — run it and you should get the
+same. Earlier releases quoted 187 for the first row; that came from a harness that did not inspect the
+`PathFinder` each mob actually holds, and the command does. The three it holds back are the two
+spiders, whose navigation stormiespiders replaces, and the **warden**, whose `PathFinder` is an
+anonymous subclass vanilla itself constructs. Dispatch builds a stock `PathFinder`, so any subclass —
+vanilla's or a mod's — stays synchronous. Nothing regressed between 0.5.3 and 0.6.0 here; the number
+is honest where the old one was optimistic.
+
+The second row has been true since 0.3.0 and no version has improved it, which is why it is no longer
+the default. Nine mods in that pack — balm, carpet, expandability, ferritecore, scalablelux,
+sereneseasons, terrain_slabs, vehicleupgrade and yungscavebiomes — mix into pathfinding-adjacent code,
+so the scan denies every movement family and the mod does nothing. From 0.4.0 it says exactly that at
+world start and names them.
 **What limits PathWeaver is other mods touching block state, not which mobs it can handle.**
+
+(A separate nine appears in the 0.6.0 changelog — the mods that touch *only* `BlockStateBase`. It is a
+different set of nine, from `tools/scan_pack.py`, which over-approximates: the tool flags 20 mods in
+this pack as claiming a watched target and PathWeaver's own scanner clears 11 — six by audit, five
+because the mixin never reaches a watched method.)
 
 Eligibility is not the same as coverage. It means nothing blocks dispatch for that mob type — not
 that every movement it makes goes off-thread. Brain-driven movement (`MoveToTargetSink`, which is
-villagers, piglins, axolotls, frogs, allays and the warden) and wall-climber chases call
-`createPath` directly and stay synchronous by construction; see [DESIGN.md §10](DESIGN.md) for why
-that is deliberate rather than a gap.
+villagers, piglins, axolotls, frogs, allays and the warden) calls `createPath` directly and stays
+synchronous by construction; see [DESIGN.md §10](DESIGN.md) for why that is deliberate rather than a
+gap. Wall-climber chases were in that sentence until 0.6.0 and are not any more — spiders dispatch.
 
 Where the scan denies nothing — a lean pack, Fabric API and Lithium — `AUDITED` admits everything on
 its own, which is the configuration the benchmark below runs in. That is the case the checked tier was
@@ -105,20 +120,22 @@ On the same 221-jar server pack, tier set to `AUDITED` throughout:
 |---|---|
 | empty | 0 of 187 — nine mods named as blockers |
 | 4 of the 9 | still refuses, now names the remaining 5 |
-| all 9 | **185 of 187**, `deniedFamilies=0`, 709 searches installed, zero exceptions |
+| all 9 | **184 of 187**, nothing enforced, 732 searches installed, zero exceptions |
 
-The two still refused are the spiders, whose evaluator stormiespiders replaces — trusting a mod does
-not admit a third-party evaluator, which remains `UNSAFE` only.
+The three still refused are the two spiders and the warden, for the `PathFinder` reason above, which
+`trustedMods` has no bearing on.
 
 **This is not a safety feature.** Anything named runs unaudited on worker threads, exactly as `UNSAFE`
 would, aimed at fewer mods. Matching is by mod id, so an entry keeps applying after that mod updates
 and changes what its mixins do — the audited exemptions are pinned to exact artifact hashes precisely
 because this is not.
 
-What 0.4.0 changed is the first row. The 24 types that were ineligible at the widest tier are now
-eligible: 12 amphibious, 8 flying, the frog's and the creaking's bespoke evaluators, and both spiders,
-which use stormiespiders' `AdvancedWalkNodeProcessor` — the first third-party evaluator this mod has
-ever actually dispatched.
+What 0.4.0 changed is the first row: 21 of the 24 types that were ineligible at the widest tier became
+eligible — 12 amphibious, 8 flying, and the frog's and the creaking's bespoke evaluators. The spiders
+were counted in that number at the time and should not have been. Their evaluator is admitted at
+`UNSAFE`, but their `PathFinder` is a subclass, so dispatch declines before the evaluator matters —
+confirmed by direct measurement on this pack (`dispatched=0`, never registered). No third-party
+evaluator has yet been dispatched on this pack.
 
 Run **`/pathweaver mobs`** for the same breakdown on your own pack.
 

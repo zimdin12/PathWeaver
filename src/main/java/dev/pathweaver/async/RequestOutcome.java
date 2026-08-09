@@ -81,12 +81,6 @@ public enum RequestOutcome {
     }
 
     /**
-     * True when this outcome produced nothing usable.
-     *
-     * <p>{@link #NO_PATH} is excluded because the search succeeded, and {@link #POOL_SATURATED} and
-     * {@link #SETUP_FAILED_PRE_DISPATCH} because no search was ever dispatched to waste.
-     */
-    /**
      * Which setup failure this is, decided in one place instead of at the throw site.
      *
      * <p>The selection used to be a ternary inside the dispatch catch, and three separate attempts to
@@ -95,8 +89,8 @@ public enum RequestOutcome {
      * still loaded last, and simply swapping the ternary arms. Every guard was a test standing beside
      * the decision rather than the decision itself.
      *
-     * @param dispatchCounted the request had already been counted by {@code markDispatched()}, which
-     *     is NOT the same as having registered — registration precedes {@code submit}, and this
+     * @param stage how far the request got. {@link DispatchStage#DISPATCHED} is NOT the same as
+     *     having registered — registration precedes {@code submit} and {@code markDispatched()}
      *     follows it, so a throw from {@code submit} is registered but never dispatched
      */
     public static RequestOutcome setupFailure(DispatchStage stage) {

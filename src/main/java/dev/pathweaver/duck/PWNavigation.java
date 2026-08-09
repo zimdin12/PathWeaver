@@ -9,11 +9,6 @@ import net.minecraft.world.level.pathfinder.Path;
  */
 public interface PWNavigation {
     /**
-     * Main thread: install an async-computed path using vanilla's own moveTo bookkeeping, then replay
-     * the tail of vanilla {@code createPath} (targetPos / reachRange / resetStuckTimeout). Callback
-     * completion is owned centrally by the request registration so install exceptions are also balanced.
-     */
-    /**
      * Main thread: mark that a genuine movement request is starting, and bind its speed.
      *
      * <p>Exists for subclasses of {@code PathNavigation} that OVERRIDE a movement entry point rather
@@ -52,6 +47,12 @@ public interface PWNavigation {
      */
     boolean pathweaver$consumeAcceptedDeferred();
 
+    /**
+     * Main thread: install an async-computed path using vanilla's own moveTo bookkeeping, then replay
+     * the tail of vanilla {@code createPath} (targetPos / reachRange / resetStuckTimeout). Callback
+     * completion is owned centrally by the request registration so install exceptions are also
+     * balanced.
+     */
     void pathweaver$install(Path path);
 
     /** Main thread: true if the owning mob is gone or has moved too far from the dispatch position. */
