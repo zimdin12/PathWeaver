@@ -34,89 +34,99 @@ found within a day:
 
 ---
 
-## 0.6 — SHIPPED: spiders, and diagnostics that agree with each other
+## 0.6.0 — SHIPPED (2026-08-09)
 
-The goal below — *an ordinary pack gets most of its mob types pathing off-thread with the safety checks
-on* — was **not** reached, and moves to 0.6.1. What 0.6.0 did ship: wall-climber chases dispatch, and
-every reporting site answers through the predicate dispatch actually evaluates.
+One capability and a lot of honesty work.
 
-`compatibilityTier=AUDITED` still leaves **0 of 187 mob types eligible** on a real 221-jar server pack,
-so the shipped default remains `UNSAFE` — the mod's own safety mechanism is unusable. Measured cause
-(`tools/scan_pack.py`, which over-approximates): 20 mods claim a watched pathfinding target, any one of
-which denies every family; PathWeaver has an audit for 6; the other 14 have none, and **9 of those 14
-touch only `BlockBehaviour$BlockStateBase`** — FerriteCore, ModernFix, Tectonic, Balm and friends, none
-of which are pathfinding mods. PathWeaver's own scanner names nine blockers, a different nine.
+- **Spiders dispatch.** `WallClimberNavigation` overrides `moveTo(Entity, double)` without calling
+  `super`, so the dispatch marker never ran for it. Third instance of one mixin mistake.
+- **Every reporting site answers through the predicate dispatch evaluates.** The banner could
+  announce "ACTIVE: all 6 families" while five were refused every tick.
+- **Setup failures before registration are counted and logged** instead of vanishing.
+- **The startup log says why `UNSAFE` is the default**, as a trade rather than a safety claim.
 
-The gate is asking the wrong question: *"did anyone touch this class?"* instead of *"does the injected
-code do anything unsafe on a worker?"*
+**What it did NOT do:** the stated goal — *an ordinary pack gets most of its mob types pathing
+off-thread with the checks on* — was not reached. `AUDITED` is still **0 of 187** on a real 221-jar
+pack. See the verdict below.
 
-### What was attempted and reverted, and exactly why
+Measured on the shipping jar: 184 of 187 eligible at the default, 755 dispatched / 749 installed /
+6 discarded, all six families node-for-node identical to a synchronous oracle, no PathWeaver
+exception. Eleven review rounds.
 
-Both 6a and 6b were built, measured on the real 221-jar pack, reviewed, and **reverted**. The review
-executed its attacks rather than arguing them, and found four blockers. They are recorded here so the
-next attempt starts from them instead of rediscovering them:
+---
+
+## The `AUDITED` verdict: stop building it
+
+**Decision, 2026-08-09.** The tier is not being fixed. The evidence is not ambiguous:
+
+- **0 of 187 since 0.3.0.** Five releases, zero movement.
+- **It asks the wrong question.** *"Did any mod touch this class?"* On a real modpack the answer is
+  always yes — 20 mods on the reference pack claim a watched target, nine of which the scanner names.
+  A question with no useful answer on the packs the mod is for is not a safety mechanism.
+- **6a was built and was wrong four independent ways** (below), one of which cleared `isPathfindable`
+  — the most common reason a mod touches block state. Getting it right means whole-program
+  reachability analysis over arbitrary mod bytecode. That is a research project, not a release.
+- **Even a perfect scan would not deliver what a user wants.** It is a proxy for the real question,
+  and the proxy is what fails.
+
+`AUDITED` stays in the code as a diagnostic and as the conservative escape hatch for anyone who wants
+it. It is not the thing that will make PathWeaver safe on an arbitrary pack. 6a, 6b and 6c are
+**withdrawn**, not deferred.
+
+### The four blockers, kept because they are expensive to rediscover
 
 1. **The reachable-method walk matched the wrong owner.** It compared against
    `BlockBehaviour$BlockStateBase`, but javac emits those calls with the owner of the *static receiver
-   type*, `BlockState`. So the set missed `isPathfindable`, `isAir`, `getFluidState` and `getValue`
-   entirely — every real call a search makes. `getCollisionShape` appeared only because
-   `BlockStateBase` happens to call it on itself. A mod injecting `isPathfindable` — the most common
-   reason to touch block state — was cleared, releasing all six families. This project's own
-   `FabricInteractionCompatibility` already uses the `BlockState` owner for exactly this reason.
+   type*, `BlockState`. The set missed `isPathfindable`, `isAir`, `getFluidState` and `getValue`
+   entirely. `getCollisionShape` appeared only because `BlockStateBase` happens to call it on itself.
 2. **Dropping the version check was a no-op.** The version stayed part of `AuditKey`, so the audit
    emitted evidence keyed on its pinned constant while the claim looked itself up with the runtime
-   version. The two never matched and the denial was unchanged. The symptom was visible in the
-   real-pack run — it logged "Verified exact audited compatibility tuple for 'lithium'" while lithium
-   stayed in the blocker list — and was not chased.
-3. **MixinExtras annotations were skipped, not failed closed.** The "unmodelled annotation" guard only
+   version. The symptom was in the real-pack log — "Verified exact audited compatibility tuple for
+   'lithium'" while lithium stayed in the blocker list — and was not chased.
+3. **MixinExtras annotations were skipped, not failed closed.** The unmodelled-annotation guard only
    fired for `org.spongepowered.*`, so every `com.llamalad7.*` injector fell through silently,
-   including `@WrapMethod`, the most powerful one MixinExtras has. `@Inject(target = @Desc(...))` was
-   invisible for the same reason.
+   including `@WrapMethod`.
 4. **An unannotated method in a mixin is an implicit `@Overwrite`** and never entered the annotation
    visitor at all.
 
-Plus: dropping the whole-jar hash unpinned classes the audits' own reasoning names —
-`StarCollisionBlock`, Lithium's `BlockInfoInitializer` and `BlockStateFlagHolder`, ServerCore's
-`BlockGetterMixin` — leaving a javadoc asserting a guarantee the code no longer provided.
+---
 
-**For the next attempt:** fix 6b first and alone — remove `version` from `AuditKey` AND add per-class
-hashes for the four classes above. That delivers the whole user-visible benefit (updates stop silently
-disabling the mod) with no new analysis. Only then consider 6a, and only with hostile-mixin fixtures
-in the test suite: five mutations survived the suite as written, including deleting every seed of the
-walk.
+## 0.6.1 — Detect unsafety instead of predicting it
 
-- **6a. Narrow claims from class level to method level.** A mixin into `BlockStateBase` matters only
-  if the method it injects is on a path a search actually calls. Should clear most of those 9.
-- **6b. Replace hash pinning with runtime property verification.** Every audit currently pins an exact
-  mod version and jar hash, so a Fabric API or Lithium update silently switches the mod off with no
-  actionable error. Verify the property against whatever bytes are loaded instead; the hashes become
-  provenance in the log, not a precondition.
-- **6c. Ship the tier that results as the default**, if and only if it reaches most families on an
-  ordinary pack. If it cannot, delete the tier rather than ship decoration.
+**The replacement for `AUDITED`, and it is a better mod for it.**
 
-**Shipped in 0.6.0:** spiders dispatch (`WallClimberNavigation` override), and the startup banner,
-`/pathweaver status` and `/pathweaver mobs` no longer contradict each other or invent causes.
+Today a worker search that throws is counted `SEARCH_FAILED`, discarded, and the mob paths
+synchronously for that tick. Correct — and nothing learns from it. There is no circuit breaker in the
+codebase.
 
-### 0.6.1 — carried over
+Invert the premise: **stop proving safety in advance; observe it.** A throwable on a worker trips a
+per-family counter. Past a threshold, that family is disabled for the rest of the session, in-flight
+requests are dropped, and the log names the family, the exception and the mod whose classes were on
+the stack. Falling back to vanilla is always safe, so the breaker cannot itself destabilise anything.
 
-- **6b, then 6a**, as scoped above. This is the whole of the "most mobs, safely" goal.
+Why this beats the scan on all four tests at the top of this file:
+
+1. **Value** — it protects against the thing that actually goes wrong, including from mods that did
+   not exist when the audit was written.
+2. **Safe** — the failure action is "be vanilla".
+3. **Everyone** — no per-mod audit, no allowlist, works on the default configuration of any pack.
+4. **Worth updating for** — it is the answer to "will this corrupt my world?", which is the first
+   question every prospective user asks.
+
+Also in 0.6.1:
+
 - **Give `/pathweaver status` and `/pathweaver mobs` a testable seam.** Both are
   `private static void (CommandSourceStack)` with nothing extracted but `scanSummary` and
-  `ScanCounts`, and the eleventh review compiled eight mutations inside them that no test sees: the
-  eligible tally, the tier-in-force line, three early-return guards, the land-registry warning, and
-  — the one that stings — reading `moddedMobAsyncAllowed()` and then using `true` anyway, which is
-  the hole round ten closed for the land registry and left open one method over. A `List<String>`
-  producer per command, the way `scanSummary` already works, kills eight of them at once. None
-  changes dispatch; all of them can make the mod misreport itself, which is the defect class this
-  release exists to end.
-- **Coverage gaps found by review and not blocking a release.** `bodyCalls` cannot tell an invoked-
-  and-used call from an invoked-and-discarded one, and `pushesConstantInto` is both over- and
-  under-strict — both are bytecode contracts that pass for the wrong reason. Five `DispatchStage`
-  assignment-instant mutations survive the suite, two of which leak an `inFlight` registration.
-- **Spiders still do not dispatch on a pack that replaces their `PathFinder`.** stormiespiders supplies
-  an `AdvancedPathFinder`, and dispatch declines any `PathFinder` subclass before the evaluator
-  matters. The 0.6.0 override is what makes them dispatchable at all; admitting a foreign `PathFinder`
-  is a separate, larger question about what `createPath` is allowed to be.
+  `ScanCounts`, and the eleventh review compiled eight mutations inside them that no test sees —
+  including reading `moddedMobAsyncAllowed()` and then using `true` anyway, which is the hole round
+  ten closed for the land registry and left open one method over. A `List<String>` producer per
+  command kills eight at once. None changes dispatch; all can make the mod misreport itself.
+- **Coverage gaps recorded by review.** `bodyCalls` cannot tell an invoked-and-used call from an
+  invoked-and-discarded one, and `pushesConstantInto` is both over- and under-strict. Five
+  `DispatchStage` assignment-instant mutations survive, two of which leak an `inFlight` registration.
+- **Spiders still do not dispatch on a pack that replaces their `PathFinder`.** stormiespiders
+  supplies `AdvancedPathFinder`; dispatch declines any `PathFinder` subclass before the evaluator
+  matters. Admitting a foreign `PathFinder` is a separate and much larger question.
 
 ---
 
@@ -131,15 +141,48 @@ reconciliation can do the right thing per origin. That single change closes:
   suppresses its own retry for 20 ticks because it believes the recompute succeeded.
 - **The dropped claim on the fourth `recomputePath` exit** — with a route installed and vanilla
   declining to recompute, the claimed destination is lost and the mob walks to the one it abandoned.
-- **Discard elimination.** 2.8% today (82 of 2920 measured). Small at ordinary counts; not small at
-  the counts this pack is aiming for. Needs `ARRIVED_STALE` split into its five real causes first,
-  which is the same change.
+- **Discard elimination.** **0.8%** on the 0.6.0 shipping jar (6 of 755) — an earlier draft of this
+  line said 2.8% from a 0.5.x capture, and quoting the worse number to justify the work would be
+  exactly the overclaiming this project keeps correcting. At 0.8% this is no longer a headline
+  reason to do 0.7; the two defects above are. Still wants `ARRIVED_STALE` split into its real
+  causes, which is the same change.
 
 ---
 
-## 0.8 — Crowd pathfinding
+## 0.8 — Brain-driven mobs: the city release
 
-**Where "many mobs" starts paying, and where the equivalence promise changes.**
+Villagers, piglins, axolotls, allays, the warden. **86% of the A\* still on the server thread** is
+`MoveToTargetSink.checkExtraStartConditions`, worth ~1.4 ms/tick (~5–7% of tick time) on an ordinary
+world.
+
+**Moved ahead of crowd pathfinding, deliberately.** The thing people build modpacks to do is put up a
+city, and a city is hundreds of villagers. Every one of them paths through the brain, so today every
+one of them paths on the server thread — PathWeaver is close to useless in exactly the build a player
+is proudest of. The ~1.4 ms/tick above was measured on a normal world; it scales with villager count,
+which is the whole point. Crowds of hostile mobs converging on a player is a mob farm, and that is a
+narrower want.
+
+Feasible — `DESIGN.md` §10 rejected an idea it never actually evaluated, and is corrected. Blocked on
+0.7, which must land first. Gated on a game test asserting the whole `CANT_REACH_WALK_TARGET_SINCE` transition table: if that
+test cannot be written, the feature does not ship. The failure mode is a villager **permanently losing
+its workstation or bed**, silently, and it is guarded by one line of reconciliation logic.
+
+**Open question, to decide at 0.8 and not before:** ship this inside PathWeaver, or as a separate mod?
+Separate keeps PathWeaver's *"the search only reads"* claim clean, since this one needs a weaker second
+claim — *"we reproduce vanilla's state machine faithfully"*. Those are different promises.
+
+**Not this, and not later:** running whole brain *ticks* off-thread. Behaviour ticks write memories,
+claim POIs, farm, breed and trade. The blocker is not conflict detection — a region version counter
+handles that cheaply — it is that discarding a speculative tick requires **buffering every write**, and
+the write surface is unbounded because mods add behaviours. A missed write is silent corruption.
+
+---
+
+## 0.9 — Crowd pathfinding
+
+**Where "many mobs" starts paying, and where the equivalence promise changes.** Demoted below the
+city release: it helps a narrower case and it is the first item that stops promising identical
+results.
 
 Fifty zombies converging on one player currently run fifty independent A\* searches over nearly
 identical terrain. Sharing that work is the largest remaining lever.
@@ -151,27 +194,6 @@ an individual line. Not unsafe — no races, all main-thread decisions — but v
 
 So: config-gated, off by default, documented as a behaviour change. For a many-mobs pack it is
 probably the right trade; it must be chosen, not inherited on update.
-
----
-
-## 0.9 — Brain-driven mobs
-
-Villagers, piglins, axolotls, allays, the warden. **86% of the A\* still on the server thread** is
-`MoveToTargetSink.checkExtraStartConditions`, worth ~1.4 ms/tick (~5–7% of tick time).
-
-Feasible — `DESIGN.md` §10 rejected an idea it never actually evaluated, and is corrected. Blocked on
-0.7. Gated on a game test asserting the whole `CANT_REACH_WALK_TARGET_SINCE` transition table: if that
-test cannot be written, the feature does not ship. The failure mode is a villager **permanently losing
-its workstation or bed**, silently, and it is guarded by one line of reconciliation logic.
-
-**Open question, to decide at 0.9 and not before:** ship this inside PathWeaver, or as a separate mod?
-Separate keeps PathWeaver's *"the search only reads"* claim clean, since this one needs a weaker second
-claim — *"we reproduce vanilla's state machine faithfully"*. Those are different promises.
-
-**Not this, and not later:** running whole brain *ticks* off-thread. Behaviour ticks write memories,
-claim POIs, farm, breed and trade. The blocker is not conflict detection — a region version counter
-handles that cheaply — it is that discarding a speculative tick requires **buffering every write**, and
-the write surface is unbounded because mods add behaviours. A missed write is silent corruption.
 
 ---
 
