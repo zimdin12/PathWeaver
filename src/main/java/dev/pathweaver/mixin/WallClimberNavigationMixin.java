@@ -29,11 +29,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * so four families kept racing an attribute). 0.5.2 was the second. The general fix is the
  * reachability work on the 0.6 roadmap; this is the specific one.
  *
- * <p>Nothing else is needed. The inner {@code createPath} this override reaches is
- * {@code PathNavigation}'s own, which {@code PathNavigationMixin} already intercepts — it was
- * declining to dispatch only because the movement flag was never set. Marking the request makes
- * spiders take the identical path as every other mob, including every gate and the synchronous
- * fallback.
+ * <p>Three injections are needed, and the first version of this class shipped with one. The inner
+ * {@code createPath} this override reaches is {@code PathNavigation}'s own, which
+ * {@code PathNavigationMixin} already intercepts, so spiders take every gate and the synchronous
+ * fallback unchanged. What they do NOT inherit is anything the base mixin attaches to
+ * {@code moveTo} itself — the movement marker, the request depth, and the accepted-dispatch result —
+ * because this class overrides that method. Each was missed in turn and each was caught by a test
+ * rather than by reading.
  */
 @Mixin(WallClimberNavigation.class)
 public class WallClimberNavigationMixin {
@@ -43,6 +45,29 @@ public class WallClimberNavigationMixin {
     private void pathweaver$captureWallClimberEntitySpeed(Entity entity, double speed,
                                                            CallbackInfoReturnable<Boolean> cir) {
         ((dev.pathweaver.duck.PWNavigation) this).pathweaver$beginMovementRequest(speed);
+    }
+
+    /**
+     * Report an accepted dispatch as success, which the base inject cannot do for this override.
+     *
+     * <p>The javadoc above used to claim "nothing else is needed" and that spiders take the identical
+     * path as every other mob. They do take every gate — but not the base mixin's RETURN inject on
+     * {@code moveTo}, because this class overrides that method too.
+     *
+     * <p>The consequence is not cosmetic. On accept, the interceptor returns the navigation's current
+     * path; if that path is finished, vanilla's {@code moveTo(Path, double)} returns FALSE (verified
+     * at its offsets 27-35), so an accepted dispatch reported failure. {@code MeleeAttackGoal} answers
+     * a false with {@code ticksUntilNextPathRecalculation += 15}, so a spider that finished its
+     * previous path and repathed to a new target got a fifteen-tick chase stall that no other mob
+     * type gets. Reachable whenever a spider re-targets after arriving.
+     */
+    @Inject(method = "moveTo(Lnet/minecraft/world/entity/Entity;D)Z", at = @At("RETURN"),
+            cancellable = true, require = 1, expect = 1)
+    private void pathweaver$wallClimberDeferredResult(Entity entity, double speed,
+                                                       CallbackInfoReturnable<Boolean> cir) {
+        if (((dev.pathweaver.duck.PWNavigation) this).pathweaver$consumeAcceptedDeferred()) {
+            cir.setReturnValue(true);
+        }
     }
 
     /**

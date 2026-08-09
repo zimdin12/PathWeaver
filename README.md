@@ -4,7 +4,7 @@
 
 **Read this first: PathWeaver ships with its compatibility checking turned off, so out of the box it runs other mods' uninspected pathfinding code on worker threads. Back up worlds you care about.**
 
-That is a deliberate choice and the reasoning is in the open. The checked tier, `AUDITED`, only honours individual bytecode audits, and on a real modpack that means it denies everything and the mod does nothing — measured at **0 of 187** eligible mob types on a 222-mod pack. Shipping it as the default shipped something indistinguishable from broken. Shipping `UNSAFE` means it works on arrival and the risk is yours to opt out of, which is the trade this project decided to make.
+That is a deliberate choice and the reasoning is in the open. The checked tier, `AUDITED`, only honours individual bytecode audits, and on a real modpack that means it denies everything and the mod does nothing — measured at **0 of 187** eligible mob types on a 221-jar server pack. Shipping it as the default shipped something indistinguishable from broken. Shipping `UNSAFE` means it works on arrival and the risk is yours to opt out of, which is the trade this project decided to make.
 
 What you are accepting: the most likely failure is quiet — a wrong path or a torn read. It is not the only possible one: nothing has been proven about code that was never inspected, so a crash or a corrupted world is not excluded, only less likely. Nothing here is evidence that it is safe.
 
@@ -69,7 +69,7 @@ Foreign-mixin scan complete: scanned=…, failed=…, deniedFamilies=…
 
 ## How many of your mobs are actually eligible
 
-Two numbers from the same 222-mod pack, because only quoting the flattering one would be misleading:
+Two numbers from the same 221-jar server pack, because only quoting the flattering one would be misleading:
 
 | Tier | Eligible mob types |
 |---|---|
@@ -99,7 +99,7 @@ built for, and it is rarer than a modpack list makes it look.
 month. `trustedMods` is the scoped version — name the specific mods you have decided about, and the
 scan keeps working for everything else.
 
-On the same 222-mod pack, tier set to `AUDITED` throughout:
+On the same 221-jar server pack, tier set to `AUDITED` throughout:
 
 | `trustedMods` | Result |
 |---|---|
@@ -150,7 +150,7 @@ Mean tick time fell **43.5% to 48.2%**; p99 fell **55–61%**. No overlap: every
 ### Profiled on a real modpack, with spark
 
 The tables above are a synthetic burst in a four-mod environment. This is the same question asked
-the way a server admin would ask it: spark, on a 222-mod pack, 220 mixed mobs (zombies, skeletons,
+the way a server admin would ask it: spark, on a 221-jar server pack, 220 mixed mobs (zombies, skeletons,
 spiders, bees, drowned) retargeted every 6 ticks across a pillared arena, two 45-second profiles.
 Profiles were saved locally rather than uploaded, so the pack's composition stays on the machine.
 

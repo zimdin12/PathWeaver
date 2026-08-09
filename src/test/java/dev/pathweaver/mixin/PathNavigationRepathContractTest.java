@@ -100,6 +100,61 @@ class PathNavigationRepathContractTest {
         assertEquals(vanillaTarget, targetPos(mixin), "no claim must mean targetPos is untouched");
     }
 
+    /**
+     * The movement-depth window must balance, and nothing checked that it does.
+     *
+     * <p>Making {@code pathweaver$exitMovementRequest} a no-op survived the unit suite AND the game
+     * harness. The consequence is not subtle: the depth then rises once per spider chase and never
+     * falls, so from the first chase onward that navigation's depth is permanently non-zero and
+     * EVERY later {@code createPath} passes the {@code == 0} guard — including
+     * {@code MeleeAttackGoal.canUse()}'s query call and any mod's query. That guard is the invariant
+     * the whole design rests on: direct and external {@code createPath} calls, including unknown mod
+     * queries, stay vanilla-synchronous.
+     */
+    @Test
+    void theMovementRequestWindowOpensAndClosesExactlyOnce() throws Exception {
+        PathNavigationMixin mixin = new TestNavigationMixin();
+        var depth = PathNavigationMixin.class.getDeclaredField("pathweaver$navigationRequestDepth");
+        depth.setAccessible(true);
+
+        assertEquals(0, depth.getInt(mixin), "precondition: a fresh navigation is at depth zero");
+        mixin.pathweaver$enterMovementRequest();
+        assertEquals(1, depth.getInt(mixin),
+            "entering a movement request must raise the depth, or the inner createPath reads as a "
+                + "query and stays synchronous");
+        mixin.pathweaver$exitMovementRequest();
+        assertEquals(0, depth.getInt(mixin),
+            "leaving must lower it again -- a depth that never falls makes every later query call, "
+                + "including unknown mod queries, eligible for async dispatch");
+
+        // Nested, because a movement entry point can re-enter through a foreign injector.
+        mixin.pathweaver$enterMovementRequest();
+        mixin.pathweaver$enterMovementRequest();
+        mixin.pathweaver$exitMovementRequest();
+        assertEquals(1, depth.getInt(mixin), "the window must nest rather than latch");
+        mixin.pathweaver$exitMovementRequest();
+        assertEquals(0, depth.getInt(mixin), "and unwind fully");
+    }
+
+    /**
+     * The accepted-dispatch flag must be consumed exactly once.
+     *
+     * <p>Without this an overriding movement method reports failure for an accepted dispatch, and
+     * {@code MeleeAttackGoal} answers a false with {@code ticksUntilNextPathRecalculation += 15}.
+     */
+    @Test
+    void theAcceptedDeferredFlagIsTakenOnceAndThenCleared() throws Exception {
+        PathNavigationMixin mixin = new TestNavigationMixin();
+        var accepted = PathNavigationMixin.class.getDeclaredField("pathweaver$acceptedDeferred");
+        accepted.setAccessible(true);
+        accepted.setBoolean(mixin, true);
+
+        assertTrue(mixin.pathweaver$consumeAcceptedDeferred(),
+            "an accepted dispatch must report success to the caller");
+        assertFalse(mixin.pathweaver$consumeAcceptedDeferred(),
+            "and must not report success twice -- the flag belongs to one request");
+    }
+
     private static java.lang.reflect.Method wrapper() throws Exception {
         var m = PathNavigationMixin.class.getDeclaredMethod("pathweaver$armRecomputePath",
             PathNavigation.class, BlockPos.class, int.class, Operation.class);

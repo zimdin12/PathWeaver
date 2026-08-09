@@ -172,6 +172,13 @@ public abstract class PathNavigationMixin implements PWNavigation {
     }
 
     @Override
+    public boolean pathweaver$consumeAcceptedDeferred() {
+        boolean accepted = pathweaver$acceptedDeferred;
+        pathweaver$acceptedDeferred = false;
+        return accepted;
+    }
+
+    @Override
     public void pathweaver$exitMovementRequest() {
         pathweaver$navigationRequestDepth--;
     }

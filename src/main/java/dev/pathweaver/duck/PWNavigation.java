@@ -38,6 +38,20 @@ public interface PWNavigation {
 
     void pathweaver$exitMovementRequest();
 
+    /**
+     * Main thread: take the "this dispatch was accepted" flag, so an overriding movement method can
+     * report success the way the base one does.
+     *
+     * <p>The base mixin forces {@code true} at the RETURN of {@code PathNavigation}'s three
+     * {@code moveTo} overloads. {@code WallClimberNavigation} overrides one of them, so that inject
+     * never ran for spiders — and an accepted dispatch could still report FAILURE to its caller when
+     * the navigation's previous path was finished: vanilla's {@code moveTo(Path, double)} returns
+     * false for a done path, and {@code MeleeAttackGoal} answers a false with
+     * {@code ticksUntilNextPathRecalculation += 15}. A spider whose search was accepted got a
+     * fifteen-tick chase stall no other mob type gets.
+     */
+    boolean pathweaver$consumeAcceptedDeferred();
+
     void pathweaver$install(Path path);
 
     /** Main thread: true if the owning mob is gone or has moved too far from the dispatch position. */

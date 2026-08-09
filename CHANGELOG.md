@@ -20,14 +20,12 @@ release that only stops the mod misreporting itself. It ships as part of 0.6 ins
   been ignored and that searches run alongside unaudited code. What it never said is the reason, which
   is what turns that from "this mod ships recklessly" into a trade an operator can evaluate: the
   checked tier denies every family on an ordinary modded pack — measured at **0 of 187 eligible mob
-  types** on a 221-mod pack — so shipping it as the default would ship a mod that does nothing. It is
+  types** on a 221-jar server pack — so shipping it as the default would ship a mod that does nothing. It is
   now stated as a trade, explicitly not as a safety claim, and followed by what to actually do: run it
   on a copy of your world, keep the setting if nothing looks wrong after a few sessions, switch to
   `AUDITED` and report it if something does.
 
 ### Diagnostics that agree with the gates
-
-Not published. Built and committed for testing.
 
 A cumulative review of everything since 0.5.0 and an adversarial concurrency bug hunt. The bug hunt
 found **no blocker and no high-severity defect**, and said so explicitly rather than padding — the
@@ -109,13 +107,12 @@ isolation were all attacked and held.
   recorded there too: the naive version is useless rather than imprecise, reporting 1,220 hazards
   including the client renderer.
 - **`tools/scan_pack.py`**, which measured why `AUDITED` leaves nothing eligible: 21 mods in a real
-  317-jar pack claim a watched target, any one of which denies everything, and 15 have no audit. Nine
+  221-jar server pack claim a watched target, any one of which denies everything, and 15 have no audit. Nine
   of those 15 touch only `BlockBehaviour$BlockStateBase` and are not pathfinding mods at all.
 - ASM is now an explicit test dependency instead of arriving through `fabric-loader`.
 
-302 unit tests, four server harnesses, the client harness, a benchmark showing no change
+307 unit tests, four server harnesses, the client harness, a benchmark showing no change
 against 0.5.3, and verification on a real 221-mod server pack.
-Fabric server confirming the reported cause matches what dispatch actually does.
 
 ## 0.5.3 — The branch the fix did not reach
 
@@ -300,7 +297,7 @@ outlier run inflating a mean over n=2.
 - **The default `compatibilityTier` is now `Unsafe`, so out of the box PathWeaver runs other mods'
   uninspected pathfinding code on worker threads.** This is a risk decision and not a small one, so
   the reasoning is stated rather than buried. `Audited` honours individual bytecode audits and one
-  bounded call sample; any mod outside that evidence denies every movement family. On a 222-mod pack
+  bounded call sample; any mod outside that evidence denies every movement family. On a 221-jar server pack
   that left **0 of 187** mob types eligible, and it has been 0 since 0.3.0 — no release has improved
   it, because the limit is other mods touching block state, not anything this mod can fix. Shipping
   `Audited` shipped something indistinguishable from broken.
@@ -567,7 +564,7 @@ names deliberately: they describe what those versions actually shipped._
   switched off. The result was a mod that installs, does nothing, and never mentions it. On a
   heavily-modded pack that is the normal outcome, not an edge case. When inert, the log now names the
   mods responsible, says plainly that every movement family is running on the server thread exactly as
-  vanilla, and gives the one-line override. Measured on a 222-mod pack: nine mods named.
+  vanilla, and gives the one-line override. Measured on a 221-jar server pack: nine mods named.
 
 ### Fixed
 

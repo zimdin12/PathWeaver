@@ -38,7 +38,7 @@ found within a day:
 
 **Goal: an ordinary pack gets most of its mob types pathing off-thread, with the safety checks on.**
 
-Today `compatibilityTier=AUDITED` leaves **0 of 187 mob types eligible** on a real 317-jar pack, so
+Today `compatibilityTier=AUDITED` leaves **0 of 187 mob types eligible** on a real 221-jar server pack, so
 the shipped default is `UNSAFE` — the mod's own safety mechanism is unusable. Measured cause
 (`tools/scan_pack.py`): 21 mods claim a watched pathfinding target, any one of which denies every
 family; PathWeaver has an audit for 6; the other 15 have none, and **9 of those 15 touch only

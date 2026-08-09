@@ -105,6 +105,7 @@ class PathWeaverRuntimeTest {
         int movementDepth = 0;
         @Override public void pathweaver$enterMovementRequest() { movementDepth++; }
         @Override public void pathweaver$exitMovementRequest() { movementDepth--; }
+        @Override public boolean pathweaver$consumeAcceptedDeferred() { return false; }
 
         @Override public void pathweaver$rollbackOptimisticTarget() { }
         @Override public void pathweaver$abortFailedInstall() { }

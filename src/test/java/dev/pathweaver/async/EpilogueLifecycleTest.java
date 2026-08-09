@@ -59,6 +59,7 @@ class EpilogueLifecycleTest {
         int movementDepth = 0;
         @Override public void pathweaver$enterMovementRequest() { movementDepth++; }
         @Override public void pathweaver$exitMovementRequest() { movementDepth--; }
+        @Override public boolean pathweaver$consumeAcceptedDeferred() { return false; }
 
         int rollbacks;
         private final Object uuid = new Object();
