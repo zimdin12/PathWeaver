@@ -152,6 +152,11 @@ class ModMenuIntegrationContractTest {
         expectedCategories.put("repathToleranceBlocks", "repath");
         expectedCategories.put("stalenessMoveThreshold", "repath");
         expectedCategories.put("maxResultAgeTicks", "repath");
+        // Safety settings, so they sit with the master switch and the compatibility risk dial rather
+        // than under worker capacity: they change what the mod does about a failure, not how much
+        // work it will take on.
+        expectedCategories.put("workerFailureLimit", "general");
+        expectedCategories.put("workerFailureWindowTicks", "general");
 
         for (Field field : PathWeaverConfig.class.getDeclaredFields()) {
             if (Modifier.isStatic(field.getModifiers())

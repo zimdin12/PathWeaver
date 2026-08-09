@@ -138,6 +138,11 @@ public final class PathWeaverRuntime {
         // Re-arm alongside the counter it refers to. Leaving it burnt across a world switch left the
         // next session accumulating "dispatch setup failed" with nothing in the log to explain it.
         setupFailureLogged.set(false);
+        // Same reasoning, one layer out: SafetyGate is a per-JVM static and a singleplayer client
+        // starts many servers in one JVM. A trip that survived into the next world would be worse
+        // than a stale counter -- a permanently inert movement family with NO log line, because the
+        // one-shot report had already burned in the previous world.
+        dev.pathweaver.gate.WorkerFailureBreaker.reset();
         entitySink.clear(false);
         installer.clear();
         pool.start(c.resolvedPoolThreads(), c.maxInFlight);
@@ -452,6 +457,10 @@ public final class PathWeaverRuntime {
     /** Main thread, end of each server tick: stamp the tick then install ready paths. */
     public void onEndTick(MinecraftServer server) {
         entitySink.setTick(server.getTickCount());
+        // Published for the workers, which need a tick to measure the failure window against. Wall
+        // clock was the alternative and is worse: a tick is 50 ms only while the server is keeping
+        // up, and a server that is not keeping up is exactly when this matters.
+        dev.pathweaver.gate.WorkerFailureBreaker.setTick(server.getTickCount());
         installer.drain(entitySink);
         reportIfMostResultsAreWasted(server.getTickCount());
     }

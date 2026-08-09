@@ -89,6 +89,17 @@ public class PathWorkerPool {
                 } catch (Throwable t) {
                     outcome = PathOutcome.failed(t);
                     logFailure(generation, t);
+                    // Wrapped, and not defensively. The delivery side of this path
+                    // (ResultInstaller.drain) is a try/finally with no catch, inside a Fabric tick
+                    // event: a throwable escaping the breaker would not be a failed search, it would
+                    // be a crashed server. A mechanism that cannot record a failure must never turn
+                    // that failure into a worse one.
+                    try {
+                        dev.pathweaver.gate.WorkerFailureBreaker.recordSearchFailure(
+                            req.evaluatorClass(), t);
+                    } catch (Throwable breakerFailure) {
+                        // Deliberately silent: logFailure above already reported the real problem.
+                    }
                 } finally {
                     PathWeaverThread.exitWorker();
                     generation.inFlight.decrementAndGet();

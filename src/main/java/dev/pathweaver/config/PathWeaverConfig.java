@@ -129,6 +129,35 @@ public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Category("repath")
     public int maxResultAgeTicks = 40;
 
+    /**
+     * Search failures for one movement family, within {@link #workerFailureWindowTicks}, before that
+     * family stops dispatching for the rest of the session.
+     *
+     * <p>{@code 0} turns the breaker off: failures are still counted, logged and attributed, they are
+     * just never acted on. That is 0.6.0's behaviour and a legitimate choice when benchmarking.
+     *
+     * <p>No {@code configVersion} bump came with this field, deliberately. The serializer throws on
+     * any version but 2, 1 or 0, and a load failure installs fail-closed defaults that set
+     * {@code enabled = false} -- so bumping the version would have switched the mod off for every
+     * existing install. An absent key simply keeps this initializer.
+     */
+    @ConfigEntry.Gui.Tooltip(count = 3)
+    @ConfigEntry.Category("general")
+    public int workerFailureLimit = 3;
+
+    /**
+     * The window those failures must fall inside, in ticks. {@code 0} means "never decays".
+     *
+     * <p>Windowed rather than cumulative because a counter that never decays converges on a certain
+     * trip given enough uptime, and this project's own Lithium audit describes a concurrent-resize
+     * exception as an expected, contained event. Three of those over a fortnight is not an
+     * incompatibility; three in a minute is. A false trip is not a free no-op -- being vanilla is
+     * what the user installed this mod to stop.
+     */
+    @ConfigEntry.Gui.Tooltip(count = 2)
+    @ConfigEntry.Category("general")
+    public int workerFailureWindowTicks = 1200;
+
     @ConfigEntry.Gui.Excluded
     @ConfigEntry.Category("general")
     private static volatile PathWeaverConfig INSTANCE = new PathWeaverConfig();
@@ -200,6 +229,16 @@ public class PathWeaverConfig implements ConfigData {
         return InteractionResult.PASS;
     }
 
+    /** A limit past this is indistinguishable from "off" and only invites a typo that reads as armed. */
+    @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
+    public static final int MAX_WORKER_FAILURE_LIMIT = 1000;
+
+    /** One real-time hour of ticks. Beyond this a window is a cumulative count with extra steps. */
+    @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
+    public static final int MAX_WORKER_FAILURE_WINDOW_TICKS = 72_000;
+
     /**
      * Normalize persisted/GUI values before runtime services consume them. Invalid config must reduce
      * coverage or capacity, never make executor construction fail during server startup.
@@ -212,6 +251,11 @@ public class PathWeaverConfig implements ConfigData {
         repathToleranceBlocks = Math.clamp(
             repathToleranceBlocks, 0, MAX_REPATH_TOLERANCE_BLOCKS);
         maxResultAgeTicks = Math.clamp(maxResultAgeTicks, 1, MAX_RESULT_AGE_TICKS);
+        // Clamped here with every other int, because a hand-edited negative limit would otherwise
+        // read as "off" through one code path and "trip immediately" through another.
+        workerFailureLimit = Math.clamp(workerFailureLimit, 0, MAX_WORKER_FAILURE_LIMIT);
+        workerFailureWindowTicks = Math.clamp(
+            workerFailureWindowTicks, 0, MAX_WORKER_FAILURE_WINDOW_TICKS);
         if (Double.isNaN(stalenessMoveThreshold) || stalenessMoveThreshold < 0.0) {
             stalenessMoveThreshold = 0.0;
         } else if (!Double.isFinite(stalenessMoveThreshold)

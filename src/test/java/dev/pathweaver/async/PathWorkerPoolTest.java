@@ -212,4 +212,59 @@ class PathWorkerPoolTest {
     private static RequestKey key(int entityId) {
         return new RequestKey(1L, entityId + 1L, entityId);
     }
+
+    /**
+     * A search that throws must reach the breaker, from the pool, in production.
+     *
+     * <p>Behavioural rather than a bytecode contract, because the mutation that survived was exactly
+     * a bytecode-invisible one: wrapping the breaker call in {@code if (false)} left every breaker
+     * unit test green while the feature was completely inert in the shipped jar. The breaker's own
+     * tests call it directly; nothing proved the pool ever does.
+     */
+    @Test
+    void aSearchThatThrowsIsRecordedByTheBreaker() throws Exception {
+        dev.pathweaver.gate.WorkerFailureBreaker.reset();
+        try {
+            CountDownLatch done = new CountDownLatch(1);
+            assertTrue(pool.submit(new PathRequest(key(7), 0L,
+                () -> { throw new IllegalStateException("synthetic worker failure"); },
+                outcome -> done.countDown(),
+                ignored -> { },
+                net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class)));
+            assertTrue(done.await(2, TimeUnit.SECONDS));
+
+            assertEquals(1, dev.pathweaver.gate.WorkerFailureBreaker.windowedCount(
+                    net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class),
+                "the pool must report a thrown search to the breaker -- counting it anywhere else "
+                    + "misses every failure whose registration supersede() has already dropped, and "
+                    + "supersede() runs on the block-change invalidation path where these throw");
+        } finally {
+            dev.pathweaver.gate.WorkerFailureBreaker.reset();
+        }
+    }
+
+    /**
+     * And the family must survive the trip from the dispatch site into the envelope.
+     *
+     * <p>A request carrying a null evaluator is counted against nothing, so the breaker can never
+     * trip. That mutation also survived: the dispatch site passing {@code null} instead of
+     * {@code this.nodeEvaluator.getClass()} left the whole suite green.
+     */
+    @Test
+    void aRequestWithNoFamilyCountsAgainstNothing() throws Exception {
+        dev.pathweaver.gate.WorkerFailureBreaker.reset();
+        try {
+            CountDownLatch done = new CountDownLatch(1);
+            assertTrue(pool.submit(new PathRequest(key(8), 0L,
+                () -> { throw new IllegalStateException("synthetic worker failure"); },
+                outcome -> done.countDown(), ignored -> { }, null)));
+            assertTrue(done.await(2, TimeUnit.SECONDS));
+            assertEquals(0, dev.pathweaver.gate.WorkerFailureBreaker.windowedCount(
+                    net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class),
+                "an unattributed failure must not be filed against an arbitrary family");
+        } finally {
+            dev.pathweaver.gate.WorkerFailureBreaker.reset();
+        }
+    }
+
 }

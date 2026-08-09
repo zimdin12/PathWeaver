@@ -39,7 +39,9 @@ class RequestOutcomeTest {
             boolean exempt = outcome == RequestOutcome.INSTALLED
                 || outcome == RequestOutcome.NO_PATH
                 || outcome == RequestOutcome.POOL_SATURATED
-                || outcome == RequestOutcome.SETUP_FAILED_PRE_DISPATCH;
+                || outcome == RequestOutcome.SETUP_FAILED_PRE_DISPATCH
+                // Nothing was computed, so nothing was thrown away.
+                || outcome == RequestOutcome.BREAKER_OPEN;
             assertEquals(!exempt, outcome.isDiscard(), outcome + " is on the wrong side of the line");
         }
     }
@@ -85,7 +87,9 @@ class RequestOutcomeTest {
             // part of the dispatched total. This test previously enforced the opposite and so
             // actively defended the bug.
             boolean neverDispatched = outcome == RequestOutcome.POOL_SATURATED
-                || outcome == RequestOutcome.SETUP_FAILED_PRE_DISPATCH;
+                || outcome == RequestOutcome.SETUP_FAILED_PRE_DISPATCH
+                // Refused at the gate, before anything reaches a worker.
+                || outcome == RequestOutcome.BREAKER_OPEN;
             assertEquals(!neverDispatched, outcome.countsAgainstDispatched(),
                 outcome + " is on the wrong side of the dispatched-total line, so its percentage "
                     + "is measured against a total it does not belong to");

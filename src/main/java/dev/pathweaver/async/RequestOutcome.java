@@ -60,6 +60,15 @@ public enum RequestOutcome {
     /** The worker threw while searching. */
     SEARCH_FAILED("search threw"),
 
+    /**
+     * Dispatch declined because this family's breaker has tripped.
+     *
+     * <p>Counted rather than silent. A tripped family otherwise shows up as {@code dispatched} simply
+     * ceasing to rise, with no row saying why -- which is exactly the shape of the setup failure that
+     * 0.6.0 had to fix, where the mod did nothing indefinitely while reporting itself healthy.
+     */
+    BREAKER_OPEN("family switched off after worker failures"),
+
     /** The worker's completion handoff threw before the result could be queued. */
     HANDOFF_FAILED("result handoff threw"),
 
@@ -123,8 +132,11 @@ public enum RequestOutcome {
     }
 
     public boolean isDiscard() {
+        // BREAKER_OPEN joins the exemptions for the same reason POOL_SATURATED is one: nothing was
+        // computed, so nothing was thrown away. Counting a refusal as waste would make the waste
+        // ratio -- which drives an operator warning -- rise precisely when the mod stopped doing work.
         return this != INSTALLED && this != NO_PATH && this != POOL_SATURATED
-            && this != SETUP_FAILED_PRE_DISPATCH;
+            && this != SETUP_FAILED_PRE_DISPATCH && this != BREAKER_OPEN;
     }
 
     /**
@@ -142,7 +154,10 @@ public enum RequestOutcome {
         // 289 tests passed while the new row printed a percentage of a total it is not part of.
         // javac refuses to compile this when a constant is added, which is what forcing actually is.
         return switch (this) {
-            case POOL_SATURATED, SETUP_FAILED_PRE_DISPATCH -> false;
+            // BREAKER_OPEN is refused before anything reaches a worker, so it is not drawn from the
+            // dispatched total. Printing it as a percentage of dispatches would be the six-digit
+            // "41028 of 0" bug again, on the row that means the mod has switched itself off.
+            case POOL_SATURATED, SETUP_FAILED_PRE_DISPATCH, BREAKER_OPEN -> false;
             // SETUP_FAILED is chosen only when dispatchCounted is true, i.e. strictly after
             // markDispatched() -- so it is part of the dispatched total by construction. Putting it
             // on the false arm reproduced, inside this enum, the exact symptom the split was written
@@ -165,7 +180,7 @@ public enum RequestOutcome {
             case INSTALLED, NO_PATH -> true;
             case POOL_SATURATED, SETUP_FAILED, SETUP_FAILED_PRE_DISPATCH, SUPERSEDED,
                  NAVIGATION_STOPPED, ARRIVED_STALE, SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED,
-                 SERVER_RESET -> false;
+                 SERVER_RESET, BREAKER_OPEN -> false;
         };
     }
 }

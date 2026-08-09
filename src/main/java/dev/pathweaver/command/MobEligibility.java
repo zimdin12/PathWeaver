@@ -112,6 +112,14 @@ public final class MobEligibility {
         // started printing this table in exactly the state where the omission is wrong -- every land
         // family reading "eligible" while dispatch refuses all five on every tick. The class comment
         // above says a diagnostic must ask the gate that actually decides; this is that gate.
+        // Asked BEFORE isAllowed's other reasons, because isAllowed answers only true/false and every
+        // downstream explanation assumes the answer came from the scan or the clone check. A family
+        // switched off at runtime is neither, and reporting it as either sends the operator to edit
+        // trustedMods over a problem no setting will fix.
+        if (SafetyGate.isDeniedByRuntimeFailure(evaluatorClass)) {
+            return new Verdict(false, "switched off after its searches threw on a worker thread "
+                + "(see the PathWeaver block in the log; restart to re-arm)");
+        }
         boolean evaluatorOk = SafetyGate.isAllowed(evaluatorClass);
         if (evaluatorOk && landRegistry.blocksLandFamilies()
                 && SafetyGate.isLandDerived(evaluatorClass)) {

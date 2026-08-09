@@ -74,6 +74,22 @@ public final class PathWeaverCommand {
         }
         say(source, tierLine);
         say(source, ScanCounts.of(report.decision()).line());
+        // Printed BEFORE the scan narrative below, and separately from it. scanSummary is handed
+        // report.decision().denied() -- the scan's findings -- so a runtime trip is either invisible
+        // there (where the scan already covers that family) or explained as "most likely an evaluator
+        // that cannot be cloned on this JVM" (where it does not). Both are wrong, in opposite
+        // directions, and both are causes the code invented rather than knew.
+        java.util.Set<Class<?>> tripped = dev.pathweaver.gate.SafetyGate.runtimeFailureDenials();
+        if (!tripped.isEmpty()) {
+            List<String> names = new java.util.ArrayList<>();
+            for (Class<?> family : tripped) names.add(family.getSimpleName());
+            java.util.Collections.sort(names);
+            say(source, "  §c" + names.size() + " family/families switched OFF after their searches "
+                + "threw on a worker: " + String.join(", ", names));
+            say(source, "  §7Those mobs path on the server thread exactly as they would without this "
+                + "mod. No compatibility setting affects this; the log block names what threw and, "
+                + "where it can, which mod. Restart to re-arm.");
+        }
 
         // Report what the tier DID with the scan, not what the scan found. The unsafe tier waives
         // every denial, and printing the raw decision there told an operator that all six families

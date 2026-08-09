@@ -427,7 +427,16 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // Feature A: async dispatch.
         if (!rt.isRunning()) return;
         if (!(this.level instanceof ServerLevel)) return;                       // server-side only
-        if (this.nodeEvaluator == null || !SafetyGate.isAllowed(this.nodeEvaluator.getClass())) return;
+        if (this.nodeEvaluator == null) return;
+        if (!SafetyGate.isAllowed(this.nodeEvaluator.getClass())) {
+            // Only the runtime breaker gets a counted refusal. A scan denial is a startup fact the
+            // banner and /pathweaver status already explain in full, and counting it every tick for
+            // every mob would bury the rows that mean something.
+            if (SafetyGate.isDeniedByRuntimeFailure(this.nodeEvaluator.getClass())) {
+                rt.markOutcome(dev.pathweaver.async.RequestOutcome.BREAKER_OPEN);
+            }
+            return;
+        }
         // The gate checks the evaluator; it must also check the PathFinder, because dispatch builds
         // its own `new PathFinder(...)` and so ignores whatever createPathFinder(int) returned. A mod
         // shipping a PathFinder subclass that overrides findPath/getBestH paired with a stock
@@ -557,7 +566,8 @@ public abstract class PathNavigationMixin implements PWNavigation {
             stage = dev.pathweaver.async.RequestOutcome.DispatchStage.REGISTERED;
             boolean accepted = rt.pool().submit(new PathRequest(submittedKey, tick, search,
                 result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz),
-                rt.installer()::enqueueDiscard));
+                rt.installer()::enqueueDiscard,
+                this.nodeEvaluator.getClass()));
 
             if (!accepted) {
                 // Nothing reached a worker, so this is an admission statistic rather than waste.

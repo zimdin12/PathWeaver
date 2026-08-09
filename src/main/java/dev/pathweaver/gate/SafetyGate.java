@@ -91,7 +91,99 @@ public final class SafetyGate {
     public static final Set<Class<?>> deniedBySafety =
         Collections.synchronizedSet(new HashSet<>(ALLOWED));
 
+    /**
+     * Families switched off after a search threw on a worker, as opposed to after the scan objected.
+     *
+     * <p>A SEPARATE set, and that is the whole point. {@link #deniedBySafety} is cleared wholesale by
+     * the unsafe tier at startup ({@code ForeignMixinScanner} calls {@code replaceDenials(Set.of())}),
+     * and a runtime trip must not be waivable by any tier — it fires precisely when the prediction the
+     * tier waived turned out to be wrong. Keeping them apart also lets every diagnostic say "denied by
+     * the scan" and "switched off after a failure" as different sentences, which is the difference
+     * between naming a cause and inventing one.
+     *
+     * <p>Copy-on-write behind a {@code volatile} rather than a synchronized set, because
+     * {@link #isDenied} runs on the hot dispatch path once per repath per mob. A trip logs, logging
+     * calls a third-party appender, and third-party code on a lock the dispatch path takes is this
+     * mod's entire threat model pointed at itself.
+     */
+    private static volatile Set<Class<?>> deniedByRuntimeFailure = Set.of();
+
+    /** Guards the read-modify-write of the copy-on-write set. Never held on the dispatch path. */
+    private static final Object RUNTIME_TRIP_LOCK = new Object();
+
     private SafetyGate() {}
+
+    /**
+     * Switch a family off for the rest of the session after a worker search threw.
+     *
+     * <p>Idempotent. Returns true only for the transition, so the caller can log once without owning
+     * a second piece of state that could disagree with this one.
+     */
+    public static boolean tripRuntimeFailure(Class<?> family) {
+        synchronized (RUNTIME_TRIP_LOCK) {
+            if (deniedByRuntimeFailure.contains(family)) return false;
+            Set<Class<?>> next = new HashSet<>(deniedByRuntimeFailure);
+            next.add(family);
+            deniedByRuntimeFailure = Set.copyOf(next);
+            return true;
+        }
+    }
+
+    /** Families currently switched off by a runtime failure, for the diagnostics. */
+    public static Set<Class<?>> runtimeFailureDenials() {
+        return deniedByRuntimeFailure;
+    }
+
+    /** True when this evaluator is refused because a search threw, not because the scan objected. */
+    public static boolean isDeniedByRuntimeFailure(Class<?> evaluatorClass) {
+        for (Class<?> denied : deniedByRuntimeFailure) {
+            if (denied.isAssignableFrom(evaluatorClass)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Clear runtime trips. Called when a server starts, NOT when the JVM does.
+     *
+     * <p>{@code SafetyGate} is a per-JVM static and a singleplayer client starts many servers in one
+     * JVM. {@code EntityInstallSink.clear()} already re-arms its one-shot log flags for exactly this
+     * reason — a failure logged in world A silenced the first failure of every later world — and a
+     * trip that survived into world B would be worse still: a permanently inert mod with no log line,
+     * because the one-shot had already burned.
+     */
+    public static void resetRuntimeFailureDenials() {
+        synchronized (RUNTIME_TRIP_LOCK) {
+            deniedByRuntimeFailure = Set.of();
+        }
+    }
+
+    /**
+     * The MOST GENERAL allowlisted family this evaluator is derived from, or null if none.
+     *
+     * <p>Deliberately the root rather than the exact class, and this was written the other way first
+     * and the test caught it. Fly, Amphibious, the frog's and the creaking's evaluators are each
+     * allowlisted in their own right AND each extend {@code WalkNodeEvaluator}, so "exact match
+     * first" files a failure against four separate keys for what is one piece of shared code, and the
+     * configured threshold is silently multiplied by four. It also disagrees with {@link #isDenied},
+     * which already closes over subclasses — counting and denying must use the same closure or the
+     * mechanism trips on a set it did not measure.
+     *
+     * <p><b>The trade, stated rather than assumed.</b> A bug genuinely confined to the flying
+     * evaluator's own code is attributed to Walk and switches off all five land families rather than
+     * one. That is the right direction for this hazard: a concurrent-read failure lives in the shared
+     * block-reading path, not in a family's own neighbour enumeration, so the over-denial is rare and
+     * the under-counting it replaces would have meant never tripping at all.
+     */
+    public static Class<?> allowlistedFamilyOf(Class<?> evaluatorClass) {
+        if (evaluatorClass == null) return null;
+        Class<?> root = null;
+        for (Class<?> allowed : ALLOWED) {
+            if (!allowed.isAssignableFrom(evaluatorClass)) continue;
+            // `allowed` is more general than `root` exactly when it can stand in for it.
+            if (root == null || allowed.isAssignableFrom(root)) root = allowed;
+        }
+        return root;
+    }
 
     /** Fail closed before and during compatibility discovery. */
     static void denyAllEligible() {
@@ -119,6 +211,7 @@ public final class SafetyGate {
      * dispatching the other four through the very code the scan objected to.
      */
     private static boolean isDenied(Class<?> evaluatorClass) {
+        if (isDeniedByRuntimeFailure(evaluatorClass)) return true;
         synchronized (deniedBySafety) {
             for (Class<?> denied : deniedBySafety) {
                 if (denied.isAssignableFrom(evaluatorClass)) return true;
