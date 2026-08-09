@@ -110,8 +110,13 @@ Why this beats the scan on all four tests at the top of this file:
    not exist when the audit was written.
 2. **Safe** — the failure action is "be vanilla".
 3. **Everyone** — no per-mod audit, no allowlist, works on the default configuration of any pack.
-4. **Worth updating for** — it is the answer to "will this corrupt my world?", which is the first
-   question every prospective user asks.
+4. **Worth updating for** — "will this corrupt my world?" is the first question every prospective
+   user asks, and this improves the answer without being it. A breaker sees **throws**. The
+   corruption a user actually fears comes from a silent torn read that returns the wrong block and
+   never throws, and nothing here catches that. What ships is a smoke detector plus, more usefully,
+   **attribution**: when something does go wrong, the log names the family, the exception and — when
+   it can — the mod. Claiming more than that on the Modrinth page would be the overclaiming this
+   project keeps having to correct.
 
 Also in 0.6.1:
 
