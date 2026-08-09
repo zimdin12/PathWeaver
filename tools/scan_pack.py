@@ -68,6 +68,12 @@ print(f"scanned {len([f for f in os.listdir(MODS) if f.endswith('.jar')])} jars\
 rows = sorted(hits.items(), key=lambda kv: -len(kv[1]))
 denies_all, denies_family = [], []
 for (mid, ver, origin), claims in rows:
+    # PathWeaver's own mixins target pathfinding by definition. Counting them made the tool report 21
+    # where the pack has 20 third-party claimants, and made the mod accuse itself in its own output --
+    # so the only way to reproduce the documented figure was to delete PathWeaver from the directory
+    # first, which is not a directory any user has.
+    if mid == "pathweaver":
+        continue
     kinds = {c[3] for c in claims}
     tgts = sorted({c[2].split("/")[-1] for c in claims})
     (denies_all if "shared" in kinds else denies_family).append((mid, ver, tgts, origin))

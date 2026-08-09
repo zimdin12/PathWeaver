@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.pathweaver.gate.SafetyGate;
 import java.util.List;
 import java.util.Set;
 import net.minecraft.world.level.pathfinder.SwimNodeEvaluator;
@@ -230,18 +231,59 @@ class ScanSummaryTest {
      * no way to know that. Reverting the fix leaves every other test green, so this pins the labels
      * where they are printed.
      */
+    /**
+     * Each label must carry the number it names.
+     *
+     * <p>The bytecode contract below cannot see this: swapping the two sources leaves both labels
+     * printed and both sources read, so every assertion in it still passes while
+     * {@code /pathweaver status} reports each count under the other's name — on the real pack that
+     * inverts to {@code deniedByScan=0, enforced=6} at the shipped default. Only a value can tell,
+     * so the two counts are given deliberately different values here.
+     */
+    @Test
+    void eachScanLabelCarriesTheNumberItNames() {
+        java.util.Set<Class<?>> saved;
+        synchronized (SafetyGate.deniedBySafety) {
+            saved = java.util.Set.copyOf(SafetyGate.deniedBySafety);
+        }
+        try {
+            synchronized (SafetyGate.deniedBySafety) {
+                SafetyGate.deniedBySafety.clear();
+                SafetyGate.deniedBySafety.add(SwimNodeEvaluator.class);
+            }
+            var decision = new dev.pathweaver.gate.ForeignMixinScanner.ScanDecision(
+                java.util.Set.of(net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class,
+                    net.minecraft.world.level.pathfinder.FlyNodeEvaluator.class,
+                    net.minecraft.world.level.pathfinder.SwimNodeEvaluator.class),
+                331, 0, java.util.List.of());
+            String line = PathWeaverCommand.ScanCounts.of(decision).line();
+            assertTrue(line.contains("deniedByScan=3"),
+                "deniedByScan must be what the SCAN found: " + line);
+            assertTrue(line.contains("enforced=1"),
+                "enforced must be what is actually being refused, which is a different set and, at "
+                    + "the unsafe default, a different size: " + line);
+            assertTrue(line.contains("scanned=331") && line.contains("failed=0"),
+                "and the other two must survive the refactor: " + line);
+        } finally {
+            synchronized (SafetyGate.deniedBySafety) {
+                SafetyGate.deniedBySafety.clear();
+                SafetyGate.deniedBySafety.addAll(saved);
+            }
+        }
+    }
+
     @Test
     void theStatusScanLineDoesNotReuseTheLogLinesLabel() throws Exception {
         java.util.Set<String> constants = new java.util.LinkedHashSet<>();
         java.util.Set<String> calls = new java.util.LinkedHashSet<>();
         try (java.io.InputStream in = ScanSummaryTest.class
-                .getResourceAsStream("/dev/pathweaver/command/PathWeaverCommand.class")) {
-            org.junit.jupiter.api.Assertions.assertNotNull(in, "PathWeaverCommand.class not readable");
+                .getResourceAsStream("/dev/pathweaver/command/PathWeaverCommand$ScanCounts.class")) {
+            org.junit.jupiter.api.Assertions.assertNotNull(in, "ScanCounts.class not readable");
             new org.objectweb.asm.ClassReader(in.readAllBytes()).accept(
                 new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
                     @Override public org.objectweb.asm.MethodVisitor visitMethod(
                             int a, String n, String d, String sg, String[] ex) {
-                        if (!n.equals("status")) return null;
+                        if (!n.equals("line") && !n.equals("of")) return null;
                         return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
                             @Override public void visitLdcInsn(Object value) {
                                 if (value instanceof String text) constants.add(text);

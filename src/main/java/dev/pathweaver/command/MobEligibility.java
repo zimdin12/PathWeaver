@@ -54,12 +54,19 @@ public final class MobEligibility {
         /** Not verified empty, so dispatch refuses every walk-derived family on every tick. */
         BLOCKS_LAND_FAMILIES;
 
-        /** The live answer. The only route a production call site may use. */
-        static LandRegistry live() {
+        /**
+         * The live answer. The only route a production call site may use.
+         *
+         * <p>Public so {@code LandRegistryDispatchGateTest} — which owns the only legal way to move
+         * the latch — can pin it. It was package-private and called from exactly one place and by no
+         * test, so {@code return PERMITS} here reproduced the bug the call-site contract had just
+         * been hardened against, one frame lower down.
+         */
+        public static LandRegistry live() {
             return SafetyGate.landRegistryBlocksWalkFamilies() ? BLOCKS_LAND_FAMILIES : PERMITS;
         }
 
-        boolean blocksLandFamilies() {
+        public boolean blocksLandFamilies() {
             return this == BLOCKS_LAND_FAMILIES;
         }
     }

@@ -1,5 +1,6 @@
 package dev.pathweaver.gate;
 
+import dev.pathweaver.command.MobEligibility;
 import net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator;
 import net.minecraft.world.level.pathfinder.FlyNodeEvaluator;
 import net.minecraft.world.level.pathfinder.SwimNodeEvaluator;
@@ -172,5 +173,32 @@ class LandRegistryDispatchGateTest {
         assertFalse(SafetyGate.landRegistryBlocksWalkFamilies(),
             "verified hooks with no provider registered must not read as blocking");
         FabricLandPathRegistryLatch.publishHooksVerified(false);
+    }
+
+    /**
+     * The diagnostic's own reading of that latch must follow it too, in the same direction.
+     *
+     * <p>{@code MobEligibility.LandRegistry.live()} is what {@code /pathweaver mobs} calls. A bytecode
+     * contract was added to stop the call site passing a constant instead of calling it — and then
+     * {@code live()} itself had exactly one caller and no test, so {@code return PERMITS} inside it
+     * reproduced the same bug one frame lower, invisibly. Inverting its ternary survived too, which is
+     * worse: the command would then report the precise inverse of the truth.
+     *
+     * <p>This lives here rather than beside the command because this class owns the only legal way to
+     * move the latch.
+     */
+    @Test
+    void theDiagnosticsReadingOfTheLatchFollowsItInTheSameDirection() {
+        try {
+            FabricLandPathRegistryLatch.publishHooksVerified(false);
+            assertTrue(MobEligibility.LandRegistry.live().blocksLandFamilies(),
+                "with the latch shut, /pathweaver mobs must see land families held back -- reporting "
+                    + "them eligible is the banner bug 0.6.0 fixes");
+            FabricLandPathRegistryLatch.publishHooksVerified(true);
+            assertFalse(MobEligibility.LandRegistry.live().blocksLandFamilies(),
+                "and with it open it must not invent a refusal");
+        } finally {
+            FabricLandPathRegistryLatch.publishHooksVerified(false);
+        }
     }
 }

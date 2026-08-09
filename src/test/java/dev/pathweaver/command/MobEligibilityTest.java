@@ -272,6 +272,71 @@ class MobEligibilityTest {
         }
     }
 
+    /**
+     * The origin gate is part of this verdict, and nothing tested that it is.
+     *
+     * <p>Deleting {@code originOk} from the eligible branch left the suite green while every
+     * mod-added mob reported eligible and the "added by a mod" row vanished from the table. That row
+     * is not a detail: on the real pack it is 98 of 187 types, and it is the whole reason this
+     * release had to correct "184 of 187" to "86 of 187" at the checked tier. {@code MobOriginGate}
+     * has its own tests; this diagnostic's USE of it had none.
+     */
+    @Test
+    void aMobClassAModAddedIsRefusedUnlessTheOperatorOptedIn() {
+        MobEligibility.Verdict refused = MobEligibility.of(ModAddedMob.class,
+            WalkNodeEvaluator.class, null, false, MobEligibility.LandRegistry.PERMITS);
+        assertFalse(refused.eligible(),
+            "a mob class this mod did not ship is refused unless the operator opted in -- dispatch "
+                + "refuses it, so the table must not call it eligible");
+        assertTrue(refused.reason().contains("added by a mod"),
+            "and must say so, because that row is how an operator learns the flag exists: "
+                + refused.reason());
+
+        assertTrue(MobEligibility.of(ModAddedMob.class, WalkNodeEvaluator.class, null, true,
+                MobEligibility.LandRegistry.PERMITS).eligible(),
+            "with the opt-in, the same mob is eligible -- the gate must follow the flag rather than "
+                + "the class");
+    }
+
+    /**
+     * And {@code /pathweaver mobs} must read that flag from the config rather than assume it.
+     *
+     * <p>Hard-coding {@code moddedAllowed = true} in {@code mobs()} compiled and the suite stayed
+     * green. It would reprint exactly the number this release corrected: 184 of 187 at the checked
+     * tier, where the honest answer at stock settings is 86.
+     */
+    @Test
+    void theCommandReadsTheModdedMobFlagFromTheConfig() throws Exception {
+        java.util.Set<String> calls = new java.util.LinkedHashSet<>();
+        try (java.io.InputStream in = MobEligibilityTest.class
+                .getResourceAsStream("/dev/pathweaver/command/PathWeaverCommand.class")) {
+            assertNotNull(in, "PathWeaverCommand.class not readable");
+            new org.objectweb.asm.ClassReader(in.readAllBytes()).accept(
+                new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                    @Override public org.objectweb.asm.MethodVisitor visitMethod(
+                            int a, String n, String d, String sg, String[] ex) {
+                        if (!n.equals("mobs")) return null;
+                        return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                            @Override public void visitMethodInsn(int op, String o, String m,
+                                                                  String md, boolean itf) {
+                                calls.add(o + "." + m);
+                            }
+                        };
+                    }
+                }, org.objectweb.asm.ClassReader.SKIP_FRAMES);
+        }
+        assertTrue(calls.contains("dev/pathweaver/config/PathWeaverConfig.moddedMobAsyncAllowed"),
+            "/pathweaver mobs must ask the config whether mod-added mobs were opted in; assuming "
+                + "yes reprints the number this release corrected: " + calls);
+    }
+
+    /** Defined here, so its code source is not Minecraft's jar -- which is what the gate asks. */
+    private static final class ModAddedMob extends Mob {
+        private ModAddedMob() {
+            super(null, null);
+        }
+    }
+
     private static final class ForeignPathFinder
             extends net.minecraft.world.level.pathfinder.PathFinder {
         ForeignPathFinder() {

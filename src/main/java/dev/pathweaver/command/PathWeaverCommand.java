@@ -73,16 +73,7 @@ public final class PathWeaverCommand {
             tierLine += " (config says " + config.compatibilityTier + " -- restart to apply)";
         }
         say(source, tierLine);
-        // Two names, because these are two different numbers and both were called "deniedFamilies".
-        // Measured on the real pack at the shipped default, same server, same second: the startup log
-        // said deniedFamilies=0 and this line said deniedFamilies=6. Both were correct -- the log
-        // reports what is ENFORCED, this reports what the scan FOUND before the tier waived it -- and
-        // an operator reading one label with two meanings has no way to know that. README teaches the
-        // log line, so the log line keeps the name.
-        say(source, "  scan: scanned=" + report.decision().scanned()
-            + ", failed=" + report.decision().failed()
-            + ", deniedByScan=" + report.decision().denied().size()
-            + ", enforced=" + dev.pathweaver.gate.SafetyGate.deniedBySafety.size());
+        say(source, ScanCounts.of(report.decision()).line());
 
         // Report what the tier DID with the scan, not what the scan found. The unsafe tier waives
         // every denial, and printing the raw decision there told an operator that all six families
@@ -379,6 +370,34 @@ public final class PathWeaverCommand {
             + elapsedMillis + " ms of one tick"
             + (costly ? ", which is longer than a tick — expect a visible hitch" : "")
             + ". This command is a diagnostic, not something to run on a timer.");
+    }
+
+    /**
+     * The two scan numbers, each read from its own source.
+     *
+     * <p>Two names, because these are two different numbers and both were once called
+     * "deniedFamilies". Measured on the real pack at the shipped default, same server and same
+     * second: the startup log said {@code deniedFamilies=0} and this line said
+     * {@code deniedFamilies=6}. Both were correct — the log reports what is ENFORCED, this reports
+     * what the scan FOUND before the tier waived it — and an operator reading one label with two
+     * meanings has no way to know that. README teaches the log line, so the log line keeps the name.
+     *
+     * <p>A record that reads both sources itself, rather than four arguments at a call site, because
+     * a reviewer swapped the two sources and every assertion still passed: both labels were still
+     * printed and both sources still read, so a bytecode contract structurally could not tell. The
+     * only thing that can is a value, and a value needs somewhere to be computed that a test can
+     * reach.
+     */
+    record ScanCounts(int scanned, int failed, int deniedByScan, int enforced) {
+        static ScanCounts of(ForeignMixinScanner.ScanDecision decision) {
+            return new ScanCounts(decision.scanned(), decision.failed(), decision.denied().size(),
+                dev.pathweaver.gate.SafetyGate.deniedBySafety.size());
+        }
+
+        String line() {
+            return "  scan: scanned=" + scanned + ", failed=" + failed
+                + ", deniedByScan=" + deniedByScan + ", enforced=" + enforced;
+        }
     }
 
     private static MobEligibility.Verdict verdictFor(Mob mob, boolean moddedAllowed) {

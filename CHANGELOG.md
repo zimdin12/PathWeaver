@@ -133,8 +133,10 @@ isolation were all attacked and held.
   `allowModdedMobAsync` defaults to false, and at that tier the origin gate then refuses 98 of the
   pack's 187 mob types. The honest pair is **86 of 187** at stock settings and 184 with the bypass on.
   The old row said 185, then 184, and never said which.
-- `tools/scan_pack.py` counted mixin configs rather than mods in its totals line, printing 22 where the
-  pack has 20 — so a reader running the command saw a number the README does not use.
+- `tools/scan_pack.py` counted mixin configs rather than mods in its totals line, and counted
+  **PathWeaver itself** among the mods claiming a pathfinding target — printing 22, then 21, where the
+  README says 20. The documented figure was only reproducible on a directory with PathWeaver deleted
+  from it, which is not a directory anyone has. It now counts distinct third-party mods.
 - `PLAN.md` was a 0.2.3 artifact sitting in the repo root, whose "Future boundary" section stated no
   engine work remained after 0.2.2 — beside a roadmap describing 0.6 through 1.0. Archived to
   `docs/PLAN-0.2-archive.md`. `DESIGN.md`'s product decision still said "hold publication", reversed
@@ -161,7 +163,7 @@ isolation were all attacked and held.
   saying out loud.
 - ASM is now an explicit test dependency instead of arriving through `fabric-loader`.
 
-314 unit tests (zero skipped), three game tests, four server harnesses, the client harness, a
+318 unit tests (zero skipped), three game tests, four server harnesses, the client harness, a
 benchmark showing no change against 0.5.3, and verification on a real 221-jar server pack in four
 configurations: `AUDITED` with nothing trusted (0 of 187 eligible, nine mods named); `AUDITED` with
 those nine trusted at stock settings (86 of 187 — the origin gate refuses 98 mod-added mob classes);
