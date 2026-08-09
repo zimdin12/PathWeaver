@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "pathweaver_gametest",
+  "version": "1.0.0",
+  "name": "PathWeaver Game Tests",
+  "environment": "*",
+  "mixins": [
+    "pathweaver-gametest.mixins.json"
+  ],
+  "entrypoints": {
+    "main": [
+      "dev.pathweaver.gametest.StartupConfigMigrationProbe"
+    ],
+    "fabric-gametest": [
+      "dev.pathweaver.gametest.WorkerFailureBreakerGameTest"
+    ]
+  },
+  "depends": {
+    "fabric-gametest-api-v1": "*",
+    "pathweaver": "*"
+  }
+}

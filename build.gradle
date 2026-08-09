@@ -353,6 +353,26 @@ if (providers.gradleProperty("unsafeTierHarness").isPresent()) {
     }
 }
 
+// The breaker harness runs alone, and has to. Fabric GameTest v1 has no `batch` attribute, so every
+// test in a harness runs concurrently against one global config and one global SafetyGate -- and this
+// one deliberately switches a movement family off. Beside the routing tests it would be racing them
+// for the same statics.
+if (providers.gradleProperty("breakerHarness").isPresent()) {
+    tasks.register("prepareBreakerGameTestHarness") {
+        dependsOn tasks.named("processGametestResources")
+        outputs.upToDateWhen { false }
+        doLast {
+            copy {
+                from file("src/gametest/breakerResources/fabric.mod.json")
+                into layout.buildDirectory.dir("resources/gametest")
+            }
+        }
+    }
+    tasks.named("runGameTest") {
+        dependsOn tasks.named("prepareBreakerGameTestHarness")
+    }
+}
+
 if (providers.gradleProperty("fabricAggregateHarness").isPresent()) {
     tasks.register("prepareFabricAggregateGameTestHarness") {
         dependsOn tasks.named("processGametestResources")
