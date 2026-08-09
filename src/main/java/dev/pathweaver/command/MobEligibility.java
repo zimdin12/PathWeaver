@@ -25,22 +25,62 @@ public final class MobEligibility {
     public static final String ELIGIBLE = "eligible";
 
     /**
+     * A name for a class that always has one.
+     *
+     * <p>{@code getSimpleName()} returns the empty string for an anonymous class, and a real pack
+     * produced exactly that: "navigates with , a PathFinder subclass", in the line whose only
+     * job is to name what is responsible.
+     */
+    private static String describe(Class<?> type) {
+        String simple = type.getSimpleName();
+        return simple.isEmpty() ? type.getName() : simple;
+    }
+
+    /**
+     * Whether Fabric's land path-type registry is currently holding walk-derived families back.
+     *
+     * <p>An enum rather than the obvious second {@code boolean}, because the obvious version was
+     * reviewed and broken in two ways within one round. {@code verdictFor(mob, moddedAllowed, false)}
+     * compiled and the whole suite stayed green, and so did
+     * {@code verdictFor(mob, landRegistryBlocksWalkFamilies(), moddedAllowed)} — two same-typed
+     * booleans side by side, with nothing but argument position telling them apart. A distinct type
+     * makes the swap a compile error, and makes the hard-coded constant a {@code GETSTATIC} of a named
+     * field that a bytecode contract can point at exactly, instead of an {@code ICONST_0} that a test
+     * has to guess the meaning of.
+     */
+    public enum LandRegistry {
+        /** Verified empty, or the tier waives the check. Land families dispatch. */
+        PERMITS,
+        /** Not verified empty, so dispatch refuses every walk-derived family on every tick. */
+        BLOCKS_LAND_FAMILIES;
+
+        /** The live answer. The only route a production call site may use. */
+        static LandRegistry live() {
+            return SafetyGate.landRegistryBlocksWalkFamilies() ? BLOCKS_LAND_FAMILIES : PERMITS;
+        }
+
+        boolean blocksLandFamilies() {
+            return this == BLOCKS_LAND_FAMILIES;
+        }
+    }
+
+    /**
      * @param evaluatorClass the evaluator the mob's navigation really holds, or null if it has none
      */
     public static Verdict of(Class<?> mobClass, Class<?> evaluatorClass, boolean moddedAllowed) {
-        return of(mobClass, evaluatorClass, null, moddedAllowed, false);
+        return of(mobClass, evaluatorClass, null, moddedAllowed, LandRegistry.PERMITS);
     }
 
     public static Verdict of(Class<?> mobClass, Class<?> evaluatorClass, Class<?> pathFinderClass,
                              boolean moddedAllowed) {
-        return of(mobClass, evaluatorClass, pathFinderClass, moddedAllowed, false);
+        return of(mobClass, evaluatorClass, pathFinderClass, moddedAllowed, LandRegistry.PERMITS);
     }
 
     /**
      * @param pathFinderClass the PathFinder the navigation really holds, or null when not inspected
      */
     public static Verdict of(Class<?> mobClass, Class<?> evaluatorClass, Class<?> pathFinderClass,
-                             boolean moddedAllowed, boolean landRegistryBlocked) {
+                             boolean moddedAllowed, LandRegistry landRegistry) {
         boolean originOk = MobOriginGate.isAllowed(mobClass, moddedAllowed);
         if (evaluatorClass == null) {
             return new Verdict(false, "navigates without a node evaluator");
@@ -66,7 +106,8 @@ public final class MobEligibility {
         // family reading "eligible" while dispatch refuses all five on every tick. The class comment
         // above says a diagnostic must ask the gate that actually decides; this is that gate.
         boolean evaluatorOk = SafetyGate.isAllowed(evaluatorClass);
-        if (evaluatorOk && landRegistryBlocked && SafetyGate.isLandDerived(evaluatorClass)) {
+        if (evaluatorOk && landRegistry.blocksLandFamilies()
+                && SafetyGate.isLandDerived(evaluatorClass)) {
             return new Verdict(false, "held back by Fabric's land path-type registry");
         }
         if (evaluatorOk && originOk) return new Verdict(true, ELIGIBLE);
@@ -88,18 +129,6 @@ public final class MobEligibility {
      * vanilla evaluator there is. The mob was refused because six mods had mixed into pathfinding
      * and the scan denied the family, which is a fact about their modlist, not about the zombie.
      */
-    /**
-     * A name for a class that always has one.
-     *
-     * <p>{@code getSimpleName()} returns the empty string for an anonymous class, and a real pack
-     * produced exactly that: "navigates with , a PathFinder subclass", in the line whose only
-     * job is to name what is responsible.
-     */
-    private static String describe(Class<?> type) {
-        String simple = type.getSimpleName();
-        return simple.isEmpty() ? type.getName() : simple;
-    }
-
     private static String evaluatorReason(Class<?> evaluatorClass) {
         String name = evaluatorClass.getSimpleName();
         if (!SafetyGate.isEvaluatorAllowed(evaluatorClass)) {

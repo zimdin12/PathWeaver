@@ -382,18 +382,17 @@ public final class PathWeaverCommand {
     }
 
     private static MobEligibility.Verdict verdictFor(Mob mob, boolean moddedAllowed) {
-        return verdictFor(mob, moddedAllowed,
-            dev.pathweaver.gate.SafetyGate.landRegistryBlocksWalkFamilies());
+        return verdictFor(mob, moddedAllowed, MobEligibility.LandRegistry.live());
     }
 
     private static MobEligibility.Verdict verdictFor(Mob mob, boolean moddedAllowed,
-                                                     boolean landRegistryBlocked) {
+                                                     MobEligibility.LandRegistry landRegistry) {
         try {
             PathNavigation navigation = mob.getNavigation();
             NodeEvaluator evaluator = evaluatorOf(navigation);
             return MobEligibility.of(mob.getClass(),
                 evaluator == null ? null : evaluator.getClass(),
-                pathFinderOf(navigation), moddedAllowed, landRegistryBlocked);
+                pathFinderOf(navigation), moddedAllowed, landRegistry);
         } catch (Throwable failed) {
             return new MobEligibility.Verdict(false,
                 "could not be inspected (" + failed.getClass().getSimpleName() + ")");

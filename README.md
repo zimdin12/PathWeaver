@@ -120,10 +120,17 @@ On the same 221-jar server pack, tier set to `AUDITED` throughout:
 |---|---|
 | empty | 0 of 187 — nine mods named as blockers |
 | 4 of the 9 | still refuses, now names the remaining 5 |
-| all 9 | **184 of 187**, nothing enforced, 732 searches installed, zero exceptions |
+| all 9 | **86 of 187** at stock settings; **184 of 187** with `allowModdedMobAsync=true` |
 
-The three still refused are the two spiders and the warden, for the `PathFinder` reason above, which
-`trustedMods` has no bearing on.
+That second column is the one to read carefully, and it was quoted here for two releases without its
+precondition. `allowModdedMobAsync` defaults to **false**, and at `AUDITED` it is the origin gate that
+then refuses 98 of this pack's 187 types outright — they are mob classes mods added, and the tier has
+not waived that check. Trusting the nine blockers gets the *scan* out of the way and no further. Only
+`allowModdedMobAsync=true` (or `UNSAFE`, which implies it) reaches 184, and it is a real bypass, not a
+formality.
+
+The three refused in every configuration are the two spiders and the warden, for the `PathFinder`
+reason above, which `trustedMods` has no bearing on.
 
 **This is not a safety feature.** Anything named runs unaudited on worker threads, exactly as `UNSAFE`
 would, aimed at fewer mods. Matching is by mod id, so an entry keeps applying after that mod updates
@@ -358,8 +365,8 @@ You can also edit `config/pathweaver.json`. **The exact keys differ between vers
 
 - **Only the saturated-burst case has been measured at shipped defaults.** Realistic mob counts, mixed workloads and ordinary play remain unmeasured.
 - **No benefit measured at realistic mob counts or with mixed workloads.** The benchmark was almost entirely pathfinding, with all other mob AI stripped out.
-- **Path correctness is proven only in a static world, and only for two of the six families.** Five Walk and Swim cases produced node-for-node identical paths to a synchronous oracle with the world held still, plus a 128-mob soak. **Flying, amphibious, frog and creaking searches have no equivalence evidence at all** — they became eligible in 0.4.0 and that oracle comparison has not been re-run for them. Their prologue and epilogue are argued safe from bytecode, not demonstrated by measurement.
-- **Flying searches deliberately do not reproduce vanilla's start node.** A worker draws its start candidate from thread-confined randomness instead of the mob's own, so an async flying search can begin from a different candidate than the synchronous one would have. Vanilla chooses that candidate arbitrarily, so both are valid — but they are not identical, and a path-equivalence test for flying mobs would have to compare reachability rather than nodes.
+- **Path correctness is only ever checked in a static world, one scenario per family.** With the world held still and the mob frozen, all six families produced node-for-node identical paths to a synchronous oracle on 0.6.0 — Walk 31 nodes, Swim 7, Fly 7, Amphibious 20, Frog 12, Creaking 26 — plus a 120-mob soak. Until 0.6.0 that comparison existed for Walk and Swim only; the four families 0.4.0 added were argued safe from bytecode and are now measured too. One arena and one target each is evidence, not proof: nothing has compared paths across varied terrain, and nothing has compared them while the world changes (see the block-change bullet below).
+- **Flying searches are not guaranteed to reproduce vanilla's start node.** A worker draws its start candidate from thread-confined randomness instead of the mob's own, so an async flying search can begin from a different candidate than the synchronous one would have. Vanilla chooses that candidate arbitrarily, so both are valid. The 0.6.0 comparison above happened to match node-for-node; treat that as one favourable sample, not as a property — a general flying-equivalence test would have to compare reachability rather than nodes.
 - **The amphibious malus window is real.** Its evaluator's costs are applied to the mob at dispatch and restored at install, so for roughly one tick the mob carries search costs it would not have carried under vanilla. Only pathfinding is known to read them; nothing was measured to confirm nothing else does.
 - **Under live block changes we found no failures but did not check path quality.** Across 66,144 searches in three mod sets there was no crash, no search failure and no worker-pool failure. We did **not** compare the paths produced while blocks were changing, so stale or wrong paths during world mutation are simply not measured.
 - **Repath reuse has never shown a measurable benefit** in any run. It appears harmless; treat it as unproven, not as a speed-up.

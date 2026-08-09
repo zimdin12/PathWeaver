@@ -219,4 +219,59 @@ class ScanSummaryTest {
                     + "evaluator, so it must still be reported: " + produced);
         }
     }
+
+    /**
+     * The two scan numbers must keep separate names.
+     *
+     * <p>Measured on a real 221-jar pack at the shipped default, same server and same second: the
+     * startup log said {@code deniedFamilies=0} and {@code /pathweaver status} said
+     * {@code deniedFamilies=6}. Both were correct — one counts what is ENFORCED after the tier has had
+     * its say, the other what the scan FOUND — and an operator reading one label with two meanings has
+     * no way to know that. Reverting the fix leaves every other test green, so this pins the labels
+     * where they are printed.
+     */
+    @Test
+    void theStatusScanLineDoesNotReuseTheLogLinesLabel() throws Exception {
+        java.util.Set<String> constants = new java.util.LinkedHashSet<>();
+        java.util.Set<String> calls = new java.util.LinkedHashSet<>();
+        try (java.io.InputStream in = ScanSummaryTest.class
+                .getResourceAsStream("/dev/pathweaver/command/PathWeaverCommand.class")) {
+            org.junit.jupiter.api.Assertions.assertNotNull(in, "PathWeaverCommand.class not readable");
+            new org.objectweb.asm.ClassReader(in.readAllBytes()).accept(
+                new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                    @Override public org.objectweb.asm.MethodVisitor visitMethod(
+                            int a, String n, String d, String sg, String[] ex) {
+                        if (!n.equals("status")) return null;
+                        return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                            @Override public void visitLdcInsn(Object value) {
+                                if (value instanceof String text) constants.add(text);
+                            }
+                            // String concatenation compiles to invokedynamic, and the literal parts
+                            // live in the bootstrap recipe rather than in an LDC. Reading only LDC
+                            // made this contract pass over a line whose text it never saw.
+                            @Override public void visitInvokeDynamicInsn(String n2, String d2,
+                                    org.objectweb.asm.Handle handle, Object... bootstrapArgs) {
+                                for (Object arg : bootstrapArgs) {
+                                    if (arg instanceof String text) constants.add(text);
+                                }
+                            }
+                            @Override public void visitFieldInsn(int op, String o, String f,
+                                                                 String d2) {
+                                calls.add(o + "." + f);
+                            }
+                        };
+                    }
+                }, org.objectweb.asm.ClassReader.SKIP_FRAMES);
+        }
+        assertTrue(constants.stream().anyMatch(c -> c.contains("deniedByScan=")),
+            "status must name what the scan FOUND distinctly: " + constants);
+        assertTrue(constants.stream().anyMatch(c -> c.contains("enforced=")),
+            "status must name what is ENFORCED distinctly: " + constants);
+        assertFalse(constants.stream().anyMatch(c -> c.contains("deniedFamilies=")),
+            "and must not reuse the startup log's label, which counts the other one: " + constants);
+        assertTrue(calls.contains("dev/pathweaver/gate/SafetyGate.deniedBySafety"),
+            "the enforced count must come from the set dispatch actually consults, which is the same "
+                + "expression the startup log reports: " + calls);
+    }
+
 }

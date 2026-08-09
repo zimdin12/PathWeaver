@@ -147,19 +147,20 @@ class MobEligibilityTest {
      */
     @Test
     void aLandFamilyHeldBackByTheRegistryIsNotReportedEligible() {
-        MobEligibility.Verdict blocked =
-            MobEligibility.of(Mob.class, WalkNodeEvaluator.class, null, false, true);
+        MobEligibility.Verdict blocked = MobEligibility.of(Mob.class, WalkNodeEvaluator.class, null,
+            false, MobEligibility.LandRegistry.BLOCKS_LAND_FAMILIES);
         assertFalse(blocked.eligible(),
             "with the land registry unverified, dispatch refuses every land family -- reporting "
                 + "them eligible is the banner bug 0.6.0 fixes, restated one command over");
         assertTrue(blocked.reason().contains("land path-type registry"),
             "and it must name the real cause rather than invent one: " + blocked.reason());
 
-        assertTrue(MobEligibility.of(Mob.class, WalkNodeEvaluator.class, null, false, false).eligible(),
+        assertTrue(MobEligibility.of(Mob.class, WalkNodeEvaluator.class, null, false,
+                MobEligibility.LandRegistry.PERMITS).eligible(),
             "an open latch must leave the land families exactly as they were");
         assertTrue(MobEligibility.of(Mob.class,
-                net.minecraft.world.level.pathfinder.SwimNodeEvaluator.class, null, false, true)
-            .eligible(),
+                net.minecraft.world.level.pathfinder.SwimNodeEvaluator.class, null, false,
+                MobEligibility.LandRegistry.BLOCKS_LAND_FAMILIES).eligible(),
             "the latch gates land families only -- swim mobs dispatch either way, which is the "
                 + "under-reporting round seven removed the early return to fix");
     }
@@ -167,13 +168,17 @@ class MobEligibilityTest {
     /**
      * The command must READ the live latch, not hand the verdict a constant.
      *
-     * <p>The value test above passes just as happily when the caller pushes {@code false}, which is
-     * the "one hop from the call site" failure this project has now hit five times. So this walks the
-     * shipped bytecode of the method the command actually calls.
+     * <p>The value tests above pass just as happily when the caller pushes a constant, which is the
+     * "one hop from the call site" failure this project has now hit six times. A reviewer wrote
+     * {@code verdictFor(mob, moddedAllowed, false)} and the suite stayed green. So this walks the
+     * shipped bytecode of the method the command actually calls, and asserts two things: that the
+     * live state is read, and that no {@code LandRegistry} constant is named in that body — reading
+     * the gate and then discarding it satisfies the first check alone.
      */
     @Test
     void theCommandAsksTheGateForTheLiveLatchState() throws Exception {
         java.util.Set<String> calls = new java.util.LinkedHashSet<>();
+        java.util.Set<String> constants = new java.util.LinkedHashSet<>();
         try (java.io.InputStream in = MobEligibilityTest.class
                 .getResourceAsStream("/dev/pathweaver/command/PathWeaverCommand.class")) {
             assertNotNull(in, "PathWeaverCommand.class not readable");
@@ -191,13 +196,22 @@ class MobEligibilityTest {
                                                                   String md, boolean itf) {
                                 calls.add(o + "." + m);
                             }
+                            @Override public void visitFieldInsn(int op, String o, String f,
+                                                                 String d2) {
+                                if (o.equals("dev/pathweaver/command/MobEligibility$LandRegistry")) {
+                                    constants.add(f);
+                                }
+                            }
                         };
                     }
                 }, org.objectweb.asm.ClassReader.SKIP_FRAMES);
         }
-        assertTrue(calls.contains("dev/pathweaver/gate/SafetyGate.landRegistryBlocksWalkFamilies"),
-            "/pathweaver mobs must read the live land-registry state; a hard-coded false makes the "
-                + "table announce families dispatch refuses on every tick: " + calls);
+        assertTrue(calls.contains("dev/pathweaver/command/MobEligibility$LandRegistry.live"),
+            "/pathweaver mobs must read the live land-registry state; a hard-coded constant makes "
+                + "the table announce families dispatch refuses on every tick: " + calls);
+        assertTrue(constants.isEmpty(),
+            "and must not name a LandRegistry constant in that body -- reading the gate and then "
+                + "passing a constant anyway satisfies the check above on its own: " + constants);
     }
 
     /** An anonymous mod PathFinder must still be named; a real pack printed "navigates with ,". */
@@ -216,6 +230,46 @@ class MobEligibilityTest {
                 + verdict.reason());
         assertTrue(verdict.reason().contains("MobEligibilityTest"),
             "and the fallback must be a name a reader can act on: " + verdict.reason());
+    }
+
+    /**
+     * The verdict must agree with {@code canDispatch} for EVERY family, not at two endpoints.
+     *
+     * <p>Written after a reviewer replaced {@code SafetyGate.isLandDerived(evaluatorClass)} here with
+     * {@code evaluatorClass == WalkNodeEvaluator.class} and the whole suite stayed green. That is
+     * verbatim the bug {@code isLandDerived}'s own javadoc exists to prevent: four of the five land
+     * families — Fly, Amphibious, Frog and Creaking, all subclasses of {@code WalkNodeEvaluator} —
+     * would read "eligible" while dispatch refused them on every tick. The old test could not see it
+     * because it exercised Walk (refused either way) and Swim (eligible either way), and an exact-class
+     * check satisfies both endpoints.
+     *
+     * <p>So this asserts the whole input space against the predicate dispatch evaluates, rather than
+     * against two hand-picked cases.
+     */
+    @Test
+    void theVerdictAgreesWithTheDispatchPredicateForEveryFamilyAndBothRegistryStates()
+            throws Exception {
+        Class<?>[] families = {
+            WalkNodeEvaluator.class,
+            SwimNodeEvaluator.class,
+            net.minecraft.world.level.pathfinder.FlyNodeEvaluator.class,
+            net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator.class,
+            Class.forName("net.minecraft.world.entity.animal.frog.Frog$FrogNodeEvaluator"),
+            Class.forName("net.minecraft.world.entity.monster.creaking.Creaking$HomeNodeEvaluator"),
+        };
+        for (Class<?> family : families) {
+            for (MobEligibility.LandRegistry registry : MobEligibility.LandRegistry.values()) {
+                boolean blocked = registry == MobEligibility.LandRegistry.BLOCKS_LAND_FAMILIES;
+                // A blocked registry IS "the tier did not waive the scan and the latch is shut", which
+                // is what canDispatch's third and fourth arguments spell out.
+                boolean dispatchWould = SafetyGate.canDispatch(
+                    family, SafetyGate.isAllowed(family), false, !blocked);
+                assertEquals(dispatchWould,
+                    MobEligibility.of(Mob.class, family, null, true, registry).eligible(),
+                    () -> "/pathweaver mobs and dispatch must answer the same question for "
+                        + family.getSimpleName() + " with registry=" + registry);
+            }
+        }
     }
 
     private static final class ForeignPathFinder

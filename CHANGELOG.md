@@ -122,6 +122,19 @@ isolation were all attacked and held.
   the warden. Nothing regressed; the old number was optimistic. Every figure in that section has been
   re-measured on 0.6.0 and the claim that 0.4.0 dispatched the first third-party evaluator is
   withdrawn: it never dispatched, and direct measurement now says so.
+- **The release page claimed path equivalence for "all seven evaluator families".** There are six, and
+  the seventh row in the harness output is a spider whose third-party `PathFinder` means it never
+  dispatched — so its "IDENTICAL" compared a synchronous path with itself. The claim also read as a
+  proof where the README says, correctly, that this is one static scenario per family and that flying
+  equivalence is not guaranteed by the design at all. Corrected in the README, the changelog and the
+  Modrinth page. (The underlying result is real and is new: until 0.6.0 only Walk and Swim had an
+  oracle comparison, and all six now have one.)
+- **The `AUDITED` + all-nine-trusted row was quoted without the setting it was measured under.**
+  `allowModdedMobAsync` defaults to false, and at that tier the origin gate then refuses 98 of the
+  pack's 187 mob types. The honest pair is **86 of 187** at stock settings and 184 with the bypass on.
+  The old row said 185, then 184, and never said which.
+- `tools/scan_pack.py` counted mixin configs rather than mods in its totals line, printing 22 where the
+  pack has 20 — so a reader running the command saw a number the README does not use.
 - `PLAN.md` was a 0.2.3 artifact sitting in the repo root, whose "Future boundary" section stated no
   engine work remained after 0.2.2 — beside a roadmap describing 0.6 through 1.0. Archived to
   `docs/PLAN-0.2-archive.md`. `DESIGN.md`'s product decision still said "hold publication", reversed
@@ -148,12 +161,15 @@ isolation were all attacked and held.
   saying out loud.
 - ASM is now an explicit test dependency instead of arriving through `fabric-loader`.
 
-312 unit tests (zero skipped), three game tests, four server harnesses, the client harness, a
-benchmark showing no change against 0.5.3, and verification on a real 221-jar server pack in three
-tier configurations: `AUDITED` with nothing trusted (0 of 187 eligible, nine mods named), `AUDITED`
-with those nine trusted (184 of 187, nothing enforced, 732 searches installed), and the shipped
-`UNSAFE` default (184 of 187, 773 dispatched / 765 installed / 8 discarded, zero exceptions). All
-seven evaluator families produced node-for-node identical routes to vanilla in every run.
+314 unit tests (zero skipped), three game tests, four server harnesses, the client harness, a
+benchmark showing no change against 0.5.3, and verification on a real 221-jar server pack in four
+configurations: `AUDITED` with nothing trusted (0 of 187 eligible, nine mods named); `AUDITED` with
+those nine trusted at stock settings (86 of 187 — the origin gate refuses 98 mod-added mob classes);
+the same with `allowModdedMobAsync=true` (184 of 187, nothing enforced, 732 searches installed); and
+the shipped `UNSAFE` default (184 of 187, 773 dispatched / 765 installed / 8 discarded, zero
+exceptions). With the world held still, all **six** evaluator families produced node-for-node
+identical routes to a synchronous oracle — one scenario each, which is evidence and not proof, and
+which for flying mobs the design does not guarantee (README, *What is unproven*).
 
 ## 0.5.3 — The branch the fix did not reach
 

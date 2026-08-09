@@ -78,4 +78,11 @@ for mid, ver, tgts, origin in denies_all:
 print(f"\n=== CLAIMS ONLY AN EVALUATOR -> denies just that family ===")
 for mid, ver, tgts, origin in denies_family:
     print(f"  {mid:34s} {ver:24s} {', '.join(tgts)}")
-print(f"\ntotals: {len(denies_all)} mods deny everything, {len(denies_family)} deny one family")
+# By mod id, not by row. A mod with three mixin configs produced three rows, so the totals line said
+# 22 where the pack has 20 distinct mods -- and the README, which quotes the distinct count, read as
+# stale to anyone who ran the tool.
+uniq_all = {mid for mid, _, _, _ in denies_all}
+uniq_family = {mid for mid, _, _, _ in denies_family} - uniq_all
+print()
+print(f"totals: {len(uniq_all)} mods deny everything, {len(uniq_family)} deny one family "
+      f"({len(denies_all) + len(denies_family)} mixin configs across them)")
