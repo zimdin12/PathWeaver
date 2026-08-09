@@ -107,4 +107,30 @@ class RequestOutcomeTest {
         assertFalse(RequestOutcome.SETUP_FAILED_PRE_DISPATCH.isDiscard());
         assertFalse(RequestOutcome.SETUP_FAILED_PRE_DISPATCH.isGoodNews());
     }
+
+    /**
+     * Both arms of the setup-failure choice, tested directly.
+     *
+     * <p>This replaces three bytecode contracts that were each bypassed by a differently-shaped
+     * mutation. The decision is a pure function now, so there is nothing to stand beside.
+     */
+    @Test
+    void aSetupFailureIsPreDispatchUntilItHasBeenCountedAsDispatched() {
+        assertEquals(RequestOutcome.SETUP_FAILED_PRE_DISPATCH,
+            RequestOutcome.setupFailure(RequestOutcome.DispatchStage.NOT_REGISTERED),
+            "a failure before registration is also pre-dispatch");
+        assertFalse(RequestOutcome.DispatchStage.NOT_REGISTERED.hasRegistered());
+        assertTrue(RequestOutcome.DispatchStage.REGISTERED.hasRegistered(),
+            "a registered request must be discarded through the sink, not merely counted");
+        assertTrue(RequestOutcome.DispatchStage.DISPATCHED.hasRegistered(),
+            "dispatched implies registered -- which is exactly why two booleans allowed the caller "
+                + "to write (registered || dispatchCounted) and mean the wrong thing");
+        assertEquals(RequestOutcome.SETUP_FAILED_PRE_DISPATCH, RequestOutcome.setupFailure(RequestOutcome.DispatchStage.REGISTERED),
+            "a failure before markDispatched never reached a worker and must not count against the "
+                + "dispatched total -- registration is not dispatch, since register precedes submit");
+        assertEquals(RequestOutcome.SETUP_FAILED, RequestOutcome.setupFailure(RequestOutcome.DispatchStage.DISPATCHED),
+            "a failure after markDispatched is part of the dispatched total");
+        assertFalse(RequestOutcome.setupFailure(RequestOutcome.DispatchStage.REGISTERED).countsAgainstDispatched());
+        assertTrue(RequestOutcome.setupFailure(RequestOutcome.DispatchStage.DISPATCHED).countsAgainstDispatched());
+    }
 }

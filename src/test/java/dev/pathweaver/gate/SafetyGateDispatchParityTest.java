@@ -115,4 +115,92 @@ class SafetyGateDispatchParityTest {
             "the banner must not also count with isAllowed; two predicates is how the banner and "
                 + "dispatch drifted apart in the first place");
     }
+
+    /**
+     * The no-argument wrappers every production site calls, pinned by what their bodies DO.
+     *
+     * <p>Three separate wrappers had no test at all, and each is the same shape the project has now
+     * hit five times: a state-injecting form gets tested and the wrapper the production code actually
+     * calls does not. {@code canDispatch(Class)} reduced to {@code return isAllowed(c)} survived 308
+     * tests and fully restored this release's headline bug. So did calling the four-argument form with
+     * hard-coded {@code true, true}, which still "calls canDispatch" and satisfies a check that only
+     * looks at the name.
+     *
+     * <p>A value-parity test cannot catch these: in a unit environment the latch is closed and both
+     * sides agree by accident. So this asserts the instructions.
+     */
+    @Test
+    void theNoArgumentWrappersReadTheStateTheyClaimTo() throws Exception {
+        var canDispatch = bodyCalls("dev/pathweaver/gate/SafetyGate", "canDispatch",
+            "(Ljava/lang/Class;)Z");
+        assertTrue(canDispatch.contains("dev/pathweaver/gate/SafetyGate.isAllowed"),
+            "canDispatch(Class) must consult isAllowed: " + canDispatch);
+        assertTrue(canDispatch.contains(
+                "dev/pathweaver/gate/ActiveCompatibilityPolicy.bypassesScan"),
+            "canDispatch(Class) must read the frozen tier: " + canDispatch);
+        assertTrue(canDispatch.contains(
+                "dev/pathweaver/gate/FabricLandPathRegistryLatch.allowsWalkDispatch"),
+            "canDispatch(Class) must consult the land-registry latch -- omitting it announces "
+                + "families that dispatch refuses on every tick: " + canDispatch);
+        assertFalse(pushesConstantInto("dev/pathweaver/gate/SafetyGate", "canDispatch",
+                "(Ljava/lang/Class;)Z"),
+            "canDispatch(Class) must not hard-code its state arguments -- passing true collapses the "
+                + "predicate to `allowed`, which is the bug it exists to prevent");
+
+        var scanFailed = bodyCalls("dev/pathweaver/gate/ForeignMixinScanner", "scanFailed", "()Z");
+        assertTrue(scanFailed.stream().anyMatch(c -> c.endsWith(".lastScanReport")),
+            "scanFailed() must read the live scan report: " + scanFailed);
+        assertTrue(scanFailed.stream().anyMatch(c -> c.endsWith(".failed")
+                || c.endsWith(".decision") || c.contains("scanFailed")),
+            "scanFailed() must derive from that report's failure count: " + scanFailed);
+    }
+
+    /** Every method this method body invokes, as {@code owner.name}. */
+    private static java.util.Set<String> bodyCalls(String owner, String method, String desc)
+            throws Exception {
+        java.util.Set<String> calls = new java.util.LinkedHashSet<>();
+        new org.objectweb.asm.ClassReader(bytes(owner)).accept(
+            new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                @Override public org.objectweb.asm.MethodVisitor visitMethod(
+                        int a, String n, String d, String sg, String[] ex) {
+                    if (!n.equals(method) || !d.equals(desc)) return null;
+                    return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                        @Override public void visitMethodInsn(int op, String o, String m, String md,
+                                                              boolean itf) {
+                            calls.add(o + "." + m);
+                        }
+                    };
+                }
+            }, org.objectweb.asm.ClassReader.SKIP_FRAMES);
+        assertFalse(calls.isEmpty(), "no body found for " + owner + "." + method + desc);
+        return calls;
+    }
+
+    /** True if the body pushes an int constant, i.e. hard-codes an argument it should read. */
+    private static boolean pushesConstantInto(String owner, String method, String desc)
+            throws Exception {
+        boolean[] pushed = {false};
+        new org.objectweb.asm.ClassReader(bytes(owner)).accept(
+            new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                @Override public org.objectweb.asm.MethodVisitor visitMethod(
+                        int a, String n, String d, String sg, String[] ex) {
+                    if (!n.equals(method) || !d.equals(desc)) return null;
+                    return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                        @Override public void visitInsn(int op) {
+                            if (op == org.objectweb.asm.Opcodes.ICONST_1
+                                    || op == org.objectweb.asm.Opcodes.ICONST_0) pushed[0] = true;
+                        }
+                    };
+                }
+            }, org.objectweb.asm.ClassReader.SKIP_FRAMES);
+        return pushed[0];
+    }
+
+    private static byte[] bytes(String internalName) throws Exception {
+        try (java.io.InputStream in = SafetyGateDispatchParityTest.class
+                .getResourceAsStream("/" + internalName + ".class")) {
+            org.junit.jupiter.api.Assertions.assertNotNull(in, internalName + " not readable");
+            return in.readAllBytes();
+        }
+    }
 }

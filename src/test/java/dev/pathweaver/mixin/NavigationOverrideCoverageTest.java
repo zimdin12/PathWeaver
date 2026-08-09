@@ -64,9 +64,9 @@ class NavigationOverrideCoverageTest {
                 if (internal.equals("net/minecraft/world/entity/ai/navigation/PathNavigation")) continue;
                 try (InputStream in = zip.getInputStream(e)) {
                     if (extendsPathNavigation(in.readAllBytes(), zip)) found.add(internal);
-                } catch (IOException | RuntimeException ignored) {
+                } catch (IOException | RuntimeException unreadable) {
                     // Unreadable entries are not silently dropped -- they would hide a subclass.
-                    throw new IllegalStateException("could not read " + internal);
+                    throw new IllegalStateException("could not read " + internal, unreadable);
                 }
             }
         }
@@ -110,9 +110,18 @@ class NavigationOverrideCoverageTest {
 
         StringBuilder unguarded = new StringBuilder();
         List<String> subclasses = navigationSubclasses();
-        assertTrue(subclasses.size() >= 5,
-            "discovery found only " + subclasses.size() + " navigation subclasses; a walk "
-                + "that finds too few would pass this contract by looking at nothing");
+        // The jar has ten, and they split five in-package / five nested inside mob classes. A floor
+        // of five was exactly the value that would still pass if the walk lost the nested half --
+        // which is precisely the half the hand-written list had been missing.
+        assertTrue(subclasses.size() >= 10,
+            "discovery found only " + subclasses.size() + " navigation subclasses; the jar has ten, "
+                + "five of them nested inside mob classes: " + subclasses);
+        for (String nested : List.of("Frog$FrogPathNavigation", "Turtle$TurtlePathNavigation",
+                "Strider$StriderPathNavigation", "Creaking$CreakingPathNavigation")) {
+            assertTrue(subclasses.stream().anyMatch(c -> c.endsWith(nested)),
+                "the walk must reach navigations nested inside mob classes -- those are the ones the "
+                    + "hand-written list missed: " + nested + " not in " + subclasses);
+        }
         for (String navigation : subclasses) {
             for (String overridden : declaredMovementEntryPoints(navigation)) {
                 if (!mixedIn.contains(navigation)) {
@@ -167,9 +176,81 @@ class NavigationOverrideCoverageTest {
             "the request depth needs a @WrapOperation around the override's own createPath call, "
                 + "without which the inner call still reads as a query and stays synchronous: "
                 + injected);
-        assertTrue(injected.stream().filter(i -> i.startsWith("Inject:")).count() >= 2,
-            "two @Injects are required -- the movement marker at HEAD and the accepted-dispatch "
-                + "result at RETURN: " + injected);
+
+        // Annotations are not enough, and that was the last gap: emptying any of the three handler
+        // BODIES kept every annotation in place and left the suite green -- one of those mutations
+        // restored the fifteen-tick chase stall in full. So assert what each body actually calls.
+        Set<String> calls = handlerCallsOf("dev.pathweaver.mixin.WallClimberNavigationMixin");
+        assertTrue(calls.contains("pathweaver$beginMovementRequest"),
+            "a handler must bind the requested speed, or the spider installs at the default: " + calls);
+        assertTrue(calls.contains("pathweaver$enterMovementRequest")
+                && calls.contains("pathweaver$exitMovementRequest"),
+            "a handler must open AND close the movement-depth window; leaving it open makes every "
+                + "later query call async-eligible: " + calls);
+        assertTrue(calls.contains("pathweaver$consumeAcceptedDeferred"),
+            "a handler must report an accepted dispatch as success, or MeleeAttackGoal answers the "
+                + "false with a fifteen-tick chase stall: " + calls);
+        assertTrue(calls.contains("setReturnValue"),
+            "the accepted-dispatch handler must actually cancel the return value: " + calls);
+
+        // And WHERE they attach: a RETURN inject moved to HEAD still satisfies a count.
+        Set<String> at = injectionPointsOf("dev.pathweaver.mixin.WallClimberNavigationMixin");
+        assertTrue(at.contains("HEAD"), "the movement marker must attach at HEAD: " + at);
+        assertTrue(at.contains("RETURN"),
+            "the accepted-dispatch result must attach at RETURN -- at HEAD it runs before the value "
+                + "it is meant to replace exists: " + at);
+    }
+
+    /** Every PathWeaver/Mixin method the mixin's handler bodies invoke. */
+    private static Set<String> handlerCallsOf(String mixinClass) throws Exception {
+        Set<String> out = new LinkedHashSet<>();
+        new ClassReader(classBytes(mixinClass.replace('.', '/'))).accept(
+            new ClassVisitor(Opcodes.ASM9) {
+                @Override public MethodVisitor visitMethod(int a, String n, String d, String sg,
+                                                           String[] ex) {
+                    return new MethodVisitor(Opcodes.ASM9) {
+                        @Override public void visitMethodInsn(int op, String o, String m, String md,
+                                                              boolean itf) {
+                            out.add(m);
+                        }
+                    };
+                }
+            }, ClassReader.SKIP_FRAMES);
+        return out;
+    }
+
+    /** The {@code @At} values the mixin's injectors attach to. */
+    private static Set<String> injectionPointsOf(String mixinClass) throws Exception {
+        Set<String> out = new LinkedHashSet<>();
+        new ClassReader(classBytes(mixinClass.replace('.', '/'))).accept(
+            new ClassVisitor(Opcodes.ASM9) {
+                @Override public MethodVisitor visitMethod(int a, String n, String d, String sg,
+                                                           String[] ex) {
+                    return new MethodVisitor(Opcodes.ASM9) {
+                        @Override public org.objectweb.asm.AnnotationVisitor visitAnnotation(
+                                String desc, boolean v) {
+                            return new org.objectweb.asm.AnnotationVisitor(Opcodes.ASM9) {
+                                @Override public org.objectweb.asm.AnnotationVisitor visitAnnotation(
+                                        String k, String d2) {
+                                    return this;
+                                }
+                                @Override public org.objectweb.asm.AnnotationVisitor visitArray(
+                                        String k) {
+                                    return this;
+                                }
+                                @Override public void visit(String k, Object val) {
+                                    if ("value".equals(k) && val instanceof String sv
+                                            && (sv.equals("HEAD") || sv.equals("RETURN")
+                                                || sv.equals("TAIL") || sv.startsWith("INVOKE"))) {
+                                        out.add(sv);
+                                    }
+                                }
+                            };
+                        }
+                    };
+                }
+            }, ClassReader.SKIP_FRAMES);
+        return out;
     }
 
     /** {@code Inject:moveTo(...)Z} style entries for every injector the mixin declares. */

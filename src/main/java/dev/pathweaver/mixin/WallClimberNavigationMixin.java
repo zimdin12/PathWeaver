@@ -23,7 +23,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  *
  * <p>The consequence: every spider chasing a player resolved its path synchronously on the server
  * thread, while {@code /pathweaver mobs} counted spiders as eligible. The mod reported coverage it
- * did not have — the same shape as the banner bug 0.5.4 exists to fix, one layer down.
+ * did not have — the same shape as the banner bug 0.6.0 fixes, one layer down.
  *
  * <p>0.5.1 was the first instance ({@code AmphibiousNodeEvaluator} overriding {@code getNeighbors},
  * so four families kept racing an attribute). 0.5.2 was the second. The general fix is the

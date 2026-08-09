@@ -42,7 +42,7 @@ public enum RequestOutcome {
      */
     POOL_SATURATED("admission refused"),
 
-    /** Dispatch setup threw after the request was counted as dispatched. Vanilla ran it synchronously. */
+    /** Dispatch setup threw after {@code markDispatched()}. Vanilla ran the search synchronously. */
     SETUP_FAILED("dispatch setup failed"),
 
     /**
@@ -86,6 +86,48 @@ public enum RequestOutcome {
      * <p>{@link #NO_PATH} is excluded because the search succeeded, and {@link #POOL_SATURATED} and
      * {@link #SETUP_FAILED_PRE_DISPATCH} because no search was ever dispatched to waste.
      */
+    /**
+     * Which setup failure this is, decided in one place instead of at the throw site.
+     *
+     * <p>The selection used to be a ternary inside the dispatch catch, and three separate attempts to
+     * pin it in bytecode were each bypassed: keying on {@code registered} instead of
+     * {@code dispatchCounted}, writing {@code (registered || dispatchCounted)} so the right local is
+     * still loaded last, and simply swapping the ternary arms. Every guard was a test standing beside
+     * the decision rather than the decision itself.
+     *
+     * @param dispatchCounted the request had already been counted by {@code markDispatched()}, which
+     *     is NOT the same as having registered — registration precedes {@code submit}, and this
+     *     follows it, so a throw from {@code submit} is registered but never dispatched
+     */
+    public static RequestOutcome setupFailure(DispatchStage stage) {
+        return stage == DispatchStage.DISPATCHED ? SETUP_FAILED : SETUP_FAILED_PRE_DISPATCH;
+    }
+
+    /**
+     * How far a dispatch got before it threw. One ordered value, not two booleans.
+     *
+     * <p>Two booleans let the caller write {@code (registered || dispatchCounted)}, which is
+     * semantically just {@code registered} — because being dispatched implies being registered — and
+     * that survived a bytecode contract written specifically to catch it, because the right local is
+     * still the last one loaded. A single stage cannot express the wrong thing.
+     *
+     * <p>The two are genuinely different events: {@code sink.register} runs before
+     * {@code pool().submit}, and {@code markDispatched()} after it, so a throw from submit is
+     * {@link #REGISTERED} and never {@link #DISPATCHED}.
+     */
+    public enum DispatchStage {
+        /** Nothing recorded yet; the failure is invisible to the sink. */
+        NOT_REGISTERED,
+        /** In the sink, but never handed to a worker. */
+        REGISTERED,
+        /** Counted by {@code markDispatched()} and therefore part of the dispatched total. */
+        DISPATCHED;
+
+        public boolean hasRegistered() {
+            return this != NOT_REGISTERED;
+        }
+    }
+
     public boolean isDiscard() {
         return this != INSTALLED && this != NO_PATH && this != POOL_SATURATED
             && this != SETUP_FAILED_PRE_DISPATCH;

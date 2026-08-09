@@ -476,12 +476,13 @@ public abstract class PathNavigationMixin implements PWNavigation {
 
         // Everything below can fail on unusual mods/data; degrade to sync rather than escape into the
         // entity tick. If we've already registered in the sink, unwind that registration.
-        boolean registered = false;
+        dev.pathweaver.async.RequestOutcome.DispatchStage stage =
+            dev.pathweaver.async.RequestOutcome.DispatchStage.NOT_REGISTERED;
         // Registration and dispatch are NOT the same event: sink.register happens before
         // pool().submit, and freshEval.prepare after it. Choosing the outcome on `registered` made
         // SETUP_FAILED straddle markDispatched, so it was simultaneously "wasted dispatched work"
         // and "not part of dispatched" -- a row printed with no percentage while being 100% of them.
-        boolean dispatchCounted = false;
+
         RequestKey requestKey = null;
         SearchStartGate startGate = null;
         boolean authorizeSearch = false;
@@ -553,7 +554,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
             final RequestKey submittedKey = requestKey;
             if (!intentAdvanced) pathweaver$targetRevision++;
             sink.register(requestKey, this, requestTarget, requiresEmptyLandRegistry);
-            registered = true;
+            stage = dev.pathweaver.async.RequestOutcome.DispatchStage.REGISTERED;
             boolean accepted = rt.pool().submit(new PathRequest(submittedKey, tick, search,
                 result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz),
                 rt.installer()::enqueueDiscard));
@@ -564,7 +565,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
                 return;
             }
             rt.markDispatched();
-            dispatchCounted = true;
+            stage = dev.pathweaver.async.RequestOutcome.DispatchStage.DISPATCHED;
 
             // Capture the intended reachRange for install, and set targetPos optimistically to
             // the dispatched target so recomputePath() and Feature B work during the 1-tick in-flight
@@ -626,10 +627,9 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // The reachable trigger is a third-party evaluator whose no-argument constructor throws
             // when invoked outside the mod's own construction path: canClone proves a constructor
             // RESOLVES, never that it RUNS.
-            dev.pathweaver.async.RequestOutcome outcome = dispatchCounted
-                ? dev.pathweaver.async.RequestOutcome.SETUP_FAILED
-                : dev.pathweaver.async.RequestOutcome.SETUP_FAILED_PRE_DISPATCH;
-            if (registered) {
+            dev.pathweaver.async.RequestOutcome outcome =
+                dev.pathweaver.async.RequestOutcome.setupFailure(stage);
+            if (stage.hasRegistered()) {
                 sink.discard(requestKey, outcome);
             } else {
                 rt.markOutcome(outcome);

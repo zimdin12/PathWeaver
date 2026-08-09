@@ -308,7 +308,12 @@ public final class PathWeaverCommand {
                 + "Fabric land-registry hooks could not be verified against this Fabric API build. "
                 + "Every walk-derived family runs on the server thread no matter what the per-type "
                 + "rules say. compatibilityTier=UNSAFE waives this; trustedMods does not.");
-            return;
+            // Do NOT return. Swim-family mobs -- squid, cod, salmon, tropical fish -- really are
+            // dispatching in this state, and answering "nothing works" when one family does is the
+            // same under-reporting the rest of this release exists to remove. The per-type scan below
+            // is correct here; the line above explains why the land families are missing from it.
+            say(source, "  §7Swim-family mobs are unaffected and still dispatch; per-type verdicts "
+                + "follow.");
         }
         boolean moddedAllowed = cfg.moddedMobAsyncAllowed();
         Map<String, Integer> verdicts = new LinkedHashMap<>();

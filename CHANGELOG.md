@@ -111,7 +111,7 @@ isolation were all attacked and held.
   of those 15 touch only `BlockBehaviour$BlockStateBase` and are not pathfinding mods at all.
 - ASM is now an explicit test dependency instead of arriving through `fabric-loader`.
 
-308 unit tests, four server harnesses, the client harness, a benchmark showing no change
+309 unit tests, four server harnesses, the client harness, a benchmark showing no change
 against 0.5.3, and verification on a real 221-mod server pack.
 
 ## 0.5.3 — The branch the fix did not reach
