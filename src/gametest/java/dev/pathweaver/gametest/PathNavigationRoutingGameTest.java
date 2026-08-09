@@ -330,7 +330,11 @@ public final class PathNavigationRoutingGameTest {
                             "fixture precondition: a spider must use WallClimberNavigation, or this "
                                 + "arm proves nothing about the override");
                         long beforeSpider = runtimeCounter("dispatched");
-                        check(helper, spiderNav.moveTo(targetMob, 1.0),
+                        // A NON-default speed on purpose. pathweaver$requestSpeed defaults to 1.0, so
+                        // a fixture that asks for 1.0 cannot tell a captured speed from a hard-coded
+                        // one -- replacing the capture with the literal 1.0 was invisible to both
+                        // suites.
+                        check(helper, spiderNav.moveTo(targetMob, 1.35),
                             "a spider's entity move must be accepted");
                         check(helper, PathWeaverRuntime.get().entitySink().isRegistered(spider.getId()),
                             "the spider's chase must dispatch async -- if this fails the override is "
@@ -338,6 +342,9 @@ public final class PathNavigationRoutingGameTest {
                                 + "pathing on the server thread");
                         check(helper, runtimeCounter("dispatched") == beforeSpider + 1,
                             "exactly one dispatch for the spider's chase");
+                        check(helper, sameDoubleBits(pendingInstallSpeed(spiderNav), 1.35),
+                            "the spider's requested speed must be captured exactly, not defaulted: "
+                                + pendingInstallSpeed(spiderNav));
                         spiderNav.stop();
                         spider.discard();
                         // ---- end spider arm ----
@@ -708,6 +715,17 @@ public final class PathNavigationRoutingGameTest {
             return (BlockPos) field.get(navigation);
         } catch (ReflectiveOperationException e) {
             throw new AssertionError("could not inspect PathNavigation.targetPos", e);
+        }
+    }
+
+    /** The speed bound to the in-flight request, which is what install will apply. */
+    private static double pendingInstallSpeed(PathNavigation navigation) {
+        try {
+            Field f = PathNavigation.class.getDeclaredField("pathweaver$pendingInstallSpeed");
+            f.setAccessible(true);
+            return f.getDouble(navigation);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
         }
     }
 

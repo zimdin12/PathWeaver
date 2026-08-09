@@ -36,6 +36,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * {@code moveTo} itself — the movement marker, the request depth, and the accepted-dispatch result —
  * because this class overrides that method. Each was missed in turn and each was caught by a test
  * rather than by reading.
+ *
+ * <p><b>One visible deviation, recorded rather than hidden.</b> During the in-flight tick a spider
+ * has no path yet, so {@code WallClimberNavigation.tick()} takes its direct
+ * {@code MoveControl.setWantedPosition} branch — the steering vanilla uses when a search FAILED — and
+ * switches to the installed path on the following tick. Nothing is corrupted ({@code pathToPosition}
+ * is rewritten by every {@code createPath}), but for one tick a chasing spider climbs toward the
+ * target rather than following a route, which vanilla only does on genuine search failure. It is the
+ * same one-tick seam every async family has; it is just more visible on a wall-climber.
  */
 @Mixin(WallClimberNavigation.class)
 public class WallClimberNavigationMixin {

@@ -5,6 +5,8 @@ import dev.pathweaver.async.RequestKey;
 import dev.pathweaver.async.RequestTarget;
 import dev.pathweaver.duck.PWNavigation;
 import net.minecraft.world.level.pathfinder.Path;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;
@@ -160,5 +162,28 @@ class PathWeaverRuntimeTest {
         } finally {
             runtime.onServerStopping(null);
         }
+    }
+
+    /**
+     * The setup-failure log flag must re-arm per server session, and nothing checked that it did.
+     *
+     * <p>Deleting {@code setupFailureLogged.set(false)} from {@code onServerStarting} survived the
+     * whole suite — reinstating exactly the bug its javadoc says it fixes: the flag is per-process
+     * while the counter it refers to is per-session, so loading a second world showed a climbing
+     * "dispatch setup failed" count with nothing in the log, after a message that had promised the
+     * counter would keep counting.
+     */
+    @org.junit.jupiter.api.Test
+    void theSetupFailureWarningReArmsForEachServerSession() {
+        PathWeaverRuntime runtime = PathWeaverRuntime.get();
+        assertTrue(runtime.claimSetupFailureLog(),
+            "precondition: the first claim of a session must succeed");
+        assertFalse(runtime.claimSetupFailureLog(),
+            "and the second must not -- one warning per session, not per mob per tick");
+
+        runtime.onServerStarting(null);
+        assertTrue(runtime.claimSetupFailureLog(),
+            "a new server session must re-arm the warning, or the counter climbs with nothing in "
+                + "the log to explain it");
     }
 }

@@ -137,7 +137,6 @@ public final class PathWeaverCommand {
         return scanSummary(deniedFamilies, waived, scanFailed, List.of());
     }
 
-    /** The families dispatch would still refuse even with nothing denied — see SafetyGate.canDispatch. */
     /**
      * Families refused BY a denial through inheritance, so the report can name them.
      *
