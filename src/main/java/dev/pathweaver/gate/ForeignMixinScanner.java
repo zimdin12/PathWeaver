@@ -914,6 +914,19 @@ public final class ForeignMixinScanner {
             PathWeaver.LOG.warn("and that denial has been IGNORED. Path searches will now run on");
             PathWeaver.LOG.warn("worker threads alongside code that has not been audited for thread");
             PathWeaver.LOG.warn("safety. Use worlds you can afford to lose, and keep backups.");
+            PathWeaver.LOG.warn("");
+            // The one thing this block never said: WHY the unsafe tier is the default. Without it
+            // the message reads as a mod shipping recklessly, when the actual trade is that the
+            // checked tier denies everything on any ordinary modded pack -- measured at 0 of 187
+            // eligible mob types -- so shipping it as the default would ship a mod that does
+            // nothing. Deliberately not phrased as "this is safe on most packs": nothing measured
+            // supports that, only an absence of reported corruption, which is not the same claim.
+            PathWeaver.LOG.warn("Why this is the default: the checked tier (AUDITED) denies every");
+            PathWeaver.LOG.warn("family on an ordinary modded pack -- measured at 0 of 187 eligible");
+            PathWeaver.LOG.warn("mob types -- so shipping it would ship a mod that does nothing.");
+            PathWeaver.LOG.warn("That is a trade, not a safety claim. Set compatibilityTier=AUDITED");
+            PathWeaver.LOG.warn("for full checking, or name specific mods in trustedMods to keep the");
+            PathWeaver.LOG.warn("scan armed for everything else.");
             if (!unauditedNowRunning.isEmpty()) {
                 PathWeaver.LOG.warn("");
                 PathWeaver.LOG.warn("The {} unaudited mod(s) now running on worker threads:",
