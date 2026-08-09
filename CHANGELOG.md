@@ -168,8 +168,8 @@ benchmark showing no change against 0.5.3, and verification on a real 221-jar se
 configurations: `AUDITED` with nothing trusted (0 of 187 eligible, nine mods named); `AUDITED` with
 those nine trusted at stock settings (86 of 187 — the origin gate refuses 98 mod-added mob classes);
 the same with `allowModdedMobAsync=true` (184 of 187, nothing enforced, 732 searches installed); and
-the shipped `UNSAFE` default (184 of 187, 773 dispatched / 765 installed / 8 discarded, zero
-exceptions). With the world held still, all **six** evaluator families produced node-for-node
+the shipped `UNSAFE` default (184 of 187, 755 dispatched / 749 installed / 6 discarded on the
+shipping jar, with no PathWeaver exception in any run). With the world held still, all **six** evaluator families produced node-for-node
 identical routes to a synchronous oracle — one scenario each, which is evidence and not proof, and
 which for flying mobs the design does not guarantee (README, *What is unproven*).
 

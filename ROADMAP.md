@@ -100,6 +100,15 @@ walk.
 ### 0.6.1 — carried over
 
 - **6b, then 6a**, as scoped above. This is the whole of the "most mobs, safely" goal.
+- **Give `/pathweaver status` and `/pathweaver mobs` a testable seam.** Both are
+  `private static void (CommandSourceStack)` with nothing extracted but `scanSummary` and
+  `ScanCounts`, and the eleventh review compiled eight mutations inside them that no test sees: the
+  eligible tally, the tier-in-force line, three early-return guards, the land-registry warning, and
+  — the one that stings — reading `moddedMobAsyncAllowed()` and then using `true` anyway, which is
+  the hole round ten closed for the land registry and left open one method over. A `List<String>`
+  producer per command, the way `scanSummary` already works, kills eight of them at once. None
+  changes dispatch; all of them can make the mod misreport itself, which is the defect class this
+  release exists to end.
 - **Coverage gaps found by review and not blocking a release.** `bodyCalls` cannot tell an invoked-
   and-used call from an invoked-and-discarded one, and `pushesConstantInto` is both over- and
   under-strict — both are bytecode contracts that pass for the wrong reason. Five `DispatchStage`
