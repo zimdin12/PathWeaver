@@ -21,7 +21,7 @@ This release replaces prediction with detection.
   installed. Falling back to vanilla is the safe direction by construction, so the breaker cannot
   destabilise anything it fires on.
 - **Failure attribution, which is the half that pays on every install.** The breaker may never fire —
-  the reference pack ran 743 dispatches with zero search failures. The attribution fires on the
+  the reference pack ran 731 dispatches with zero search failures. The attribution fires on the
   *first* failure, needs no threshold, and turns a single rate-limited `WARN` into a block naming the
   family, the exception and, where it can, the mod. The honest limit is stated in the log itself: a
   mixin handler is merged into the class it targets, so an `@Overwrite` or an inlined `@Redirect`
@@ -75,7 +75,7 @@ in.
 
 358 unit tests (zero skipped), three game tests plus a dedicated end-to-end breaker harness, four
 server harnesses, the client harness, and verification on the real 221-jar server pack: 184 of 187
-eligible, 743 dispatched / 734 installed / 9 discarded, all six evaluator families node-for-node
+eligible, 731 dispatched / 724 installed / 7 discarded, all six evaluator families node-for-node
 identical to a synchronous oracle, and **no breaker output at all** — which is the correct result on a
 healthy pack and the honest measure of this feature. Benchmarked against published 0.6.0 over ten
 interleaved runs: mean tick 50.001 ms vs 50.004 ms, p99 150.9 ms vs 150.5 ms. No regression.

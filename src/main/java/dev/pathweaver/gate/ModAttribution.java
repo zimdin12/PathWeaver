@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Names the mods implicated when a search throws on a worker.
  *
  * <p>This is the half of the failure story that pays on every install. The breaker beside it may
- * never fire — 743 dispatches on the reference pack produced zero search failures — but when a search
+ * never fire — 731 dispatches on the reference pack produced zero search failures — but when a search
  * does throw, the difference between a rate-limited {@code WARN} saying "async path search failed" and
  * a block naming the family, the exception and the mod is the difference between a user who files a
  * usable bug report and a user who uninstalls.
