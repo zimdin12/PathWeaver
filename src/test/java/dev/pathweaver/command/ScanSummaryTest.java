@@ -427,4 +427,45 @@ class ScanSummaryTest {
             "a trip and a burnt one-shot must not survive into the next world: " + calls);
     }
 
+
+    /**
+     * The per-family failure report: present before a trip, gone after it.
+     *
+     * <p>Deleting the loop entirely, and dropping the "skip a family that has already tripped"
+     * condition, both left the suite green -- the release's fourth "Added" bullet had no coverage at
+     * all, and without the condition status would print "still dispatching" beside "switched OFF" for
+     * the same family.
+     */
+    @Test
+    void statusReportsFailuresBeforeATripAndStopsAfterOne() {
+        int savedLimit = dev.pathweaver.config.PathWeaverConfig.get().workerFailureLimit;
+        try {
+            dev.pathweaver.config.PathWeaverConfig.get().workerFailureLimit = 3;
+            dev.pathweaver.gate.WorkerFailureBreaker.reset();
+            dev.pathweaver.gate.WorkerFailureBreaker.recordSearchFailure(
+                WalkNodeEvaluator.class, new IllegalStateException("synthetic"));
+            dev.pathweaver.gate.WorkerFailureBreaker.recordSearchFailure(
+                WalkNodeEvaluator.class, new IllegalStateException("synthetic"));
+
+            java.util.List<String> before = PathWeaverCommand.statusLines();
+            assertTrue(before.stream().anyMatch(l -> l.contains("WalkNodeEvaluator")
+                    && l.contains("still dispatching")),
+                "failures below the threshold must be visible -- the trip log tells operators to "
+                    + "look here for the running total: " + before);
+            assertTrue(before.stream().anyMatch(l -> l.contains("2 search failure(s) this session")),
+                "and the number must be the session total, not the current window's slice: " + before);
+
+            dev.pathweaver.gate.WorkerFailureBreaker.recordSearchFailure(
+                WalkNodeEvaluator.class, new IllegalStateException("synthetic"));
+            java.util.List<String> after = PathWeaverCommand.statusLines();
+            assertTrue(after.stream().anyMatch(l -> l.contains("switched OFF")),
+                "a tripped family must be announced: " + after);
+            assertFalse(after.stream().anyMatch(l -> l.contains("still dispatching")),
+                "and must not also be reported as still dispatching: " + after);
+        } finally {
+            dev.pathweaver.config.PathWeaverConfig.get().workerFailureLimit = savedLimit;
+            dev.pathweaver.gate.WorkerFailureBreaker.reset();
+        }
+    }
+
 }

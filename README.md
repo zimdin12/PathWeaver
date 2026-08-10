@@ -369,6 +369,12 @@ You can also edit `config/pathweaver.json`. **The exact keys differ between vers
 - **Flying searches are not guaranteed to reproduce vanilla's start node.** A worker draws its start candidate from thread-confined randomness instead of the mob's own, so an async flying search can begin from a different candidate than the synchronous one would have. Vanilla chooses that candidate arbitrarily, so both are valid. The 0.6.0 comparison above happened to match node-for-node; treat that as one favourable sample, not as a property — a general flying-equivalence test would have to compare reachability rather than nodes.
 - **The amphibious malus window is real.** Its evaluator's costs are applied to the mob at dispatch and restored at install, so for roughly one tick the mob carries search costs it would not have carried under vanilla. Only pathfinding is known to read them; nothing was measured to confirm nothing else does.
 - **Under live block changes we found no failures but did not check path quality.** Across 66,144 searches in three mod sets there was no crash, no search failure and no worker-pool failure. We did **not** compare the paths produced while blocks were changing, so stale or wrong paths during world mutation are simply not measured.
+- **The failure breaker sees crashes, not silence.** From 0.6.1 a search that throws on a worker is
+counted, and past a threshold that movement family stops dispatching for the session. That catches the
+failure mode that announces itself. It does **not** catch a search that quietly returns a *worse* path
+because a worker read a block mid-change — no exception, nothing to count. Treat the breaker as a
+smoke detector, not as evidence that the concurrent-read question is closed; the block-change bullet
+above is still the honest statement of what is unmeasured.
 - **Repath reuse has never shown a measurable benefit** in any run. It appears harmless; treat it as unproven, not as a speed-up.
 - **Mob behaviour under load.** Async paths install at least one tick later than synchronous ones. Nothing we ran checked whether mobs behave the same when a thousand of them are served asynchronously.
 

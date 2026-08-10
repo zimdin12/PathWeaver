@@ -88,12 +88,19 @@ public final class PathWeaverCommand {
         // total is here and it was not: status stayed silent until a trip, so an operator following
         // that instruction found nothing and had no way to tell one bad tick from a building problem.
         for (Class<?> family : dev.pathweaver.gate.SafetyGate.allowlistedFamilies()) {
-            int failures = dev.pathweaver.gate.WorkerFailureBreaker.windowedCount(family);
-            if (failures <= 0 || dev.pathweaver.gate.SafetyGate.isDeniedByRuntimeFailure(family)) {
+            int recent = dev.pathweaver.gate.WorkerFailureBreaker.windowedCount(family);
+            int total = dev.pathweaver.gate.WorkerFailureBreaker.cumulativeCount(family);
+            if (total <= 0 || dev.pathweaver.gate.SafetyGate.isDeniedByRuntimeFailure(family)) {
                 continue;
             }
-            out.add("  §e" + family.getSimpleName() + ": " + failures + " search failure(s) counted, "
-                + "still dispatching. See the PathWeaver block in the log.");
+            // BOTH numbers, because they answer different questions and only one of them is the one
+            // the trip log promises. The window is what trips a family; the session total is what
+            // tells an operator whether this is one bad tick or a problem building all afternoon.
+            // Printing only the window reported "1 failure" for a family sitting four short of the
+            // session backstop.
+            out.add("  §e" + family.getSimpleName() + ": " + total + " search failure(s) this session"
+                + (recent == total ? "" : " (" + recent + " in the current window)")
+                + ", still dispatching. See the PathWeaver block in the log.");
         }
         java.util.Set<Class<?>> tripped = dev.pathweaver.gate.SafetyGate.runtimeFailureDenials();
         if (!tripped.isEmpty()) {

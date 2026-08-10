@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Naming the mod is the half of this feature that pays on every install.
  *
- * <p>The breaker beside it may never fire — 792 dispatches on the reference pack produced zero search
+ * <p>The breaker beside it may never fire — 743 dispatches on the reference pack produced zero search
  * failures — but a failure that names nothing is a failure nobody can report. These tests pin both
  * signals and, just as importantly, pin that a signal which cannot fire says so instead of implying
  * no mod was involved.
@@ -75,7 +75,10 @@ class ModAttributionTest {
     /** Both signals, over a real throwable, with vanilla and PathWeaver itself excluded. */
     @Test
     void suspectsCombinesBothSignalsAndExcludesTheUninteresting() {
-        ModAttribution.useModIdsForTesting(Set.of("lithium", "pathweaver"));
+        // "minecraft" and "java" are in the set deliberately: FabricLoader really does report them
+        // as mods, so a test that omits them cannot notice if the exclusion is deleted -- and then
+        // every vanilla frame in every failure would be listed as a suspect.
+        ModAttribution.useModIdsForTesting(Set.of("lithium", "pathweaver", "minecraft", "java"));
         RuntimeException failure = new RuntimeException("synthetic");
         failure.setStackTrace(new StackTraceElement[] {
             new StackTraceElement("net.minecraft.world.level.pathfinder.WalkNodeEvaluator",
@@ -128,4 +131,28 @@ class ModAttributionTest {
                 net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class, hostile),
             "attribution runs inside a failure path whose delivery side has no catch at all");
     }
+
+    /**
+     * A cyclic cause chain must not spin a worker forever.
+     *
+     * <p>Two throwables that cause each other defeat a self-cause guard. This runs on a worker inside
+     * a catch-all that can swallow a throwable but cannot break a loop, so the bound is the only
+     * thing standing between a cause cycle and a pegged core.
+     */
+    @Test
+    @org.junit.jupiter.api.Timeout(value = 5)
+    void aCyclicCauseChainTerminates() {
+        RuntimeException a = new RuntimeException("a");
+        RuntimeException b = new RuntimeException("b", a);
+        a.initCause(b);
+        a.setStackTrace(new StackTraceElement[] {
+            new StackTraceElement("net.minecraft.world.level.pathfinder.WalkNodeEvaluator",
+                "handler$zzl000$lithium$getNodeType", "WalkNodeEvaluator.java", 1)});
+        b.setStackTrace(a.getStackTrace());
+        ModAttribution.useModIdsForTesting(Set.of("lithium"));
+
+        assertEquals(List.of("lithium"), ModAttribution.suspects(a),
+            "it must terminate, and still find what is there");
+    }
+
 }

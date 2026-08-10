@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p><b>What it is not.</b> A breaker sees throws. The failure a user actually fears is a silent torn
  * read that returns the wrong block and never throws, and nothing here catches that. On the reference
- * 221-jar pack, 755 dispatches produced zero search failures, so on a healthy install this may never
+ * 221-jar pack, 743 dispatches produced zero search failures, so on a healthy install this may never
  * fire. The half that earns its place on every install is {@link ModAttribution}: when something does
  * go wrong, the log names the family, the exception and — when it can — the mod.
  *
@@ -97,6 +97,19 @@ public final class WorkerFailureBreaker {
     }
 
     /**
+     * Every failure this family has had this session, however far apart.
+     *
+     * <p>Distinct from {@link #windowedCount} and the distinction is not academic: the window resets
+     * whenever it rolls, so a family that has failed twenty times over an afternoon -- five short of
+     * the backstop -- reports a windowed count of one. The trip log tells operators that
+     * {@code /pathweaver status} shows the running total, so the running total has to exist.
+     */
+    public static int cumulativeCount(Class<?> family) {
+        Counter counter = COUNTERS.get(family);
+        return counter == null ? 0 : counter.snapshotCount();
+    }
+
+    /**
      * Record that a search threw on a worker, and trip the family if it has thrown enough.
      *
      * <p>Every caller must still wrap this: it is invoked from a failure path, and the delivery side
@@ -107,7 +120,22 @@ public final class WorkerFailureBreaker {
      * @param evaluatorClass the evaluator the search was dispatched with; may be null
      * @return true if this call tripped the family, for callers that log the transition
      */
+    /** Test seam: the generation a failure is stamped with, so the stale-verdict guard is testable. */
+    static long generationForTesting() {
+        return generation;
+    }
+
+    /** Test seam: record a failure as if it had entered during {@code entryGeneration}. */
+    static boolean recordSearchFailureForGeneration(Class<?> evaluatorClass, Throwable failure,
+                                                    long entryGeneration) {
+        return record(evaluatorClass, failure, entryGeneration);
+    }
+
     public static boolean recordSearchFailure(Class<?> evaluatorClass, Throwable failure) {
+        return record(evaluatorClass, failure, generation);
+    }
+
+    private static boolean record(Class<?> evaluatorClass, Throwable failure, long entryGeneration) {
         // A VM error is not evidence that a worker read something it should not have. It is evidence
         // that the JVM is in trouble, it recurs in bursts, and on a 200-mod server it is the likeliest
         // throwable a worker will ever produce. Counting three OutOfMemoryErrors as an incompatibility
@@ -122,7 +150,6 @@ public final class WorkerFailureBreaker {
         int limit = config.workerFailureLimit;
         long window = config.workerFailureWindowTicks;
 
-        long entryGeneration = generation;
         Counter counter = COUNTERS.computeIfAbsent(family, ignored -> new Counter());
         boolean firstEver = counter.recordAndCheckFirst(currentTick, window);
         if (firstEver) ModAttribution.reportFirstFailure(family, failure);

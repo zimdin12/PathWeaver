@@ -72,9 +72,8 @@ in.
 - `/pathweaver status` and `/pathweaver mobs` were `private static void (CommandSourceStack)` with no
   seam, so eight mutations inside them were invisible to every test. They now produce a `List<String>`
   the tests assert against.
-- `tools/scan_pack.py` counted PathWeaver itself among the mods claiming a pathfinding target.
 
-353 unit tests (zero skipped), three game tests plus a dedicated end-to-end breaker harness, four
+358 unit tests (zero skipped), three game tests plus a dedicated end-to-end breaker harness, four
 server harnesses, the client harness, and verification on the real 221-jar server pack: 184 of 187
 eligible, 743 dispatched / 734 installed / 9 discarded, all six evaluator families node-for-node
 identical to a synchronous oracle, and **no breaker output at all** — which is the correct result on a

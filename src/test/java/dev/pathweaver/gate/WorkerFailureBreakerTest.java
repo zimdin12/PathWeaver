@@ -209,11 +209,17 @@ class WorkerFailureBreakerTest {
         assertEquals(0, WorkerFailureBreaker.windowedCount(WalkNodeEvaluator.class),
             "and the counter with it, or the next world trips early on the last one's failures");
 
+        // Asserted BEFORE the next failure, and that ordering is the test. Checking only that a
+        // later failure reports again passes whether or not the reset happened, because the entry
+        // from the previous world is still sitting there -- the assertion was satisfied by the very
+        // state it was supposed to prove had been cleared.
+        assertTrue(ModAttribution.REPORTS.isEmpty(),
+            "the one-shot report must re-arm. Leaving it burnt makes the first failure of every "
+                + "later world in the same JVM silent, which is the documented reason this reset is "
+                + "per-server rather than per-JVM: " + ModAttribution.REPORTS);
         fail(WalkNodeEvaluator.class);
         assertTrue(ModAttribution.REPORTS.contains("first-failure:WalkNodeEvaluator"),
-            "and the one-shot report must re-arm too. Leaving it burnt makes the first failure of "
-                + "every later world in the same JVM silent, which is the documented reason this "
-                + "reset is per-server rather than per-JVM: " + ModAttribution.REPORTS);
+            "and the next world's first failure must be reported again: " + ModAttribution.REPORTS);
     }
 
     /** An evaluator with no allowlisted ancestor is not this mechanism's business. */
@@ -315,8 +321,8 @@ class WorkerFailureBreakerTest {
             "and only once -- a storm of failures must not become a storm of log blocks");
 
         fail(WalkNodeEvaluator.class);
-        assertTrue(ModAttribution.REPORTS.contains("trip:WalkNodeEvaluator:WINDOW"),
-            "a trip must be announced, and announced with the rule that fired: "
+        assertTrue(ModAttribution.REPORTS.contains("trip:WalkNodeEvaluator:WINDOW:3"),
+            "a trip must be announced, with the rule that fired and the count that reached it: "
                 + ModAttribution.REPORTS);
     }
 
@@ -346,9 +352,11 @@ class WorkerFailureBreakerTest {
             WorkerFailureBreaker.setTick(i * 10_000L);
             fail(WalkNodeEvaluator.class);
         }
-        assertTrue(ModAttribution.REPORTS.contains("trip:WalkNodeEvaluator:CEILING"),
-            "naming the window threshold after a ceiling trip sends an operator to raise a setting "
-                + "that changes nothing: " + ModAttribution.REPORTS);
+        assertTrue(ModAttribution.REPORTS.contains(
+                "trip:WalkNodeEvaluator:CEILING:" + WorkerFailureBreaker.CUMULATIVE_CEILING),
+            "naming the window threshold after a backstop trip sends an operator to raise a setting "
+                + "that changes nothing, and reporting the window's count of 1 alongside it says a "
+                + "single failure switched the family off: " + ModAttribution.REPORTS);
     }
 
     /**
@@ -444,5 +452,56 @@ class WorkerFailureBreakerTest {
     }
 
     private static final class ThirdPartyWalkEvaluator extends WalkNodeEvaluator {}
+
+
+    /** A ceiling trip must report the session total, not the window's count of one. */
+    @Test
+    void theCeilingTripReportsTheCountThatActuallyReachedIt() {
+        for (int i = 0; i < WorkerFailureBreaker.CUMULATIVE_CEILING; i++) {
+            WorkerFailureBreaker.setTick(i * 10_000L);
+            fail(WalkNodeEvaluator.class);
+        }
+        assertEquals(WorkerFailureBreaker.CUMULATIVE_CEILING,
+            WorkerFailureBreaker.cumulativeCount(WalkNodeEvaluator.class),
+            "the session total is what crossed the backstop");
+        assertEquals(1, WorkerFailureBreaker.windowedCount(WalkNodeEvaluator.class),
+            "and the window is on its own -- printing this number for a ceiling trip would tell an "
+                + "operator one failure had switched a family off");
+    }
+
+    /**
+     * A trip is announced once, however many failures follow it.
+     *
+     * <p>{@code tripRuntimeFailure} returning the transition rather than the state is what makes the
+     * whole block one-shot; without it every later failure re-emits it, and a pack with a real
+     * incompatibility fills the log with the same eight lines.
+     */
+    @Test
+    void aTripIsAnnouncedOnceEvenWhileFailuresKeepArriving() {
+        for (int i = 0; i < 12; i++) fail(WalkNodeEvaluator.class);
+        assertEquals(1, ModAttribution.REPORTS.stream().filter(r -> r.startsWith("trip:")).count(),
+            "one trip, one block: " + ModAttribution.REPORTS);
+    }
+
+    /**
+     * A straggler from the previous server must not install its verdict into the next one.
+     *
+     * <p>Pinned on the stamp rather than on the counter reset, because the counter reset alone
+     * satisfies the coarser version of this test and left the stamp free to be deleted.
+     */
+    @Test
+    void aVerdictReachedBeforeAResetIsNotInstalledAfterIt() {
+        PathWeaverConfig.get().workerFailureLimit = 1;
+        // Enough to trip, but the reset lands between the count and the install.
+        long before = WorkerFailureBreaker.generationForTesting();
+        WorkerFailureBreaker.reset();
+        assertTrue(WorkerFailureBreaker.generationForTesting() != before,
+            "reset must advance the generation, or nothing downstream can tell the servers apart");
+        assertFalse(WorkerFailureBreaker.recordSearchFailureForGeneration(
+                WalkNodeEvaluator.class, new IllegalStateException("from the old server"), before),
+            "a failure stamped with the previous server's generation must not switch a family off "
+                + "in this one");
+        assertFalse(SafetyGate.isDeniedByRuntimeFailure(WalkNodeEvaluator.class));
+    }
 
 }
