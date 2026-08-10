@@ -315,7 +315,7 @@ class MobEligibilityTest {
                 new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
                     @Override public org.objectweb.asm.MethodVisitor visitMethod(
                             int a, String n, String d, String sg, String[] ex) {
-                        if (!n.equals("mobs")) return null;
+                        if (!n.equals("mobsLines")) return null;
                         return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
                             @Override public void visitMethodInsn(int op, String o, String m,
                                                                   String md, boolean itf) {

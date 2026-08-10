@@ -316,4 +316,49 @@ class ScanSummaryTest {
                 + "expression the startup log reports: " + calls);
     }
 
+
+    /**
+     * The status text itself, now that there is something to assert it against.
+     *
+     * <p>`status` was a `private static void (CommandSourceStack)` with no seam, so a review could
+     * compile mutations inside it that no test could see. The line producer is the seam; this is the
+     * assertion that makes having one worth anything.
+     */
+    @Test
+    void theStatusTextReportsTheTierInForceAndTheScanCounts() {
+        java.util.List<String> lines = PathWeaverCommand.statusLines();
+        assertFalse(lines.isEmpty(), "status must say something");
+        assertTrue(lines.get(0).contains("PathWeaver status"), "first line: " + lines.get(0));
+        assertTrue(lines.stream().anyMatch(l -> l.contains("tier in force")),
+            "an operator who switched tier mid-session must be told which one is actually running, "
+                + "not which one is on disk: " + lines);
+        assertTrue(lines.stream().anyMatch(l -> l.contains("deniedByScan=")
+                && l.contains("enforced=")),
+            "both scan counts must be present and separately named: " + lines);
+    }
+
+    /**
+     * A tripped family must be announced, and announced as a runtime failure.
+     *
+     * <p>The scan narrative cannot describe it: it is handed the scan's findings, so a trip is either
+     * invisible there or explained as "an evaluator that cannot be cloned on this JVM". Both are
+     * causes the code would be inventing.
+     */
+    @Test
+    void aTrippedFamilyIsNamedInStatusAndNotBlamedOnTheScan() {
+        assertTrue(PathWeaverCommand.statusLines().stream()
+                .noneMatch(l -> l.contains("switched OFF")),
+            "nothing may be announced before anything has failed");
+        try {
+            dev.pathweaver.gate.SafetyGate.tripRuntimeFailure(WalkNodeEvaluator.class);
+            java.util.List<String> lines = PathWeaverCommand.statusLines();
+            assertTrue(lines.stream().anyMatch(l -> l.contains("threw on a worker")),
+                "a switched-off family must be named, and named for what happened: " + lines);
+            assertTrue(lines.stream().anyMatch(l -> l.contains("WalkNodeEvaluator")),
+                "including which family: " + lines);
+        } finally {
+            dev.pathweaver.gate.SafetyGate.resetRuntimeFailureDenials();
+        }
+    }
+
 }

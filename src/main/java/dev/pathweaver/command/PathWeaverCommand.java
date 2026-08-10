@@ -54,12 +54,17 @@ public final class PathWeaverCommand {
             })));
     }
 
-    private static void status(CommandSourceStack source) {
+    /**
+     * The lines {@code /pathweaver status} prints, separated from the printing. See
+     * {@link #mobsLines} for why.
+     */
+    static java.util.List<String> statusLines() {
+        java.util.List<String> out = new java.util.ArrayList<>();
         PathWeaverConfig config = PathWeaverConfig.get();
         PathWeaverRuntime runtime = PathWeaverRuntime.get();
         ForeignMixinScanner.ScanReport report = ForeignMixinScanner.lastScanReport();
 
-        say(source, "§6PathWeaver status");
+        out.add("§6PathWeaver status");
         // Report the tier that is actually in force, not the one on disk. The field is what a
         // settings save writes; the policy was frozen at scan time and does not follow it. Printing
         // the field labelled "frozen at startup" told an operator who had just switched to AUDITED
@@ -72,8 +77,8 @@ public final class PathWeaverCommand {
         if (config.compatibilityTier != inForce) {
             tierLine += " (config says " + config.compatibilityTier + " -- restart to apply)";
         }
-        say(source, tierLine);
-        say(source, ScanCounts.of(report.decision()).line());
+        out.add(tierLine);
+        out.add(ScanCounts.of(report.decision()).line());
         // Printed BEFORE the scan narrative below, and separately from it. scanSummary is handed
         // report.decision().denied() -- the scan's findings -- so a runtime trip is either invisible
         // there (where the scan already covers that family) or explained as "most likely an evaluator
@@ -84,9 +89,9 @@ public final class PathWeaverCommand {
             List<String> names = new java.util.ArrayList<>();
             for (Class<?> family : tripped) names.add(family.getSimpleName());
             java.util.Collections.sort(names);
-            say(source, "  §c" + names.size() + " family/families switched OFF after their searches "
+            out.add("  §c" + names.size() + " family/families switched OFF after their searches "
                 + "threw on a worker: " + String.join(", ", names));
-            say(source, "  §7Those mobs path on the server thread exactly as they would without this "
+            out.add("  §7Those mobs path on the server thread exactly as they would without this "
                 + "mod. No compatibility setting affects this; the log block names what threw and, "
                 + "where it can, which mod. Restart to re-arm.");
         }
@@ -102,18 +107,18 @@ public final class PathWeaverCommand {
         for (String line : scanSummary(report.decision().denied(),
                 config.bypassesCompatibilityScan() && !scanFailed, scanFailed,
                 undispatchableFamilyNames(report.decision().denied()))) {
-            say(source, line);
+            out.add(line);
         }
         java.util.List<String> trusted =
             dev.pathweaver.gate.ForeignMixinScanner.trustedModIdsInUse();
         if (!trusted.isEmpty()) {
-            say(source, "  §e" + trusted.size() + " mod(s) running unaudited from trustedMods: §7"
+            out.add("  §e" + trusted.size() + " mod(s) running unaudited from trustedMods: §7"
                 + String.join(", ", trusted));
         }
-        say(source, "  workers: " + runtime.pool().threads()
+        out.add("  workers: " + runtime.pool().threads()
             + "   maxInFlight: " + runtime.pool().maxInFlight());
         long dispatched = runtime.dispatchedCount();
-        say(source, "  since server start: dispatched=" + dispatched
+        out.add("  since server start: dispatched=" + dispatched
             + ", installed=" + runtime.installedCount()
             + ", discarded=" + runtime.discardedCount());
         for (RequestOutcome outcome : RequestOutcome.values()) {
@@ -124,12 +129,17 @@ public final class PathWeaverCommand {
             // beside `installed` with a 136760% share.
             String share = outcome.countsAgainstDispatched() && dispatched > 0L
                 ? String.format(java.util.Locale.ROOT, " (%.1f%%)", 100.0 * count / dispatched) : "";
-            say(source, (outcome.isGoodNews() ? "    §a" : "    §e") + count + "§r  "
+            out.add((outcome.isGoodNews() ? "    §a" : "    §e") + count + "§r  "
                 + outcome.description() + "§7" + share);
         }
-        say(source, "  §7Green means the search produced an answer. Amber means it did not -- most "
+        out.add("  §7Green means the search produced an answer. Amber means it did not -- most "
             + "of that is normal (a mob stopping, a request superseded), and only the failure rows "
             + "are work actually wasted. Rows with no percentage never reached a worker.");
+        return java.util.List.copyOf(out);
+    }
+
+    private static void status(CommandSourceStack source) {
+        for (String line : statusLines()) say(source, line);
     }
 
 
@@ -292,7 +302,18 @@ public final class PathWeaverCommand {
      * cost is reported rather than estimated: an operator who sees the server hitch deserves to know
      * whether this command caused it, and a number nobody measured is not worth defending.
      */
-    private static void mobs(CommandSourceStack source) {
+    /**
+     * The lines {@code /pathweaver mobs} prints, separated from the printing.
+     *
+     * <p>Extracted so they can be asserted. As a {@code private static void (CommandSourceStack)}
+     * this body had no seam at all, and a review compiled several mutations inside it that no test
+     * could see -- including reading the mod-added-mob flag from the config and then using
+     * {@code true} anyway, which would reprint the very number this release had to correct. None of
+     * them changes dispatch; all of them make the mod misreport itself, which is the defect class
+     * the last several review rounds have been about.
+     */
+    static java.util.List<String> mobsLines(net.minecraft.server.level.ServerLevel level) {
+        java.util.List<String> out = new java.util.ArrayList<>();
         PathWeaverConfig cfg = PathWeaverConfig.get();
         // Two dispatch gates this used to skip, both of which make every per-type verdict below
         // meaningless when they are shut. Reporting "187 of 187 can path off-thread" while the master
@@ -300,25 +321,25 @@ public final class PathWeaverCommand {
         // "diagnostic disagrees with the code" failure as the scan summary, and this command is the
         // one the README points at to reproduce its published eligibility numbers.
         if (!cfg.enabled) {
-            say(source, "§6PathWeaver mobs");
-            say(source, "  §cPathWeaver is disabled, so no mob type paths off-thread regardless of "
+            out.add("§6PathWeaver mobs");
+            out.add("  §cPathWeaver is disabled, so no mob type paths off-thread regardless of "
                 + "the per-type rules. Enable it and run this again.");
-            return;
+            return java.util.List.copyOf(out);
         }
         boolean mobsScanFailed =
             dev.pathweaver.gate.ForeignMixinScanner.scanFailed();
         if (mobsScanFailed) {
-            say(source, "§6PathWeaver mobs");
-            say(source, "  §cthe compatibility scan could not complete, so every family is denied "
+            out.add("§6PathWeaver mobs");
+            out.add("  §cthe compatibility scan could not complete, so every family is denied "
                 + "and no per-type rule applies. compatibilityTier does NOT waive this -- the tier "
                 + "waives what the scan found, not the scan being unable to look.");
-            return;
+            return java.util.List.copyOf(out);
         }
         // Shared with dispatch, the banner and status. This was a fourth open-coded copy of the
         // same rule, which is exactly the drift the shared predicate exists to prevent.
         if (dev.pathweaver.gate.SafetyGate.landRegistryBlocksWalkFamilies()) {
-            say(source, "§6PathWeaver mobs");
-            say(source, "  §ceither a mod registered an uncertified land path-type rule, or the "
+            out.add("§6PathWeaver mobs");
+            out.add("  §ceither a mod registered an uncertified land path-type rule, or the "
                 + "Fabric land-registry hooks could not be verified against this Fabric API build. "
                 + "Every walk-derived family runs on the server thread no matter what the per-type "
                 + "rules say. compatibilityTier=UNSAFE waives this; trustedMods does not.");
@@ -326,7 +347,7 @@ public final class PathWeaverCommand {
             // dispatching in this state, and answering "nothing works" when one family does is the
             // same under-reporting the rest of this release exists to remove. The per-type scan below
             // is correct here; the line above explains why the land families are missing from it.
-            say(source, "  §7Swim-family mobs are unaffected and still dispatch; per-type verdicts "
+            out.add("  §7Swim-family mobs are unaffected and still dispatch; per-type verdicts "
                 + "follow.");
         }
         boolean moddedAllowed = cfg.moddedMobAsyncAllowed();
@@ -342,7 +363,7 @@ public final class PathWeaverCommand {
             try {
                 // Not added to the level, so it needs no cleanup; discarding one would touch state
                 // it never acquired.
-                entity = type.create(source.getLevel(), EntitySpawnReason.COMMAND);
+                entity = type.create(level, EntitySpawnReason.COMMAND);
             } catch (Throwable notConstructible) {
                 continue;
             }
@@ -354,7 +375,7 @@ public final class PathWeaverCommand {
         }
         long elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000L;
 
-        say(source, "§6PathWeaver mob coverage");
+        out.add("§6PathWeaver mob coverage");
         // "eligible", not "can path off-thread". Eligibility is about the evaluator, the PathFinder
         // and the mob's origin; it is not a promise that the mob's actual movement behaviour routes
         // through a dispatch site. Two common ones do not: WallClimberNavigation (spiders) overrides
@@ -365,27 +386,32 @@ public final class PathWeaverCommand {
         // Wall-climbers were in that sentence until 0.6.0 and are not any more: WallClimberNavigation
         // overrides moveTo(Entity, double), and this release injects into the override. Leaving them
         // named here would have shipped the release's own headline as a caveat against itself.
-        say(source, "  " + eligible + " of " + types + " mob types are eligible");
-        say(source, "  §7Eligible means nothing blocks dispatch for this mob. It is not a promise "
+        out.add("  " + eligible + " of " + types + " mob types are eligible");
+        out.add("  §7Eligible means nothing blocks dispatch for this mob. It is not a promise "
             + "that its AI routes through a dispatching call site — brain-driven movement "
             + "(villagers, piglins, axolotls, allays, the warden) stays synchronous by design. "
             + "Wall-climber chases did too until 0.6.0, and now dispatch.");
         verdicts.entrySet().stream()
             .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
-            .forEach(entry -> say(source,
+            .forEach(entry -> out.add(
                 (entry.getKey().equals(MobEligibility.ELIGIBLE) ? "  §a" : "  §e")
                     + entry.getValue() + "§r  " + entry.getKey()));
-        say(source, "  §7Every vanilla evaluator can run off-thread. What remains synchronous is "
+        out.add("  §7Every vanilla evaluator can run off-thread. What remains synchronous is "
             + "mobs whose evaluator a mod replaced, and — below the unsafe tier — mob classes mods "
             + "added. The compatibility risk setting governs which mods may have touched "
             + "pathfinding, not which searches are safe to move.");
         // Measured at 213 ms on a 222-mod pack: four ticks' budget spent inside one tick. Reporting
         // the number was not enough -- an operator who sees a hitch needs to be told this caused it.
         boolean costly = elapsedMillis >= 50;
-        say(source, (costly ? "  §e" : "  §7") + "Built and inspected " + types + " mob types in "
+        out.add((costly ? "  §e" : "  §7") + "Built and inspected " + types + " mob types in "
             + elapsedMillis + " ms of one tick"
             + (costly ? ", which is longer than a tick — expect a visible hitch" : "")
             + ". This command is a diagnostic, not something to run on a timer.");
+        return java.util.List.copyOf(out);
+    }
+
+    private static void mobs(CommandSourceStack source) {
+        for (String line : mobsLines(source.getLevel())) say(source, line);
     }
 
     /**
