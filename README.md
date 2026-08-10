@@ -8,7 +8,7 @@ That is a deliberate choice and the reasoning is in the open. The checked tier, 
 
 What you are accepting: the most likely failure is quiet — a wrong path or a torn read. It is not the only possible one: nothing has been proven about code that was never inspected, so a crash or a corrupted world is not excluded, only less likely. Nothing here is evidence that it is safe.
 
-**What has actually happened so far**, stated as what it is: across development this has run on packs of 200–370 mods through hundreds of thousands of dispatched searches, and no corruption or crash has been traced to it. That is an absence of reported problems, not a proof — it is exactly the evidence you would also see if the failure were rare, or quiet, or had not been looked for hard enough. Several defects *were* found in that time, by review and by bytecode audit rather than by anything going visibly wrong in a world.
+**What has actually happened so far**, stated as what it is: across development this has run on packs of 200–371 mods through hundreds of thousands of dispatched searches, and no corruption or crash has been traced to it. That is an absence of reported problems, not a proof — it is exactly the evidence you would also see if the failure were rare, or quiet, or had not been looked for hard enough. Several defects *were* found in that time, by review and by bytecode audit rather than by anything going visibly wrong in a world.
 
 **So the honest recommendation is to decide for yourself, on a copy.** Run it on a world you can throw away. If mobs path normally and nothing looks off after a few sessions, keep the default. If anything does look off, switch to `AUDITED` and say so — that report is evidence this project cannot generate on its own.
 

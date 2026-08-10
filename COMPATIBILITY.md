@@ -1,5 +1,11 @@
 # PathWeaver compatibility matrix
 
+> **`AUDITED` is frozen as of 0.6.1.** Everything in this file still describes exactly what the tier
+> checks and what each audit rests on, and the tier still works — but it is no longer being extended,
+> because on a real modpack it denies everything (0 of 187 mob types on the reference 221-jar pack
+> with `trustedMods` empty). It stays as a conservative escape hatch. What replaced it as the safety
+> mechanism is the runtime failure breaker; see `CHANGELOG.md` for 0.6.1 and `ROADMAP.md` for why.
+
 This table is version-exact. A verdict applies only to the listed artifact on Minecraft **26.1.2**. PathWeaver fingerprints audited artifacts and relevant vanilla classes at startup; a changed version, byte, mixin selector, target descriptor, plugin contribution, missing class, or partial bundle fails closed to synchronous pathing.
 
 `SAFE` means the exact audited worker-reachable behavior uses parameters, immutable data, or per-search state and performs no unsafe shared mutation or unbounded callback. `STALE-PATH RISK ONLY` means no worker shared-state mutation was found, but concurrent live reads can select a stale/wrong path and may expose the existing palette/storage lookup-exception envelope. `DENIED` means `AUDITED` keeps the affected evaluator family synchronous. It is not the shipped default; see the tier note below.
@@ -173,9 +179,13 @@ executing and `PathNavigationMixin` runs them on the main thread instead. The fl
 randomness read is redirected to a thread-confined `RandomSource`; vanilla selects that start candidate
 arbitrarily, so a different arbitrary selection is inside the specification.
 
-**Not proven:** path equivalence for any of the four new families. The static-world oracle comparison
-covers walk and swim only and has not been re-run. A flying search *cannot* reproduce vanilla's start
-node by construction, so equivalence for it would have to be defined over reachability rather than nodes.
+**Updated in 0.6.0, and again on the 0.6.1 artifact:** the static-world oracle comparison now covers
+**all six** families, not just walk and swim, and all six produced node-for-node identical paths — one
+scenario each, which is evidence rather than proof. The flying caveat still stands and is structural
+rather than statistical: a flying search *cannot* be guaranteed to reproduce vanilla's start node,
+because the worker draws its start candidate from thread-confined randomness, so equivalence for it
+would properly have to be defined over reachability rather than nodes. It matched anyway; treat that
+as one favourable sample.
 
 **Vanilla classes newly executed by a worker, pinned into the Fabric interaction call inventory:**
 
@@ -470,7 +480,7 @@ standalone, so the audit passed in dev and denied in production. The released ja
 booted on a plain dedicated server built from release artifacts only.
 
 Fabric API `0.153.0+26.1.2`, Cloth Config `26.1.154`, Lithium `0.24.6+mc26.1.2`, and
-`pathweaver-0.3.0+26.1.2` — the artifact current when this section was recorded, not re-run for 0.4.0 or 0.5.0 — (SHA-256 `e4a9cfd5…87a9`, the current artifact), on JDK 25. 1024-mob maze load,
+`pathweaver-0.3.0+26.1.2` — the artifact current when this section was recorded, not re-run for 0.4.0, 0.5.x or 0.6.x — (SHA-256 `e4a9cfd5…87a9`, the artifact current at 0.3.0), on JDK 25. 1024-mob maze load,
 `maxInFlight=256`.
 
 | Mods added | Tier | Scan result | Dispatched |

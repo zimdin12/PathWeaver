@@ -27,8 +27,9 @@ found within a day:
   client harness, an independent review that comes back clean, and — for anything touching the
   hot path — a benchmark showing no regression.
 - **Mutations, not readings.** A fix is not verified until the mutation that reintroduces the bug
-  has been compiled and observed to fail the suite. Five review rounds on 0.6 found that reading
-  code missed what executing mutations caught.
+  has been compiled and observed to fail the suite. Seventeen review rounds across the 0.6 line —
+  eleven for 0.6.0, six for 0.6.1 — found that reading code missed what executing mutations caught,
+  every single time.
 - **Version numbers describe content.** A release with no new capability is a patch, whatever work
   went into it. 0.5.4 was folded into 0.6 rather than published for exactly this reason.
 
@@ -93,17 +94,20 @@ it. It is not the thing that will make PathWeaver safe on an arbitrary pack. 6a,
 
 ---
 
-## 0.6.1 — Detect unsafety instead of predicting it
+## 0.6.1 — BUILT: detect unsafety instead of predicting it
 
-**The replacement for `AUDITED`, and it is a better mod for it.**
+**The replacement for `AUDITED`, and it is a better mod for it.** Written below as it was planned;
+what shipped is described in `CHANGELOG.md`. Two things changed in the building: in-flight requests
+are NOT dropped (it does not stop the worker, and it risks the epilogue that otherwise pins an
+amphibious mob's malus), and the threshold is windowed with a session backstop rather than a bare
+count.
 
-Today a worker search that throws is counted `SEARCH_FAILED`, discarded, and the mob paths
-synchronously for that tick. Correct — and nothing learns from it. There is no circuit breaker in the
-codebase.
+Before it, a worker search that threw was counted `SEARCH_FAILED`, discarded, and the mob pathed
+synchronously for that tick. Correct — and nothing learned from it.
 
 Invert the premise: **stop proving safety in advance; observe it.** A throwable on a worker trips a
-per-family counter. Past a threshold, that family is disabled for the rest of the session, in-flight
-requests are dropped, and the log names the family, the exception and the mod whose classes were on
+per-family counter. Past a threshold, that family is disabled for the rest of the session and the log
+names the family, the exception and the mod whose classes were on
 the stack. Falling back to vanilla is always safe, so the breaker cannot itself destabilise anything.
 
 Why this beats the scan on all four tests at the top of this file:
@@ -158,7 +162,7 @@ reconciliation can do the right thing per origin. That single change closes:
 
 ## 0.8 — Brain-driven mobs: the city release
 
-Villagers, piglins, axolotls, allays, the warden. **86% of the A\* still on the server thread** is
+Villagers, piglins, axolotls, frogs, allays, the warden. **86% of the A\* still on the server thread** is
 `MoveToTargetSink.checkExtraStartConditions`, worth ~1.4 ms/tick (~5–7% of tick time) on an ordinary
 world.
 
