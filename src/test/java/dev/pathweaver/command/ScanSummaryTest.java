@@ -361,4 +361,70 @@ class ScanSummaryTest {
         }
     }
 
+
+    /**
+     * The end-of-tick handler must publish the tick the breaker measures its window against.
+     *
+     * <p>Deleting that one line left the whole suite green, and the consequence is not visible from
+     * anywhere: {@code currentTick} stays 0 forever, the window never elapses, and the breaker
+     * quietly degrades into the pure cumulative counter that the design says "converges on a certain
+     * trip given enough uptime". The pool-to-breaker wiring was pinned for exactly this reason; this
+     * is the other half of the same seam.
+     */
+    @Test
+    void theEndOfTickHandlerPublishesTheTickToTheBreaker() throws Exception {
+        java.util.Set<String> calls = new java.util.LinkedHashSet<>();
+        try (java.io.InputStream in = ScanSummaryTest.class
+                .getResourceAsStream("/dev/pathweaver/PathWeaverRuntime.class")) {
+            org.junit.jupiter.api.Assertions.assertNotNull(in, "PathWeaverRuntime.class not readable");
+            new org.objectweb.asm.ClassReader(in.readAllBytes()).accept(
+                new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                    @Override public org.objectweb.asm.MethodVisitor visitMethod(
+                            int a, String n, String d, String sg, String[] ex) {
+                        if (!n.equals("onEndTick")) return null;
+                        return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                            @Override public void visitMethodInsn(int op, String o, String m,
+                                                                  String md, boolean itf) {
+                                calls.add(o + "." + m);
+                            }
+                        };
+                    }
+                }, org.objectweb.asm.ClassReader.SKIP_FRAMES);
+        }
+        assertTrue(calls.contains("dev/pathweaver/gate/WorkerFailureBreaker.setTick"),
+            "onEndTick must publish the tick, or the failure window never advances and the breaker "
+                + "becomes the cumulative counter it was designed not to be: " + calls);
+    }
+
+    /**
+     * And the server-start hook must reset it.
+     *
+     * <p>Deleting {@code ModAttribution.reset()} from that path leaves the one-shot report burnt, so
+     * in singleplayer the first failure of every later world is silent -- verbatim the defect the
+     * design cites as the reason reset is per-server rather than per-JVM.
+     */
+    @Test
+    void theServerStartHookResetsTheBreaker() throws Exception {
+        java.util.Set<String> calls = new java.util.LinkedHashSet<>();
+        try (java.io.InputStream in = ScanSummaryTest.class
+                .getResourceAsStream("/dev/pathweaver/PathWeaverRuntime.class")) {
+            org.junit.jupiter.api.Assertions.assertNotNull(in, "PathWeaverRuntime.class not readable");
+            new org.objectweb.asm.ClassReader(in.readAllBytes()).accept(
+                new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                    @Override public org.objectweb.asm.MethodVisitor visitMethod(
+                            int a, String n, String d, String sg, String[] ex) {
+                        if (!n.equals("onServerStarting")) return null;
+                        return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                            @Override public void visitMethodInsn(int op, String o, String m,
+                                                                  String md, boolean itf) {
+                                calls.add(o + "." + m);
+                            }
+                        };
+                    }
+                }, org.objectweb.asm.ClassReader.SKIP_FRAMES);
+        }
+        assertTrue(calls.contains("dev/pathweaver/gate/WorkerFailureBreaker.reset"),
+            "a trip and a burnt one-shot must not survive into the next world: " + calls);
+    }
+
 }

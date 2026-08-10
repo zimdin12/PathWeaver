@@ -163,4 +163,30 @@ class PathWeaverConfigTest {
             PathWeaverConfig.set(previous);
         }
     }
+
+    /**
+     * Both breaker fields are clamped, like every other int.
+     *
+     * <p>A hand-edited {@code workerFailureLimit: -1} reads as "off" through one code path and as
+     * "trip on the first failure" through another, which is exactly what the clamp's own comment
+     * describes and what nothing was checking.
+     */
+    @org.junit.jupiter.api.Test
+    void theBreakerFieldsAreClampedIntoRange() {
+        PathWeaverConfig config = new PathWeaverConfig();
+        config.workerFailureLimit = -1;
+        config.workerFailureWindowTicks = -5;
+        config.validatePostLoad();
+        org.junit.jupiter.api.Assertions.assertEquals(0, config.workerFailureLimit);
+        org.junit.jupiter.api.Assertions.assertEquals(0, config.workerFailureWindowTicks);
+
+        config.workerFailureLimit = Integer.MAX_VALUE;
+        config.workerFailureWindowTicks = Integer.MAX_VALUE;
+        config.validatePostLoad();
+        org.junit.jupiter.api.Assertions.assertEquals(
+            PathWeaverConfig.MAX_WORKER_FAILURE_LIMIT, config.workerFailureLimit);
+        org.junit.jupiter.api.Assertions.assertEquals(
+            PathWeaverConfig.MAX_WORKER_FAILURE_WINDOW_TICKS, config.workerFailureWindowTicks);
+    }
+
 }

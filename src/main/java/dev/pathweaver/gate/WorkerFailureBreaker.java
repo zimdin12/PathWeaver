@@ -53,7 +53,22 @@ public final class WorkerFailureBreaker {
      */
     private static volatile long currentTick;
 
+    /**
+     * Bumped by {@link #reset()}, read either side of the trip.
+     *
+     * <p>{@code reset()} runs on the main thread at server start while workers from the previous
+     * server may still be running — {@code pool.start()} uses {@code shutdownNow()}, which does not
+     * wait. A worker already past the threshold check installs its trip into the NEW session's set,
+     * and the new world starts with a family switched off and no log line to say why, because the
+     * one-shot report already fired in the world before. That is verbatim the outcome the reset
+     * exists to prevent.
+     */
+    private static volatile long generation;
+
     private WorkerFailureBreaker() {}
+
+    /** Which rule switched a family off. The log has to name the one that actually fired. */
+    enum TripReason { WINDOW, CEILING }
 
     /** Main thread, end of tick. */
     public static void setTick(long tick) {
@@ -62,6 +77,7 @@ public final class WorkerFailureBreaker {
 
     /** Server start, not JVM start — see {@link SafetyGate#resetRuntimeFailureDenials()}. */
     public static void reset() {
+        generation++;
         COUNTERS.clear();
         currentTick = 0L;
         SafetyGate.resetRuntimeFailureDenials();
@@ -92,6 +108,13 @@ public final class WorkerFailureBreaker {
      * @return true if this call tripped the family, for callers that log the transition
      */
     public static boolean recordSearchFailure(Class<?> evaluatorClass, Throwable failure) {
+        // A VM error is not evidence that a worker read something it should not have. It is evidence
+        // that the JVM is in trouble, it recurs in bursts, and on a 200-mod server it is the likeliest
+        // throwable a worker will ever produce. Counting three OutOfMemoryErrors as an incompatibility
+        // switches five movement families off for the session and prints a block naming whichever mods
+        // happened to be on the frame -- a false trip, an invented culprit, and the real problem
+        // unmentioned. The pool still logs it; this just refuses to draw a conclusion from it.
+        if (failure instanceof VirtualMachineError) return false;
         Class<?> family = SafetyGate.allowlistedFamilyOf(evaluatorClass);
         if (family == null) return false;
 
@@ -99,6 +122,7 @@ public final class WorkerFailureBreaker {
         int limit = config.workerFailureLimit;
         long window = config.workerFailureWindowTicks;
 
+        long entryGeneration = generation;
         Counter counter = COUNTERS.computeIfAbsent(family, ignored -> new Counter());
         boolean firstEver = counter.recordAndCheckFirst(currentTick, window);
         if (firstEver) ModAttribution.reportFirstFailure(family, failure);
@@ -108,10 +132,16 @@ public final class WorkerFailureBreaker {
         // the breaker off does not also turn the diagnostics off, which is the trade the settings
         // screen describes and not a wider one.
         if (limit <= 0) return false;
-        if (!counter.shouldTrip(limit)) return false;
+        TripReason reason = counter.tripReason(limit);
+        if (reason == null) return false;
+        // Re-read: a reset between here and the check above means this failure belongs to a server
+        // that has already stopped, and its verdict must not follow the next one into the world.
+        if (generation != entryGeneration) return false;
         if (!SafetyGate.tripRuntimeFailure(family)) return false;
 
-        ModAttribution.reportTrip(family, failure, counter.snapshotCount(), limit, window);
+        ModAttribution.reportTrip(family, failure, reason,
+            reason == TripReason.WINDOW ? counter.windowed() : counter.snapshotCount(),
+            limit, window);
         return true;
     }
 
@@ -138,8 +168,17 @@ public final class WorkerFailureBreaker {
             return first;
         }
 
-        synchronized boolean shouldTrip(int limit) {
-            return inWindow >= limit || cumulative >= CUMULATIVE_CEILING;
+        /** Which rule fired, or null. The caller has to say, so it has to be told. */
+        synchronized TripReason tripReason(int limit) {
+            if (inWindow >= limit) return TripReason.WINDOW;
+            // max(), not a bare ceiling. The ceiling exists to catch a leak too slow to fill the
+            // window; it has no business overruling an operator who asked for a HIGHER limit. It did:
+            // workerFailureLimit accepts up to 1000 and anything above 25 tripped at 25 anyway, with
+            // nothing in the tooltip, the status line or the log admitting it. A config that silently
+            // does something other than what it says is the failure this project's own runtime
+            // warnings call worse than a config that does what you asked.
+            if (cumulative >= Math.max(limit, CUMULATIVE_CEILING)) return TripReason.CEILING;
+            return null;
         }
 
         synchronized int windowed() {

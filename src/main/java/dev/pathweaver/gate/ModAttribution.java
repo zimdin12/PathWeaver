@@ -38,16 +38,30 @@ final class ModAttribution {
 
     private static final Set<Class<?>> REPORTED_FIRST_FAILURE = ConcurrentHashMap.newKeySet();
 
+    /**
+     * What was reported, for tests.
+     *
+     * <p>Exists because a review deleted {@code reportFirstFailure} and {@code reportTrip} outright
+     * and the whole suite stayed green — the "half of this feature that pays on every install" and
+     * the block that tells an operator a family has been switched off, both with no coverage of
+     * whether they are ever invoked. Asserting on a log appender is not practical; asserting on this
+     * is.
+     */
+    static final java.util.List<String> REPORTS =
+        java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
     private ModAttribution() {}
 
     static void reset() {
         REPORTED_FIRST_FAILURE.clear();
+        REPORTS.clear();
         modIds = null;
     }
 
     /** One block per family, on its first failure, whether or not the breaker is armed. */
     static void reportFirstFailure(Class<?> family, Throwable failure) {
         if (!REPORTED_FIRST_FAILURE.add(family)) return;
+        REPORTS.add("first-failure:" + family.getSimpleName());
         WorkerFailureBreaker.logSafely(() -> {
             List<String> suspects = suspects(failure);
             dev.pathweaver.PathWeaver.LOG.warn(
@@ -75,7 +89,10 @@ final class ModAttribution {
     }
 
     /** The trip block: louder, and it corrects the world-start banner rather than leaving it stale. */
-    static void reportTrip(Class<?> family, Throwable failure, int count, int limit, long window) {
+    static void reportTrip(Class<?> family, Throwable failure,
+                           WorkerFailureBreaker.TripReason reason, int count, int limit,
+                           long window) {
+        REPORTS.add("trip:" + family.getSimpleName() + ":" + reason);
         WorkerFailureBreaker.logSafely(() -> {
             dev.pathweaver.PathWeaver.LOG.warn(
                 "==================== PathWeaver ====================");
@@ -91,10 +108,22 @@ final class ModAttribution {
                 dev.pathweaver.PathWeaver.LOG.warn("  Mods on the stack: {}",
                     String.join(", ", suspects));
             }
-            dev.pathweaver.PathWeaver.LOG.warn(
-                "  Threshold: {} failures within {} tick(s). Tune workerFailureLimit and "
-                    + "workerFailureWindowTicks, or set workerFailureLimit=0 to keep dispatching "
-                    + "and only log.", limit, window);
+            // Name the rule that ACTUALLY fired. Printing the window threshold after a ceiling trip
+            // sent an operator to raise workerFailureLimit, which changes nothing, because the
+            // ceiling is not that setting -- an invented cause in the block that exists to give a
+            // real one.
+            if (reason == WorkerFailureBreaker.TripReason.WINDOW) {
+                dev.pathweaver.PathWeaver.LOG.warn(
+                    "  Rule: {} failures within {} tick(s). Tune workerFailureLimit and "
+                        + "workerFailureWindowTicks, or set workerFailureLimit=0 to keep dispatching "
+                        + "and only log.", limit, window);
+            } else {
+                dev.pathweaver.PathWeaver.LOG.warn(
+                    "  Rule: {} failures in total this session, however far apart. That backstop "
+                        + "catches a leak too slow to fill the {}-tick window; raising "
+                        + "workerFailureLimit raises it too, and workerFailureLimit=0 disables both.",
+                    count, window);
+            }
             dev.pathweaver.PathWeaver.LOG.warn(
                 "  If the startup banner said PathWeaver was ACTIVE, that no longer holds for this "
                     + "family. Restart the server to re-arm it.");
@@ -111,7 +140,12 @@ final class ModAttribution {
      */
     static List<String> suspects(Throwable failure) {
         Set<String> found = new LinkedHashSet<>();
-        for (Throwable t = failure; t != null; t = t.getCause()) {
+        // Bounded. The old guard only caught a throwable that was its own cause; two throwables that
+        // cause each other looped forever, on a worker, inside a catch-all that can swallow a
+        // throwable but cannot break a loop. Throwable.printStackTrace keeps a seen-set for exactly
+        // this reason, and ten frames of causes is already more than any bug report needs.
+        int depth = 0;
+        for (Throwable t = failure; t != null && depth < 10; t = t.getCause(), depth++) {
             for (StackTraceElement frame : t.getStackTrace()) {
                 String fromHandler = modIdFromHandlerName(frame.getMethodName());
                 if (fromHandler != null) found.add(fromHandler);

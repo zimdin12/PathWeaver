@@ -137,6 +137,11 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
         strictOptionalInteger(raw, "repathToleranceBlocks");
         strictOptionalNumber(raw, "stalenessMoveThreshold");
         strictOptionalInteger(raw, "maxResultAgeTicks");
+        // Added with the fields themselves and not afterwards, because this is the file people
+        // hand-edit: without these two, {"workerFailureLimit": "7"} was quietly coerced by GSON while
+        // the identical mistake in maxInFlight was rejected.
+        strictOptionalInteger(raw, "workerFailureLimit");
+        strictOptionalInteger(raw, "workerFailureWindowTicks");
         strictOptionalEnum(raw, "compatibilityTier");
     }
 

@@ -1,6 +1,7 @@
 # Worker failure circuit breaker — design
 
-**Status:** revised 2026-08-09 after an adversarial design review that found three real defects and
+**Status:** implemented; revised again 2026-08-10 after an implementation review (see *What the
+second review changed*). Originally revised 2026-08-09 after an adversarial design review that found three real defects and
 one overclaim. Targets 0.6.1. **Read "What the review changed" first.**
 **Replaces:** the `AUDITED` tier's role as the safety mechanism (see `ROADMAP.md`, *The `AUDITED`
 verdict*)
@@ -43,6 +44,37 @@ worth a test and is not worth a release.
 **Scope changes that follow:** `workerFailureAction`/`DISABLE_ALL` is cut (`enabled=false` already
 is that setting), the threshold becomes windowed rather than cumulative, and the *attribution* half
 is promoted from a detail of the trip log to the feature's main deliverable.
+
+---
+
+## What the second review changed
+
+Reviewed after implementation, against the running code. Five behavioural defects, all fixed:
+
+1. **A `workerFailureLimit` above 25 was silently capped**, because the cumulative ceiling was an
+   unconditional `||` rather than a floor. The config advertises up to 1000. A setting that quietly
+   does something else is the failure this project's own runtime warnings call worse than a setting
+   that does what you asked and warns you.
+2. **The trip block named the threshold that had not fired.** A ceiling trip printed the window
+   threshold and the cumulative count under it, sending an operator to raise a setting that changes
+   nothing. Invented cause, in the block whose whole job is to give a real one.
+3. **A `VirtualMachineError` counted as evidence of an unsafe read.** On a 200-mod server an
+   `OutOfMemoryError` is the likeliest throwable a worker will ever produce, and three of them would
+   switch five families off and blame whichever mods were on the frame.
+4. **A trip could outlive `reset()`.** `shutdownNow()` does not wait, so a straggler worker past the
+   threshold check installed its verdict into the *next* server — an inert family in a fresh world
+   with no log line, because the one-shot had already fired in the world before. Fixed with a
+   generation stamp read either side of the trip.
+5. **A cyclic cause chain spun a worker forever** in attribution. Two throwables that cause each other
+   defeated the self-cause guard.
+
+Plus: the two new config keys skipped the type validation every other int key gets, and the
+first-failure log block promised a running total that `/pathweaver status` did not show until a trip.
+
+**And eight surviving mutations**, every one of which left the suite green: the tick publication that
+makes the window a window at all, both log blocks (deletable entirely, unnoticed), the attribution
+one-shot reset, both config clamps, the family-resolution rule (pinned by declaration order rather
+than by the rule), and a one-character vacuous-pass mode in the end-to-end game test.
 
 ---
 
@@ -285,7 +317,8 @@ evidence.
 2. A trip denies all five walk-derived families and leaves Swim dispatching.
 3. **A trip survives `compatibilityTier=UNSAFE`** — the single most important test in this feature.
 4. `workerFailureLimit=0` never trips, at any failure count.
-5. `workerFailureAction=DISABLE_ALL` denies every family on the first trip.
+5. A configured limit ABOVE the cumulative ceiling is honoured rather than silently capped at it,
+   and the trip block names the rule that actually fired.
 6. A failure through `FrogNodeEvaluator` counts against `WalkNodeEvaluator`, so three failures spread
    across three land families still trip.
 7. The breaker's own exception cannot escape — asserted at the `drain` boundary, which has no catch.

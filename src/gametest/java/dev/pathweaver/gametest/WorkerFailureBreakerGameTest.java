@@ -54,10 +54,26 @@ public final class WorkerFailureBreakerGameTest {
     private static final java.util.concurrent.atomic.AtomicBoolean CLAIMED =
         new java.util.concurrent.atomic.AtomicBoolean();
 
+    /** Set by the instance that actually ran the scenario. */
+    private static final java.util.concurrent.atomic.AtomicBoolean COMPLETED =
+        new java.util.concurrent.atomic.AtomicBoolean();
+
     @GameTest(maxTicks = 900)
     public void aTrippedFamilyStopsDispatchingAndKeepsWalking(GameTestHelper helper) {
         if (!CLAIMED.compareAndSet(false, true)) {
-            helper.succeed();
+            // The non-claimant does NOT simply succeed. Flipping the initial value of CLAIMED to
+            // true made every instance take this branch and the harness still reported "All 2
+            // required tests passed" -- a one-character vacuous pass with nothing anywhere asserting
+            // the scenario had run. It now waits for the claimant to finish and fails if nobody does,
+            // so a run where no instance does the work goes red instead of green.
+            helper.onEachTick(() -> {
+                if (COMPLETED.get()) {
+                    helper.succeed();
+                } else if (helper.getTick() >= 800) {
+                    throw helper.assertionException("no instance of this test ever ran the scenario, "
+                        + "so a green result here would mean nothing");
+                }
+            });
             return;
         }
         Scenario[] scenario = new Scenario[1];
@@ -191,6 +207,7 @@ public final class WorkerFailureBreakerGameTest {
 
             cleanup();
             stage = 3;
+            COMPLETED.set(true);
             helper.succeed();
         }
 

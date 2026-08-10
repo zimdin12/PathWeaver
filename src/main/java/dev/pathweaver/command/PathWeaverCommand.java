@@ -84,6 +84,17 @@ public final class PathWeaverCommand {
         // there (where the scan already covers that family) or explained as "most likely an evaluator
         // that cannot be cloned on this JVM" (where it does not). Both are wrong, in opposite
         // directions, and both are causes the code invented rather than knew.
+        // Failures that have NOT yet tripped anything, because the log block promises the running
+        // total is here and it was not: status stayed silent until a trip, so an operator following
+        // that instruction found nothing and had no way to tell one bad tick from a building problem.
+        for (Class<?> family : dev.pathweaver.gate.SafetyGate.allowlistedFamilies()) {
+            int failures = dev.pathweaver.gate.WorkerFailureBreaker.windowedCount(family);
+            if (failures <= 0 || dev.pathweaver.gate.SafetyGate.isDeniedByRuntimeFailure(family)) {
+                continue;
+            }
+            out.add("  §e" + family.getSimpleName() + ": " + failures + " search failure(s) counted, "
+                + "still dispatching. See the PathWeaver block in the log.");
+        }
         java.util.Set<Class<?>> tripped = dev.pathweaver.gate.SafetyGate.runtimeFailureDenials();
         if (!tripped.isEmpty()) {
             List<String> names = new java.util.ArrayList<>();

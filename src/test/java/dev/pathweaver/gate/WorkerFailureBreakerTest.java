@@ -208,6 +208,12 @@ class WorkerFailureBreakerTest {
             "starting a server must re-arm the family");
         assertEquals(0, WorkerFailureBreaker.windowedCount(WalkNodeEvaluator.class),
             "and the counter with it, or the next world trips early on the last one's failures");
+
+        fail(WalkNodeEvaluator.class);
+        assertTrue(ModAttribution.REPORTS.contains("first-failure:WalkNodeEvaluator"),
+            "and the one-shot report must re-arm too. Leaving it burnt makes the first failure of "
+                + "every later world in the same JVM silent, which is the documented reason this "
+                + "reset is per-server rather than per-JVM: " + ModAttribution.REPORTS);
     }
 
     /** An evaluator with no allowlisted ancestor is not this mechanism's business. */
@@ -285,5 +291,158 @@ class WorkerFailureBreakerTest {
             "and one failure below the threshold is still not a trip -- reporting it as one would "
                 + "tell an operator the mod had switched off while it is still dispatching");
     }
+
+
+    /**
+     * The log blocks must actually be emitted, which nothing checked.
+     *
+     * <p>Deleting {@code reportFirstFailure} and deleting {@code reportTrip} were each compiled by a
+     * reviewer and each left the whole suite green. The first is described in this feature's own
+     * design as "the half that pays on every install"; the second is the only thing that tells an
+     * operator a movement family has been switched off. A feature whose entire user-visible output
+     * can be removed without a test noticing does not have tests.
+     */
+    @Test
+    void theFirstFailureAndTheTripAreBothReported() {
+        fail(WalkNodeEvaluator.class);
+        assertTrue(ModAttribution.REPORTS.contains("first-failure:WalkNodeEvaluator"),
+            "the first failure of a family must be reported whether or not it ever trips: "
+                + ModAttribution.REPORTS);
+
+        fail(WalkNodeEvaluator.class);
+        assertEquals(1, ModAttribution.REPORTS.stream()
+                .filter(r -> r.startsWith("first-failure:")).count(),
+            "and only once -- a storm of failures must not become a storm of log blocks");
+
+        fail(WalkNodeEvaluator.class);
+        assertTrue(ModAttribution.REPORTS.contains("trip:WalkNodeEvaluator:WINDOW"),
+            "a trip must be announced, and announced with the rule that fired: "
+                + ModAttribution.REPORTS);
+    }
+
+    /**
+     * A limit above the cumulative ceiling must mean what it says.
+     *
+     * <p>{@code workerFailureLimit} accepts up to 1000 and anything above 25 tripped at 25 anyway,
+     * with nothing in the tooltip, the status line or the log admitting it. This project's own
+     * runtime warnings call that worse than a config that does what you asked and warns you.
+     */
+    @Test
+    void aLimitAboveTheCeilingIsHonouredRatherThanSilentlyCapped() {
+        PathWeaverConfig.get().workerFailureLimit = 40;
+        PathWeaverConfig.get().workerFailureWindowTicks = 0;
+        for (int i = 0; i < 39; i++) fail(WalkNodeEvaluator.class);
+        assertFalse(SafetyGate.isDeniedByRuntimeFailure(WalkNodeEvaluator.class),
+            "39 failures must not trip a limit of 40 just because an internal backstop is 25");
+        fail(WalkNodeEvaluator.class);
+        assertTrue(SafetyGate.isDeniedByRuntimeFailure(WalkNodeEvaluator.class),
+            "and the 40th must");
+    }
+
+    /** The ceiling still catches the leak the window is designed to ignore, and says which rule. */
+    @Test
+    void theCeilingTripIsAnnouncedAsTheCeilingAndNotAsTheWindow() {
+        for (int i = 0; i < WorkerFailureBreaker.CUMULATIVE_CEILING; i++) {
+            WorkerFailureBreaker.setTick(i * 10_000L);
+            fail(WalkNodeEvaluator.class);
+        }
+        assertTrue(ModAttribution.REPORTS.contains("trip:WalkNodeEvaluator:CEILING"),
+            "naming the window threshold after a ceiling trip sends an operator to raise a setting "
+                + "that changes nothing: " + ModAttribution.REPORTS);
+    }
+
+    /**
+     * A VM error is not evidence that a worker read something it should not have.
+     *
+     * <p>On a 200-mod server an {@code OutOfMemoryError} is the likeliest throwable a worker will ever
+     * produce, it recurs in bursts, and counting three of them switches five movement families off
+     * for the session while printing a block that blames whichever mods were on the frame.
+     */
+    @Test
+    void aVirtualMachineErrorIsNeverCountedAsAnIncompatibility() {
+        for (int i = 0; i < 10; i++) {
+            WorkerFailureBreaker.recordSearchFailure(WalkNodeEvaluator.class,
+                new OutOfMemoryError("synthetic"));
+        }
+        assertFalse(SafetyGate.isDeniedByRuntimeFailure(WalkNodeEvaluator.class),
+            "the JVM being in trouble is not an incompatibility, and switching the mod off for it "
+                + "is a false trip with an invented culprit");
+        assertEquals(0, WorkerFailureBreaker.windowedCount(WalkNodeEvaluator.class),
+            "and it must not be counted toward one either");
+    }
+
+    /**
+     * A straggler worker from the previous server must not switch a family off in the next one.
+     *
+     * <p>{@code reset()} runs on the main thread at server start while the old pool may still be
+     * draining -- {@code shutdownNow()} does not wait. A trip that lands after the reset gives the
+     * new world an inert movement family with no log line, because the one-shot report already fired
+     * in the world before. That is the exact outcome the reset exists to prevent.
+     */
+    @Test
+    void aTripFromTheServerThatJustStoppedDoesNotFollowIntoTheNextOne() {
+        fail(WalkNodeEvaluator.class);
+        fail(WalkNodeEvaluator.class);
+        WorkerFailureBreaker.reset();
+        // The third failure belongs to the server that has already stopped.
+        fail(WalkNodeEvaluator.class);
+        assertFalse(SafetyGate.isDeniedByRuntimeFailure(WalkNodeEvaluator.class),
+            "a failure counted before the reset must not combine with one after it, and a verdict "
+                + "reached for the old server must not be installed into the new one");
+    }
+
+
+    /**
+     * The family rule, asserted directly rather than through a trip.
+     *
+     * <p>Reducing {@code allowlistedFamilyOf} to "first match wins" survived every test, because
+     * {@code WalkNodeEvaluator} happens to be declared first in the allowlist. The rule was pinned by
+     * declaration order, not by the rule, and reordering one {@code List.of} would have silently
+     * multiplied the configured threshold by four.
+     */
+    @Test
+    void everyLandFamilyResolvesToWalkAndSwimResolvesToItself() {
+        assertEquals(WalkNodeEvaluator.class,
+            SafetyGate.allowlistedFamilyOf(FlyNodeEvaluator.class));
+        assertEquals(WalkNodeEvaluator.class,
+            SafetyGate.allowlistedFamilyOf(AmphibiousNodeEvaluator.class));
+        assertEquals(WalkNodeEvaluator.class,
+            SafetyGate.allowlistedFamilyOf(WalkNodeEvaluator.class));
+        assertEquals(SwimNodeEvaluator.class,
+            SafetyGate.allowlistedFamilyOf(SwimNodeEvaluator.class),
+            "swim derives from nothing else and must be its own family");
+        assertEquals(null, SafetyGate.allowlistedFamilyOf(String.class),
+            "and something unrelated must resolve to nothing rather than to whatever came first");
+    }
+
+    /**
+     * The rule, not the declaration order.
+     *
+     * <p>"First match wins" gives the same answer as "most general wins" for every real input, purely
+     * because {@code WalkNodeEvaluator} is declared first — so the test above passes under both and
+     * proves nothing about the rule. Handing in the candidates in the opposite order is what tells
+     * them apart, and it is what stops a future edit to one {@code List.of} silently multiplying the
+     * configured threshold by the number of land families.
+     */
+    @Test
+    void theMostGeneralFamilyWinsWhateverOrderTheCandidatesArriveIn() {
+        java.util.List<Class<?>> reversed = java.util.List.of(
+            FlyNodeEvaluator.class, AmphibiousNodeEvaluator.class, WalkNodeEvaluator.class);
+        assertEquals(WalkNodeEvaluator.class,
+            SafetyGate.allowlistedFamilyOf(FlyNodeEvaluator.class, reversed),
+            "Fly is listed first and still must not win: it executes Walk's code, and counting "
+                + "against it would file one failure per subclass for one shared bug");
+        assertEquals(WalkNodeEvaluator.class,
+            SafetyGate.allowlistedFamilyOf(AmphibiousNodeEvaluator.class, reversed));
+    }
+
+    /** A mod evaluator admitted at the unsafe tier still counts against the code it runs. */
+    @Test
+    void aModSubclassResolvesToTheFamilyWhoseCodeItExecutes() {
+        assertEquals(WalkNodeEvaluator.class,
+            SafetyGate.allowlistedFamilyOf(ThirdPartyWalkEvaluator.class));
+    }
+
+    private static final class ThirdPartyWalkEvaluator extends WalkNodeEvaluator {}
 
 }

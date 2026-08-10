@@ -134,10 +134,19 @@ public final class SafetyGate {
         return deniedByRuntimeFailure;
     }
 
-    /** True when this evaluator is refused because a search threw, not because the scan objected. */
+    /**
+     * True when this evaluator is refused because a search threw, not because the scan objected.
+     *
+     * <p>The empty check is not a micro-optimisation reflex; it is on the dispatch path, once per
+     * repath per mob, and the set is empty on every healthy server for the entire session. Iterating
+     * an empty immutable set still allocates an iterator, and at ~95,000 dispatches a benchmark run
+     * that is not free. A feature that should never fire must cost nothing when it does not.
+     */
     public static boolean isDeniedByRuntimeFailure(Class<?> evaluatorClass) {
-        for (Class<?> denied : deniedByRuntimeFailure) {
-            if (denied.isAssignableFrom(evaluatorClass)) return true;
+        Set<Class<?>> denied = deniedByRuntimeFailure;
+        if (denied.isEmpty()) return false;
+        for (Class<?> family : denied) {
+            if (family.isAssignableFrom(evaluatorClass)) return true;
         }
         return false;
     }
@@ -175,9 +184,22 @@ public final class SafetyGate {
      * the under-counting it replaces would have meant never tripping at all.
      */
     public static Class<?> allowlistedFamilyOf(Class<?> evaluatorClass) {
+        return allowlistedFamilyOf(evaluatorClass, ALLOWED);
+    }
+
+    /**
+     * The candidate set is a parameter so the RULE can be tested rather than the declaration order.
+     *
+     * <p>Reducing this to "first match wins" survived every test, because {@code WalkNodeEvaluator}
+     * happens to be declared first in {@link #allowlist()} — so the behaviour was pinned by the order
+     * of a {@code List.of}, and reordering it would have silently multiplied the configured failure
+     * threshold by four. A test that hands in a reversed set can tell the two apart; one that can only
+     * call the production set cannot.
+     */
+    static Class<?> allowlistedFamilyOf(Class<?> evaluatorClass, Iterable<Class<?>> candidates) {
         if (evaluatorClass == null) return null;
         Class<?> root = null;
-        for (Class<?> allowed : ALLOWED) {
+        for (Class<?> allowed : candidates) {
             if (!allowed.isAssignableFrom(evaluatorClass)) continue;
             // `allowed` is more general than `root` exactly when it can stand in for it.
             if (root == null || allowed.isAssignableFrom(root)) root = allowed;
@@ -195,6 +217,11 @@ public final class SafetyGate {
             deniedBySafety.clear();
             deniedBySafety.addAll(denied);
         }
+    }
+
+    /** The allowlisted families themselves, for diagnostics that iterate them. */
+    public static Set<Class<?>> allowlistedFamilies() {
+        return ALLOWED;
     }
 
     /** Exact-class allowlist membership only. */
