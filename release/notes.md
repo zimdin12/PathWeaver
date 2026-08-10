@@ -5,7 +5,7 @@ always yes — 20 mods on the reference pack claim a watched pathfinding target 
 187 mob types eligible since 0.3.0**, across five releases, and the shipped default is `UNSAFE`, which
 performs no check at all. That tier is now **frozen**: it stays as a conservative escape hatch, and it
 is no longer the answer. The reasoning, and the four independent ways the one attempt to fix it was
-wrong, are in [ROADMAP.md](https://github.com/zimdin12/PathWeaver/blob/master/ROADMAP.md).
+wrong, are in [ROADMAP.md](ROADMAP.md).
 
 This release replaces prediction with detection.
 
@@ -73,8 +73,8 @@ in.
 server harnesses, the client harness, and verification on the real 221-jar server pack: 184 of 187
 eligible, 753 dispatched / 746 installed / 7 discarded, all six evaluator families node-for-node
 identical to a synchronous oracle, and **no breaker output at all** — which is the correct result on a
-healthy pack and the honest measure of this feature. Benchmarked against published 0.6.0 over ten
-interleaved runs: mean tick 50.001 ms vs 50.004 ms, p99 150.9 ms vs 150.5 ms. No regression.
+healthy pack and the honest measure of this feature. Benchmarked against published 0.6.0 over six
+interleaved runs on this exact jar: mean tick 50.003 ms vs 50.002 ms, p99 147.9 ms vs 144.9 ms. No regression.
 
 Twenty-two mutations were compiled and observed to fail during development. Eight of them survived
 their first defence, including both log blocks — the entire user-visible output of this feature was

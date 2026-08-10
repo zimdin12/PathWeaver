@@ -86,8 +86,8 @@ cannot make anything worse than not having the mod installed.
 without crashing is not detected by this, and the README says so alongside everything else that is
 still unproven.
 
-No performance change: benchmarked against 0.6.0 across ten interleaved runs, mean tick 50.001 ms vs
-50.004 ms.
+No performance change: benchmarked against 0.6.0 across six interleaved runs on this exact jar, mean tick 50.003 ms vs
+50.002 ms.
 
 ---
 
@@ -120,6 +120,6 @@ PathWeaver does not make pathfinding cheaper. It moves the same work onto anothe
 
 358 unit tests, 4 in-game game tests, 4 in-game server harnesses, a client harness driving a real singleplayer world, and verification on a real 221-jar modded server across four configurations. With the world held still, **all six evaluator families produced node-for-node identical paths to a synchronous oracle** — one scenario per family, which is evidence rather than proof.
 
-The 0.6 line has now been through **thirteen rounds of independent code review** — eleven for 0.6.0 and two more for 0.6.1. Later rounds executed mutations against the test suite rather than reading the code, which repeatedly found defects that reading had missed — including a live bug in this release's own headline feature. The [changelog](https://github.com/zimdin12/PathWeaver/blob/master/CHANGELOG.md) records what was rejected and reverted as well as what shipped: an entire compatibility-gate rewrite was built, measured, reviewed and **thrown away** because the review found it loosened a safety gate on an analysis that was wrong in four independent ways.
+The 0.6 line has now been through **seventeen rounds of independent code review** — eleven for 0.6.0 and six for 0.6.1. Later rounds executed mutations against the test suite rather than reading the code, which repeatedly found defects that reading had missed — including a live bug in this release's own headline feature. The [changelog](https://github.com/zimdin12/PathWeaver/blob/master/CHANGELOG.md) records what was rejected and reverted as well as what shipped: an entire compatibility-gate rewrite was built, measured, reviewed and **thrown away** because the review found it loosened a safety gate on an analysis that was wrong in four independent ways.
 
 **What is still unproven** is listed in full in the [README](https://github.com/zimdin12/PathWeaver/blob/master/README.md): realistic mob counts, mixed workloads, path quality while blocks are changing, and behaviour at a thousand mobs are all unmeasured.
