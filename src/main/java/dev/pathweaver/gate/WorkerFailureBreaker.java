@@ -63,12 +63,15 @@ public final class WorkerFailureBreaker {
      * one-shot report already fired in the world before. That is verbatim the outcome the reset
      * exists to prevent.
      */
-    private static volatile long generation;
+    private static volatile long sessionEpoch;
 
     private WorkerFailureBreaker() {}
 
     /** Which rule switched a family off. The log has to name the one that actually fired. */
     enum TripReason { WINDOW, CEILING }
+
+    /** What one recorded failure decided, computed under the counter's own lock. */
+    record Decision(boolean firstEver, TripReason reason, int count) {}
 
     /** Main thread, end of tick. */
     public static void setTick(long tick) {
@@ -76,8 +79,8 @@ public final class WorkerFailureBreaker {
     }
 
     /** Server start, not JVM start — see {@link SafetyGate#resetRuntimeFailureDenials()}. */
-    public static void reset() {
-        generation++;
+    public static void reset(long serverEpoch) {
+        sessionEpoch = serverEpoch;
         COUNTERS.clear();
         currentTick = 0L;
         SafetyGate.resetRuntimeFailureDenials();
@@ -120,22 +123,33 @@ public final class WorkerFailureBreaker {
      * @param evaluatorClass the evaluator the search was dispatched with; may be null
      * @return true if this call tripped the family, for callers that log the transition
      */
-    /** Test seam: the generation a failure is stamped with, so the stale-verdict guard is testable. */
-    static long generationForTesting() {
-        return generation;
+    /** The epoch failures are currently accepted for. */
+    static long sessionEpochForTesting() {
+        return sessionEpoch;
     }
 
-    /** Test seam: record a failure as if it had entered during {@code entryGeneration}. */
-    static boolean recordSearchFailureForGeneration(Class<?> evaluatorClass, Throwable failure,
-                                                    long entryGeneration) {
-        return record(evaluatorClass, failure, entryGeneration);
+    /**
+     * Record a worker search failure.
+     *
+     * @param evaluatorClass the evaluator the search was dispatched with; may be null
+     * @param dispatchEpoch the server epoch the REQUEST was created in, from its {@code RequestKey}
+     * @return true if this call switched the family off
+     */
+    public static boolean recordSearchFailure(Class<?> evaluatorClass, Throwable failure,
+                                              long dispatchEpoch) {
+        return record(evaluatorClass, failure, dispatchEpoch);
     }
 
-    public static boolean recordSearchFailure(Class<?> evaluatorClass, Throwable failure) {
-        return record(evaluatorClass, failure, generation);
-    }
-
-    private static boolean record(Class<?> evaluatorClass, Throwable failure, long entryGeneration) {
+    private static boolean record(Class<?> evaluatorClass, Throwable failure, long dispatchEpoch) {
+        // Stamped at DISPATCH, not here, and checked before anything is counted. Taking it here was
+        // theatre: onServerStarting calls reset() BEFORE pool.start(), and pool.start() is what runs
+        // the previous generation's shutdownNow() -- so every straggler failure arrived after the
+        // increment, stamped the new session, and the guard could never fire for the case it was
+        // written for. Three straggler throws switched a family off in a world that had had none.
+        // Checked first, so a stale failure does not leave its count behind either: a fresh world was
+        // reporting "N search failure(s) this session" for failures that belonged to the last one.
+        long session = sessionEpoch;
+        if (session != 0L && dispatchEpoch != 0L && dispatchEpoch != session) return false;
         // A VM error is not evidence that a worker read something it should not have. It is evidence
         // that the JVM is in trouble, it recurs in bursts, and on a 200-mod server it is the likeliest
         // throwable a worker will ever produce. Counting three OutOfMemoryErrors as an incompatibility
@@ -151,24 +165,27 @@ public final class WorkerFailureBreaker {
         long window = config.workerFailureWindowTicks;
 
         Counter counter = COUNTERS.computeIfAbsent(family, ignored -> new Counter());
-        boolean firstEver = counter.recordAndCheckFirst(currentTick, window);
-        if (firstEver) ModAttribution.reportFirstFailure(family, failure);
-
+        // ONE acquisition of the counter's monitor for record-and-decide. It was three, so the count
+        // that crossed the threshold was not the count that got reported: sixteen workers failing at
+        // once with a limit of three reported seven -- neither the threshold nor the total. It also
+        // left a window, narrow enough that I could not produce it, in which a worker that recorded
+        // the limit-th failure could be descheduled past a window roll and then decline to trip.
+        //
         // A limit of zero is the operator asking for 0.6.0's behaviour: failures still counted, still
-        // logged, still attributed -- just never acted on. Checked AFTER recording so that turning
+        // logged, still attributed -- just never acted on. Decided AFTER recording so that turning
         // the breaker off does not also turn the diagnostics off, which is the trade the settings
         // screen describes and not a wider one.
-        if (limit <= 0) return false;
-        TripReason reason = counter.tripReason(limit);
+        Decision decision = counter.recordAndDecide(currentTick, window, limit);
+        if (decision.firstEver()) ModAttribution.reportFirstFailure(family, failure);
+
+        TripReason reason = decision.reason();
         if (reason == null) return false;
-        // Re-read: a reset between here and the check above means this failure belongs to a server
+        // Re-read: a reset between here and the count above means this failure belongs to a server
         // that has already stopped, and its verdict must not follow the next one into the world.
-        if (generation != entryGeneration) return false;
+        if (sessionEpoch != session) return false;
         if (!SafetyGate.tripRuntimeFailure(family)) return false;
 
-        ModAttribution.reportTrip(family, failure, reason,
-            reason == TripReason.WINDOW ? counter.windowed() : counter.snapshotCount(),
-            limit, window);
+        ModAttribution.reportTrip(family, failure, reason, decision.count(), limit, window);
         return true;
     }
 
@@ -179,8 +196,13 @@ public final class WorkerFailureBreaker {
         private int cumulative;
         private boolean everReported;
 
-        /** @return true when this is the first failure this family has ever recorded */
-        synchronized boolean recordAndCheckFirst(long tick, long windowTicks) {
+        /** Record one failure and decide what it means, under a single lock acquisition. */
+        synchronized Decision recordAndDecide(long tick, long windowTicks, int limit) {
+            // A clock that went backwards would freeze the window and quietly turn the breaker into
+            // the cumulative counter it was designed not to be. Unreachable today -- getTickCount()
+            // is monotonic per server and reset() zeroes the tick with the counters -- but this is one
+            // line from being safe by construction rather than safe by circumstance.
+            if (tick < windowStartTick) windowStartTick = tick;
             // A window of zero means "never decays", which is the strict behaviour for anyone who
             // wants it. Any other value restarts the window once it has elapsed.
             if (windowTicks > 0 && tick - windowStartTick > windowTicks) {
@@ -192,11 +214,13 @@ public final class WorkerFailureBreaker {
             cumulative++;
             boolean first = !everReported;
             everReported = true;
-            return first;
+            TripReason reason = limit <= 0 ? null : tripReason(limit);
+            return new Decision(first, reason,
+                reason == TripReason.CEILING ? cumulative : inWindow);
         }
 
-        /** Which rule fired, or null. The caller has to say, so it has to be told. */
-        synchronized TripReason tripReason(int limit) {
+        /** Which rule fired, or null. Called only from {@link #recordAndDecide}, under its lock. */
+        private TripReason tripReason(int limit) {
             if (inWindow >= limit) return TripReason.WINDOW;
             // max(), not a bare ceiling. The ceiling exists to catch a leak too slow to fill the
             // window; it has no business overruling an operator who asked for a HIGHER limit. It did:
@@ -217,7 +241,15 @@ public final class WorkerFailureBreaker {
         }
     }
 
-    /** One-shot guard so a storm of failures cannot become a storm of log blocks. */
+    /**
+     * Run a reporting block, swallowing anything it throws.
+     *
+     * <p>NOT a one-shot guard, which is what this javadoc used to claim: the one-shot lives in
+     * {@code ModAttribution.REPORTED_FIRST_FAILURE} and in {@code SafetyGate.tripRuntimeFailure}
+     * returning the transition rather than the state. What this does is keep a logging failure from
+     * becoming a second failure — the appender is third-party code, and this runs on a worker inside
+     * a path whose delivery side has no catch of its own.
+     */
     static void logSafely(Runnable emit) {
         try {
             emit.run();

@@ -61,7 +61,6 @@ final class ModAttribution {
     /** One block per family, on its first failure, whether or not the breaker is armed. */
     static void reportFirstFailure(Class<?> family, Throwable failure) {
         if (!REPORTED_FIRST_FAILURE.add(family)) return;
-        REPORTS.add("first-failure:" + family.getSimpleName());
         WorkerFailureBreaker.logSafely(() -> {
             List<String> suspects = suspects(failure);
             dev.pathweaver.PathWeaver.LOG.warn(
@@ -85,6 +84,11 @@ final class ModAttribution {
                     + "counted, and /pathweaver status shows the running total.");
             dev.pathweaver.PathWeaver.LOG.warn(
                 "====================================================", failure);
+            // Recorded from INSIDE the block, deliberately. Written beside it, a mutation that made
+            // logSafely emit nothing left every report test green while the feature produced no
+            // user-visible output whatsoever -- the assertion and the log were two independent
+            // renderings of the same data, and only the one nobody ships was checked.
+            REPORTS.add("first-failure:" + family.getSimpleName());
         });
     }
 
@@ -92,22 +96,31 @@ final class ModAttribution {
     static void reportTrip(Class<?> family, Throwable failure,
                            WorkerFailureBreaker.TripReason reason, int count, int limit,
                            long window) {
-        // The COUNT is captured too, not just the rule. Asserting the accessors instead left the
-        // argument free: passing the window's count on a backstop trip survived, and would have told
-        // an operator that one failure switched a family off.
-        REPORTS.add("trip:" + family.getSimpleName() + ":" + reason + ":" + count);
         WorkerFailureBreaker.logSafely(() -> {
             dev.pathweaver.PathWeaver.LOG.warn(
                 "==================== PathWeaver ====================");
+            // Every family the trip actually switches off, not just the one that was counted. Denial
+            // is by inheritance, so tripping WalkNodeEvaluator stops Fly, Amphibious, Frog and
+            // Creaking too -- an operator told only "WalkNodeEvaluator" goes looking for why their
+            // axolotls and bees also stopped being accelerated.
+            String affected = String.join(", ", SafetyGate.familiesRefusedByRuntimeFailure());
             dev.pathweaver.PathWeaver.LOG.warn(
-                "{} searches have now thrown {} time(s), so PathWeaver has switched {} OFF for the "
-                    + "rest of this session.", family.getSimpleName(), count, family.getSimpleName());
+                "{} searches have now thrown {} time(s), so PathWeaver has switched these OFF for "
+                    + "the rest of this session: {}", family.getSimpleName(), count, affected);
             dev.pathweaver.PathWeaver.LOG.warn(
                 "Every mob in that family now paths on the server thread, exactly as it would "
                     + "without this mod installed. Nothing is corrupted by this; it is the safe "
                     + "direction.");
+            // The exception, always. A backstop trip happens far from the first failure by
+            // construction, so without this the loudest block in the mod names no cause at all.
+            dev.pathweaver.PathWeaver.LOG.warn("  Most recent: {}: {}",
+                failure.getClass().getName(), String.valueOf(failure.getMessage()));
             List<String> suspects = suspects(failure);
-            if (!suspects.isEmpty()) {
+            if (suspects.isEmpty()) {
+                dev.pathweaver.PathWeaver.LOG.warn(
+                    "  No mod could be named from the stack -- a mixin handler is merged into the "
+                        + "class it targets, so an @Overwrite leaves nothing to attribute.");
+            } else {
                 dev.pathweaver.PathWeaver.LOG.warn("  Mods on the stack: {}",
                     String.join(", ", suspects));
             }
@@ -116,22 +129,40 @@ final class ModAttribution {
             // ceiling is not that setting -- an invented cause in the block that exists to give a
             // real one.
             if (reason == WorkerFailureBreaker.TripReason.WINDOW) {
-                dev.pathweaver.PathWeaver.LOG.warn(
-                    "  Rule: {} failures within {} tick(s). Tune workerFailureLimit and "
-                        + "workerFailureWindowTicks, or set workerFailureLimit=0 to keep dispatching "
-                        + "and only log.", limit, window);
+                if (window > 0) {
+                    dev.pathweaver.PathWeaver.LOG.warn(
+                        "  Rule: {} failures within {} tick(s). Tune workerFailureLimit and "
+                            + "workerFailureWindowTicks, or set workerFailureLimit=0 to keep "
+                            + "dispatching and only log.", limit, window);
+                } else {
+                    // workerFailureWindowTicks=0 is the documented "never forget" setting, and the
+                    // sentence above renders as "within 0 tick(s)" for anyone who chose it.
+                    dev.pathweaver.PathWeaver.LOG.warn(
+                        "  Rule: {} failures this session. You set workerFailureWindowTicks=0, so "
+                            + "failures never age out. Set workerFailureLimit=0 to keep dispatching "
+                            + "and only log.", limit);
+                }
             } else {
+                // Name the number, and do not claim a setting moves it when it does not. The advice
+                // used to say "raising workerFailureLimit raises it too" -- true only above 25, and
+                // false at the shipped default of 3, which is the case that reaches this branch.
                 dev.pathweaver.PathWeaver.LOG.warn(
-                    "  Rule: {} failures in total this session, however far apart. That backstop "
-                        + "catches a leak too slow to fill the {}-tick window; raising "
-                        + "workerFailureLimit raises it too, and workerFailureLimit=0 disables both.",
-                    count, window);
+                    "  Rule: {} failures in total this session, however far apart. That is a fixed "
+                        + "backstop of {}, separate from workerFailureLimit, and it catches a leak "
+                        + "too slow to cluster. Raising workerFailureLimit past {} raises the "
+                        + "backstop with it; workerFailureLimit=0 disables both.",
+                    count, WorkerFailureBreaker.CUMULATIVE_CEILING,
+                    WorkerFailureBreaker.CUMULATIVE_CEILING);
             }
             dev.pathweaver.PathWeaver.LOG.warn(
                 "  If the startup banner said PathWeaver was ACTIVE, that no longer holds for this "
                     + "family. Restart the server to re-arm it.");
             dev.pathweaver.PathWeaver.LOG.warn(
                 "====================================================");
+            // Rule AND count, recorded from inside the emitted block. The rule alone left the count
+            // argument free -- passing the window's count on a backstop trip survived and would have
+            // told an operator that a single failure switched a family off.
+            REPORTS.add("trip:" + family.getSimpleName() + ":" + reason + ":" + count);
         });
     }
 

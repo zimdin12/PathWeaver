@@ -135,6 +135,24 @@ public final class SafetyGate {
     }
 
     /**
+     * Every allowlisted family a runtime trip currently refuses, by simple name, sorted.
+     *
+     * <p>The denial SET is not the answer. It holds classes, and {@link #isDenied} matches by
+     * inheritance, so a single {@code WalkNodeEvaluator} entry refuses five of the six families —
+     * and every diagnostic that reported the set reported one. {@code PathWeaverRuntime} already
+     * carries a long comment about this exact trap for the scan's denials; the runtime denials
+     * needed the same answer and did not have one.
+     */
+    public static java.util.List<String> familiesRefusedByRuntimeFailure() {
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (Class<?> family : ALLOWED) {
+            if (isDeniedByRuntimeFailure(family)) names.add(family.getSimpleName());
+        }
+        java.util.Collections.sort(names);
+        return names;
+    }
+
+    /**
      * True when this evaluator is refused because a search threw, not because the scan objected.
      *
      * <p>The empty check is not a micro-optimisation reflex; it is on the dispatch path, once per
@@ -217,11 +235,6 @@ public final class SafetyGate {
             deniedBySafety.clear();
             deniedBySafety.addAll(denied);
         }
-    }
-
-    /** The allowlisted families themselves, for diagnostics that iterate them. */
-    public static Set<Class<?>> allowlistedFamilies() {
-        return ALLOWED;
     }
 
     /** Exact-class allowlist membership only. */

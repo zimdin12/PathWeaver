@@ -33,7 +33,7 @@ class WorkerFailureBreakerTest {
         savedWindow = config.workerFailureWindowTicks;
         config.workerFailureLimit = 3;
         config.workerFailureWindowTicks = 1200;
-        WorkerFailureBreaker.reset();
+        WorkerFailureBreaker.reset(1L);
     }
 
     @AfterEach
@@ -41,11 +41,11 @@ class WorkerFailureBreakerTest {
         PathWeaverConfig config = PathWeaverConfig.get();
         config.workerFailureLimit = savedLimit;
         config.workerFailureWindowTicks = savedWindow;
-        WorkerFailureBreaker.reset();
+        WorkerFailureBreaker.reset(1L);
     }
 
     private static void fail(Class<?> evaluator) {
-        WorkerFailureBreaker.recordSearchFailure(evaluator, new IllegalStateException("synthetic"));
+        WorkerFailureBreaker.recordSearchFailure(evaluator, new IllegalStateException("synthetic"), 1L);
     }
 
     @Test
@@ -202,7 +202,7 @@ class WorkerFailureBreakerTest {
         fail(WalkNodeEvaluator.class);
         assertTrue(SafetyGate.isDeniedByRuntimeFailure(WalkNodeEvaluator.class));
 
-        WorkerFailureBreaker.reset();
+        WorkerFailureBreaker.reset(1L);
 
         assertFalse(SafetyGate.isDeniedByRuntimeFailure(WalkNodeEvaluator.class),
             "starting a server must re-arm the family");
@@ -225,9 +225,9 @@ class WorkerFailureBreakerTest {
     /** An evaluator with no allowlisted ancestor is not this mechanism's business. */
     @Test
     void aFailureWithNoFamilyIsIgnoredRatherThanGuessedAt() {
-        assertFalse(WorkerFailureBreaker.recordSearchFailure(String.class, new RuntimeException()),
+        assertFalse(WorkerFailureBreaker.recordSearchFailure(String.class, new RuntimeException(), 1L),
             "no allowlisted ancestor means nothing to switch off");
-        assertFalse(WorkerFailureBreaker.recordSearchFailure(null, new RuntimeException()),
+        assertFalse(WorkerFailureBreaker.recordSearchFailure(null, new RuntimeException(), 1L),
             "and a null evaluator must not throw from inside a failure path");
     }
 
@@ -248,7 +248,7 @@ class WorkerFailureBreakerTest {
             }
         };
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(
-            () -> WorkerFailureBreaker.recordSearchFailure(WalkNodeEvaluator.class, hostile),
+            () -> WorkerFailureBreaker.recordSearchFailure(WalkNodeEvaluator.class, hostile, 1L),
             "a mechanism that cannot record a failure must never turn that failure into a crash");
     }
 
@@ -370,7 +370,7 @@ class WorkerFailureBreakerTest {
     void aVirtualMachineErrorIsNeverCountedAsAnIncompatibility() {
         for (int i = 0; i < 10; i++) {
             WorkerFailureBreaker.recordSearchFailure(WalkNodeEvaluator.class,
-                new OutOfMemoryError("synthetic"));
+                new OutOfMemoryError("synthetic"), 1L);
         }
         assertFalse(SafetyGate.isDeniedByRuntimeFailure(WalkNodeEvaluator.class),
             "the JVM being in trouble is not an incompatibility, and switching the mod off for it "
@@ -391,7 +391,7 @@ class WorkerFailureBreakerTest {
     void aTripFromTheServerThatJustStoppedDoesNotFollowIntoTheNextOne() {
         fail(WalkNodeEvaluator.class);
         fail(WalkNodeEvaluator.class);
-        WorkerFailureBreaker.reset();
+        WorkerFailureBreaker.reset(1L);
         // The third failure belongs to the server that has already stopped.
         fail(WalkNodeEvaluator.class);
         assertFalse(SafetyGate.isDeniedByRuntimeFailure(WalkNodeEvaluator.class),
@@ -484,24 +484,38 @@ class WorkerFailureBreakerTest {
     }
 
     /**
-     * A straggler from the previous server must not install its verdict into the next one.
+     * A straggler from the previous server must not be counted or acted on in the next one.
      *
-     * <p>Pinned on the stamp rather than on the counter reset, because the counter reset alone
-     * satisfies the coarser version of this test and left the stamp free to be deleted.
+     * <p>The stamp is now taken where the REQUEST was created, not where the failure landed, and that
+     * distinction is the whole fix. {@code onServerStarting} resets the breaker BEFORE
+     * {@code pool.start()}, and {@code pool.start()} is what performs the previous generation's
+     * {@code shutdownNow()} — so a straggler's failure always arrived after the reset and stamped the
+     * new session. The guard could never fire for the case it was written for, and three straggler
+     * throws switched a family off in a world that had had none.
+     *
+     * <p>Asserted on the count as well as the trip: the earlier version guarded only the verdict, so
+     * a fresh world still reported "N search failure(s) this session" for failures belonging to the
+     * last one.
      */
     @Test
-    void aVerdictReachedBeforeAResetIsNotInstalledAfterIt() {
+    void aFailureFromTheServerThatJustStoppedIsNeitherCountedNorActedOn() {
         PathWeaverConfig.get().workerFailureLimit = 1;
-        // Enough to trip, but the reset lands between the count and the install.
-        long before = WorkerFailureBreaker.generationForTesting();
-        WorkerFailureBreaker.reset();
-        assertTrue(WorkerFailureBreaker.generationForTesting() != before,
-            "reset must advance the generation, or nothing downstream can tell the servers apart");
-        assertFalse(WorkerFailureBreaker.recordSearchFailureForGeneration(
-                WalkNodeEvaluator.class, new IllegalStateException("from the old server"), before),
-            "a failure stamped with the previous server's generation must not switch a family off "
-                + "in this one");
+        WorkerFailureBreaker.reset(7L);
+        assertEquals(7L, WorkerFailureBreaker.sessionEpochForTesting(),
+            "reset must adopt the epoch of the server it is starting, or nothing downstream can "
+                + "tell the two servers apart");
+
+        assertFalse(WorkerFailureBreaker.recordSearchFailure(
+                WalkNodeEvaluator.class, new IllegalStateException("from the old server"), 6L),
+            "a request dispatched by the previous server must not switch a family off in this one");
         assertFalse(SafetyGate.isDeniedByRuntimeFailure(WalkNodeEvaluator.class));
+        assertEquals(0, WorkerFailureBreaker.cumulativeCount(WalkNodeEvaluator.class),
+            "and must not leave its count behind either -- a fresh world reporting failures it never "
+                + "had is the same invented cause in a quieter voice");
+
+        assertTrue(WorkerFailureBreaker.recordSearchFailure(
+                WalkNodeEvaluator.class, new IllegalStateException("from this server"), 7L),
+            "while this server's own failures must still be acted on");
     }
 
 }

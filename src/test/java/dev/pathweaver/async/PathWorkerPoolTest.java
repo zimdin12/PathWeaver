@@ -223,7 +223,7 @@ class PathWorkerPoolTest {
      */
     @Test
     void aSearchThatThrowsIsRecordedByTheBreaker() throws Exception {
-        dev.pathweaver.gate.WorkerFailureBreaker.reset();
+        dev.pathweaver.gate.WorkerFailureBreaker.reset(1L);
         try {
             CountDownLatch done = new CountDownLatch(1);
             assertTrue(pool.submit(new PathRequest(key(7), 0L,
@@ -239,7 +239,7 @@ class PathWorkerPoolTest {
                     + "misses every failure whose registration supersede() has already dropped, and "
                     + "supersede() runs on the block-change invalidation path where these throw");
         } finally {
-            dev.pathweaver.gate.WorkerFailureBreaker.reset();
+            dev.pathweaver.gate.WorkerFailureBreaker.reset(1L);
         }
     }
 
@@ -252,7 +252,7 @@ class PathWorkerPoolTest {
      */
     @Test
     void aRequestWithNoFamilyCountsAgainstNothing() throws Exception {
-        dev.pathweaver.gate.WorkerFailureBreaker.reset();
+        dev.pathweaver.gate.WorkerFailureBreaker.reset(1L);
         try {
             CountDownLatch done = new CountDownLatch(1);
             assertTrue(pool.submit(new PathRequest(key(8), 0L,
@@ -263,7 +263,7 @@ class PathWorkerPoolTest {
                     net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class),
                 "an unattributed failure must not be filed against an arbitrary family");
         } finally {
-            dev.pathweaver.gate.WorkerFailureBreaker.reset();
+            dev.pathweaver.gate.WorkerFailureBreaker.reset(1L);
         }
     }
 

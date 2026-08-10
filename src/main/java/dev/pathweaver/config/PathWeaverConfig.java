@@ -141,7 +141,7 @@ public class PathWeaverConfig implements ConfigData {
      * {@code enabled = false} -- so bumping the version would have switched the mod off for every
      * existing install. An absent key simply keeps this initializer.
      */
-    @ConfigEntry.Gui.Tooltip(count = 3)
+    @ConfigEntry.Gui.Tooltip(count = 4)
     @ConfigEntry.Category("general")
     public int workerFailureLimit = 3;
 

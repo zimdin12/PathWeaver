@@ -126,12 +126,42 @@ public final class WorkerFailureBreakerGameTest {
             cfg.enabled = true;
             cfg.workerFailureLimit = 3;
             cfg.workerFailureWindowTicks = 1200;
+
+            // POLARITY, checked before anything is cleared or tripped, because this is the one moment
+            // it can be checked: the harness ships a mixin into pathfinding, so right now every family
+            // is refused by the SCAN and nothing has failed on a worker. A refusal that is not the
+            // breaker's must not be counted as the breaker's.
+            //
+            // This replaces an ASM contract that asserted only that an opcode appeared somewhere in
+            // the mixin. Inverting the condition survived it -- and the inverted behaviour is worse
+            // than the bug: BREAKER_OPEN would be recorded for every mod-replaced evaluator, every
+            // unclonable one, every scan denial, so a healthy server grows a large amber row reading
+            // "family switched off after worker failures" while nothing has ever failed, and a real
+            // trip shows nothing.
+            long breakerOpenAtStart =
+                PathWeaverRuntime.get().outcomeCount(RequestOutcome.BREAKER_OPEN);
+            check(!SafetyGate.isAllowed(WalkNodeEvaluator.class),
+                "precondition: the harness's own mixin must have the scan refusing walk, or this "
+                    + "check is vacuous");
+            for (int x = 0; x <= 12; x++) {
+                for (int z = 0; z <= 6; z++) helper.setBlock(x, 1, z, Blocks.STONE);
+            }
+            Mob scanRefused = helper.spawnWithNoFreeWill(EntityType.ZOMBIE, 2, 2, 4);
+            scanRefused.setOnGround(true);
+            BlockPos scanTarget = helper.absolutePos(new BlockPos(8, 2, 4));
+            scanRefused.getNavigation().moveTo(
+                scanTarget.getX() + 0.5, scanTarget.getY(), scanTarget.getZ() + 0.5, 1.0);
+            check(PathWeaverRuntime.get().outcomeCount(RequestOutcome.BREAKER_OPEN)
+                    == breakerOpenAtStart,
+                "a mob refused by the compatibility scan must NOT be counted as a breaker refusal; "
+                    + "the breaker has not tripped anything yet");
+            scanRefused.discard();
             // The harness ships a mixin into pathfinding, so the scan denies everything here. Clearing
             // that is what makes the rest of this test about the breaker rather than about the scan.
             synchronized (SafetyGate.deniedBySafety) {
                 SafetyGate.deniedBySafety.clear();
             }
-            WorkerFailureBreaker.reset();
+            WorkerFailureBreaker.reset(1L);
 
             check(SafetyGate.isAllowed(WalkNodeEvaluator.class),
                 "precondition: with the scan's denials cleared, walk must dispatch -- otherwise every "
@@ -205,6 +235,12 @@ public final class WorkerFailureBreakerGameTest {
                     + "up only as `dispatched` ceasing to rise, which is the vanishing setup failure "
                     + "0.6.0 had to fix");
 
+            // The trip must be SCOPED. Swim shares none of Walk's code and must still dispatch;
+            // if this ever fails, one family's failures have switched the whole mod off.
+            check(dev.pathweaver.gate.SafetyGate.isAllowed(
+                    net.minecraft.world.level.pathfinder.SwimNodeEvaluator.class),
+                "a family the breaker never tripped must still be allowed to dispatch");
+
             cleanup();
             stage = 3;
             COMPLETED.set(true);
@@ -221,7 +257,7 @@ public final class WorkerFailureBreakerGameTest {
             cfg.enabled = oldEnabled;
             cfg.workerFailureLimit = oldLimit;
             cfg.workerFailureWindowTicks = oldWindow;
-            WorkerFailureBreaker.reset();
+            WorkerFailureBreaker.reset(1L);
             synchronized (SafetyGate.deniedBySafety) {
                 SafetyGate.deniedBySafety.clear();
                 SafetyGate.deniedBySafety.addAll(oldDenials);

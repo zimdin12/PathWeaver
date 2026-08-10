@@ -128,7 +128,7 @@ class ModAttributionTest {
             "precondition: this throwable really is hostile");
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(
             () -> WorkerFailureBreaker.recordSearchFailure(
-                net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class, hostile),
+                net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class, hostile, 1L),
             "attribution runs inside a failure path whose delivery side has no catch at all");
     }
 

@@ -441,11 +441,11 @@ class ScanSummaryTest {
         int savedLimit = dev.pathweaver.config.PathWeaverConfig.get().workerFailureLimit;
         try {
             dev.pathweaver.config.PathWeaverConfig.get().workerFailureLimit = 3;
-            dev.pathweaver.gate.WorkerFailureBreaker.reset();
+            dev.pathweaver.gate.WorkerFailureBreaker.reset(1L);
             dev.pathweaver.gate.WorkerFailureBreaker.recordSearchFailure(
-                WalkNodeEvaluator.class, new IllegalStateException("synthetic"));
+                WalkNodeEvaluator.class, new IllegalStateException("synthetic"), 1L);
             dev.pathweaver.gate.WorkerFailureBreaker.recordSearchFailure(
-                WalkNodeEvaluator.class, new IllegalStateException("synthetic"));
+                WalkNodeEvaluator.class, new IllegalStateException("synthetic"), 1L);
 
             java.util.List<String> before = PathWeaverCommand.statusLines();
             assertTrue(before.stream().anyMatch(l -> l.contains("WalkNodeEvaluator")
@@ -456,7 +456,7 @@ class ScanSummaryTest {
                 "and the number must be the session total, not the current window's slice: " + before);
 
             dev.pathweaver.gate.WorkerFailureBreaker.recordSearchFailure(
-                WalkNodeEvaluator.class, new IllegalStateException("synthetic"));
+                WalkNodeEvaluator.class, new IllegalStateException("synthetic"), 1L);
             java.util.List<String> after = PathWeaverCommand.statusLines();
             assertTrue(after.stream().anyMatch(l -> l.contains("switched OFF")),
                 "a tripped family must be announced: " + after);
@@ -464,7 +464,41 @@ class ScanSummaryTest {
                 "and must not also be reported as still dispatching: " + after);
         } finally {
             dev.pathweaver.config.PathWeaverConfig.get().workerFailureLimit = savedLimit;
-            dev.pathweaver.gate.WorkerFailureBreaker.reset();
+            dev.pathweaver.gate.WorkerFailureBreaker.reset(1L);
+        }
+    }
+
+
+    /**
+     * A trip switches off five families; the report must name five.
+     *
+     * <p>The denial SET holds one class. {@code isDenied} matches by inheritance, so tripping
+     * {@code WalkNodeEvaluator} also stops Fly, Amphibious, Frog and Creaking. Reporting the set said
+     * "1 family/families switched OFF: WalkNodeEvaluator" while five were off and
+     * {@code /pathweaver mobs} listed at least three — two diagnostics, two answers, in the release
+     * whose thesis is that they agree. An operator whose axolotls and bees quietly stopped being
+     * accelerated had nothing to connect that to.
+     */
+    @Test
+    void aTripReportsEveryFamilyItActuallySwitchesOff() {
+        try {
+            dev.pathweaver.gate.SafetyGate.tripRuntimeFailure(WalkNodeEvaluator.class);
+            String line = PathWeaverCommand.statusLines().stream()
+                .filter(l -> l.contains("switched OFF"))
+                .findFirst().orElseThrow(() -> new AssertionError("no trip line: "
+                    + PathWeaverCommand.statusLines()));
+
+            for (String family : java.util.List.of("WalkNodeEvaluator", "FlyNodeEvaluator",
+                    "AmphibiousNodeEvaluator", "FrogNodeEvaluator", "HomeNodeEvaluator")) {
+                assertTrue(line.contains(family),
+                    family + " is refused by this trip and must be named: " + line);
+            }
+            assertTrue(line.contains("5 family"),
+                "and the count must be the number actually refused, not the size of the set: " + line);
+            assertFalse(line.contains("SwimNodeEvaluator"),
+                "swim shares none of walk's code and keeps dispatching: " + line);
+        } finally {
+            dev.pathweaver.gate.SafetyGate.resetRuntimeFailureDenials();
         }
     }
 

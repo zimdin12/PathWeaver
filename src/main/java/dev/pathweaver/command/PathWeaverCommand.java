@@ -87,7 +87,7 @@ public final class PathWeaverCommand {
         // Failures that have NOT yet tripped anything, because the log block promises the running
         // total is here and it was not: status stayed silent until a trip, so an operator following
         // that instruction found nothing and had no way to tell one bad tick from a building problem.
-        for (Class<?> family : dev.pathweaver.gate.SafetyGate.allowlistedFamilies()) {
+        for (Class<?> family : dev.pathweaver.gate.SafetyGate.allowlisted()) {
             int recent = dev.pathweaver.gate.WorkerFailureBreaker.windowedCount(family);
             int total = dev.pathweaver.gate.WorkerFailureBreaker.cumulativeCount(family);
             if (total <= 0 || dev.pathweaver.gate.SafetyGate.isDeniedByRuntimeFailure(family)) {
@@ -104,8 +104,18 @@ public final class PathWeaverCommand {
         }
         java.util.Set<Class<?>> tripped = dev.pathweaver.gate.SafetyGate.runtimeFailureDenials();
         if (!tripped.isEmpty()) {
+            // Name the CLOSURE, not the set. The set holds classes; the gate refuses by inheritance,
+            // so a single WalkNodeEvaluator entry actually switches off Walk, Fly, Amphibious, Frog
+            // and Creaking -- five of six. Reporting the set said "1 family/families" while five were
+            // off and /pathweaver mobs listed at least three, in the release whose thesis is that the
+            // diagnostics agree. PathWeaverRuntime.reportWhetherItIsDoingAnything already carries a
+            // twelve-line comment about this exact trap; this code did not read it.
             List<String> names = new java.util.ArrayList<>();
-            for (Class<?> family : tripped) names.add(family.getSimpleName());
+            for (Class<?> family : dev.pathweaver.gate.SafetyGate.allowlisted()) {
+                if (dev.pathweaver.gate.SafetyGate.isDeniedByRuntimeFailure(family)) {
+                    names.add(family.getSimpleName());
+                }
+            }
             java.util.Collections.sort(names);
             out.add("  §c" + names.size() + " family/families switched OFF after their searches "
                 + "threw on a worker: " + String.join(", ", names));

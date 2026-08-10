@@ -142,7 +142,7 @@ public final class PathWeaverRuntime {
         // starts many servers in one JVM. A trip that survived into the next world would be worse
         // than a stale counter -- a permanently inert movement family with NO log line, because the
         // one-shot report had already burned in the previous world.
-        dev.pathweaver.gate.WorkerFailureBreaker.reset();
+        dev.pathweaver.gate.WorkerFailureBreaker.reset(epoch);
         entitySink.clear(false);
         installer.clear();
         pool.start(c.resolvedPoolThreads(), c.maxInFlight);

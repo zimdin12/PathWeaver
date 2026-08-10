@@ -96,7 +96,7 @@ public class PathWorkerPool {
                     // that failure into a worse one.
                     try {
                         dev.pathweaver.gate.WorkerFailureBreaker.recordSearchFailure(
-                            req.evaluatorClass(), t);
+                            req.evaluatorClass(), t, req.key().serverEpoch());
                     } catch (Throwable breakerFailure) {
                         // Deliberately silent: logFailure above already reported the real problem.
                     }
