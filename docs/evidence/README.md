@@ -1,9 +1,14 @@
 # Retained evidence
 
 `pathweaver-on.sparkprofile` / `pathweaver-off.sparkprofile` — spark profiles behind the
-"Profiled on a real modpack" table in the project README. A 222-mod pack, 220 mixed mobs retargeted
+"Profiled on a real modpack" table in the project README. The 221-jar pack, 220 mixed mobs retargeted
 every 6 ticks, 45 seconds each, `compatibilityTier=UNSAFE`, the only variable between them being the
 master switch.
+
+(These profiles were once described here as a "222-mod pack" while the README called the identical
+pair a 221-jar pack. One pack, one count: 221 third-party jars in `mods/`. The published 0.4.0 and
+0.5.x changelog entries still say 222 because that is what those releases measured and said at the
+time, and a shipped entry is a record rather than a draft.)
 
 Server-thread time in pathfinding: **12.38% off, 4.92% on.**
 
