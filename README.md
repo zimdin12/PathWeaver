@@ -14,7 +14,7 @@ What you are accepting: the most likely failure is quiet — a wrong path or a t
 
 Two ways to opt back into checking, both one setting away:
 
-- `compatibilityTier=AUDITED` — full checking. Expect it to refuse on a heavy pack; the log names which mods did it.
+- `compatibilityTier=AUDITED` — full checking. Expect it to refuse on a heavy pack; the log names which mods did it. On a lean pack it admits everything on its own, which is the configuration the benchmark below runs in. **Frozen as of 0.6.1**: it is a conservative escape hatch, not something that will improve — see [ROADMAP.md](ROADMAP.md) for why, and 0.6.1's runtime failure breaker for what replaced it.
 - `trustedMods` — the middle option, and the one worth knowing about. Name the specific mods you have decided to run unaudited and the scan keeps working for everything else. See [Will it actually do anything?](#will-it-actually-do-anything).
 
 Whichever you land on, the game log says so at world start and names the mods responsible, rather than leaving you to infer it from silence.
@@ -57,7 +57,7 @@ Failing closed is better than running unaudited code on a worker thread and corr
 
 Mods that just mark a block dangerous — "mobs should avoid my spikes" — are handled generically, with no per-mod entry: their rule is asked for every answer it can give and frozen before any worker sees it. That rests on such a rule being a pure function of the block state, which the API's shape encourages but does not enforce, so it rests on an assumption rather than a proof. A rule that *receives* the surrounding world normally switches Walk back to synchronous, because its answers cannot be precomputed. Farmer's Delight's lit stove is the one exception: it receives the world and provably never reads it, so an exact audit of that artifact lets its answers be frozen too. That audit is bounded evidence, not a proof.
 
-Still denied at the time of writing: Carpet, and any mod not in [the compatibility matrix](COMPATIBILITY.md).
+Still denied as of August 2026: Carpet, and any mod not in [the compatibility matrix](COMPATIBILITY.md).
 
 Check your server log for:
 
@@ -121,6 +121,10 @@ On the same 221-jar server pack, tier set to `AUDITED` throughout:
 | empty | 0 of 187 — nine mods named as blockers |
 | 4 of the 9 | still refuses, now names the remaining 5 |
 | all 9 | **86 of 187** at stock settings; **184 of 187** with `allowModdedMobAsync=true` |
+
+*Measured with `/pathweaver mobs` on a 0.6.1 build, 221-jar pack, August 2026. The `UNSAFE` row in the
+table above was re-measured on the exact 0.6.1 artifact; these three were not, and the difference is
+worth stating rather than glossing.*
 
 That second column is the one to read carefully, and it was quoted here for two releases without its
 precondition. `allowModdedMobAsync` defaults to **false**, and at `AUDITED` it is the origin gate that
@@ -344,7 +348,7 @@ The figures in this subsection used a cleared gate, a much larger in-flight limi
 
 With ModMenu installed: **Mods → PathWeaver → Config**. The first option is the master switch; turning it off sends all new path requests through vanilla synchronous pathfinding and disables repath reuse. Work already accepted drains safely; later routing is vanilla-synchronous.
 
-You can also edit `config/pathweaver.json`. **The exact keys differ between versions — open your own file and edit what is there rather than copying an example from anywhere.** A malformed or unreadable config falls back to synchronous behaviour until a valid one is saved. Worker-thread and in-flight limits, and the compatibility tier, apply after a restart.
+You can also edit `config/pathweaver.json`. **The exact keys differ between versions — open your own file and edit the values that are there rather than copying whole examples from anywhere.** A malformed or unreadable config falls back to synchronous behaviour until a valid one is saved. Worker-thread and in-flight limits, and the compatibility tier, apply after a restart.
 
 `compatibilityTier` decides how much risk to accept from mods that modify pathfinding:
 
@@ -358,6 +362,14 @@ You can also edit `config/pathweaver.json`. **The exact keys differ between vers
 - **`UNSAFE`** ignores the scan completely. It also admits third-party evaluator subclasses, which are rebuilt from their constructor plus the four traversal flags vanilla exposes. A mod's evaluator may hold configuration beyond that — a field set after construction, a reference to its own settings — and none of it is copied, so the worker searches under different rules than the mob's own evaluator would use. That is a quietly different path rather than a crash, and it is the failure mode least likely to be noticed. This runs unaudited third-party code on a worker thread, which is the exact thing the scan exists to prevent. Failures are not limited to bad paths. Keep backups.
 
 `allowModdedMobAsync` is an advanced, genuinely unsafe override. It bypasses only the vanilla-origin mob check; every other gate still applies. Do not enable it unless you accept running unaudited mod code on a worker thread.
+
+`trustedMods` is a list of mod ids the scan will stop objecting to, and it is the middle option between the two tiers. In `config/pathweaver.json`:
+
+```json
+"trustedMods": ["balm", "carpet"]
+```
+
+The ids are the ones printed in the world-start block that names your blockers, and by `/pathweaver status`. It takes effect at the next restart. **This is not a safety feature** — anything named runs unaudited on worker threads exactly as `UNSAFE` would, just aimed at fewer mods, and matching is by mod id, so an entry keeps applying after that mod updates and changes what its mixins do.
 
 `compatibilityTier=UNSAFE` implies `allowModdedMobAsync`, because the origin gate is a compatibility check like any other. Leaving it armed under "ignore every check" kept most of a heavily-modded pack's mobs synchronous while the log reported that nothing was being checked. The separate flag remains the way to reach that bypass from `AUDITED`.
 

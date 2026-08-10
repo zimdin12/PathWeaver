@@ -59,7 +59,9 @@ exception. Eleven review rounds.
 
 **Decision, 2026-08-09.** The tier is not being fixed. The evidence is not ambiguous:
 
-- **0 of 187 since 0.3.0.** Five releases, zero movement.
+- **0 of 187 since 0.3.0** on the reference 221-jar pack with `trustedMods` empty. Five releases,
+  zero movement. On a lean pack the tier admits everything unaided — the problem is not that it never
+  works, it is that it never works on the packs this mod exists for.
 - **It asks the wrong question.** *"Did any mod touch this class?"* On a real modpack the answer is
   always yes — 20 mods on the reference pack claim a watched target, nine of which the scanner names.
   A question with no useful answer on the packs the mod is for is not a safety mechanism.

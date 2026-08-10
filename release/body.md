@@ -63,6 +63,8 @@ That is deliberate, and the reasoning is in the open. The checked tier (`AUDITED
 
 **So decide for yourself, on a copy.** Run it on a world you can throw away. If mobs path normally and nothing looks off after a few sessions, keep the default. If anything does look off, switch to `compatibilityTier=AUDITED` and say so — that report is evidence this project cannot generate on its own.
 
+One thing to expect if you do: on a heavy pack `AUDITED` refuses **everything** — 0 of 187 on the reference pack — so the mod stops doing anything at all. That is the tier working as designed, not failing. `trustedMods` is the middle option: name the specific mods you have decided about and the scan keeps checking the rest. The [README](https://github.com/zimdin12/PathWeaver/blob/master/README.md) explains it.
+
 ---
 
 ## What's new in 0.6.1

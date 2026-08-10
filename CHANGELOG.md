@@ -6,8 +6,10 @@ PathWeaver had two modes: one that did nothing, and one that checked nothing.
 
 The checked tier, `AUDITED`, asks *"did any mod touch this class?"* On a real modpack the answer is
 always yes — 20 mods on the reference pack claim a watched pathfinding target — so it has left **0 of
-187 mob types eligible since 0.3.0**, across five releases, and the shipped default is `UNSAFE`, which
-performs no check at all. That tier is now **frozen**: it stays as a conservative escape hatch, and it
+187 mob types eligible since 0.3.0** on that pack with `trustedMods` empty, across five releases, and
+the shipped default is `UNSAFE`, which performs no check at all. (On a lean pack the tier admits
+everything on its own; that is the configuration this project's headline benchmark runs in. The
+problem is not that it never works, it is that it never works on the packs the mod is for.) That tier is now **frozen**: it stays as a conservative escape hatch, and it
 is no longer the answer. The reasoning, and the four independent ways the one attempt to fix it was
 wrong, are in [ROADMAP.md](ROADMAP.md).
 
