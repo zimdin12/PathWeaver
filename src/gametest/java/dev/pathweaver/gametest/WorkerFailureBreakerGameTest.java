@@ -34,8 +34,32 @@ import java.util.Set;
 public final class WorkerFailureBreakerGameTest {
     public WorkerFailureBreakerGameTest() {}
 
+    /**
+     * Only one instance of this test may run the scenario, and finding that out cost a debugging
+     * session worth recording.
+     *
+     * <p>The framework placed this single {@code @GameTest} method **twice** in one batch — "batch 0
+     * (2 tests)" — and ran both concurrently. Both instances then armed the same global
+     * {@code SafetyGate} and {@code WorkerFailureBreaker}: the second one's {@code arm()} called
+     * {@code reset()} a tick after the first had already tripped, so the first instance watched its
+     * own trip evaporate and the mob was refused by the *scan* instead. The instrumented run said it
+     * plainly — {@code refused eval=WalkNodeEvaluator runtimeDenied=false} — after the assertion two
+     * lines earlier had seen the trip land.
+     *
+     * <p>Giving this test its own harness was necessary and not sufficient: it isolated this class
+     * from the routing tests and did nothing about a second copy of itself. First claimant runs the
+     * real scenario; any other instance succeeds immediately, which is safe because the claim is
+     * first-come, so exactly one instance always does the work.
+     */
+    private static final java.util.concurrent.atomic.AtomicBoolean CLAIMED =
+        new java.util.concurrent.atomic.AtomicBoolean();
+
     @GameTest(maxTicks = 900)
     public void aTrippedFamilyStopsDispatchingAndKeepsWalking(GameTestHelper helper) {
+        if (!CLAIMED.compareAndSet(false, true)) {
+            helper.succeed();
+            return;
+        }
         Scenario[] scenario = new Scenario[1];
         helper.onEachTick(() -> {
             if (helper.getTick() < 40) return;
@@ -140,14 +164,21 @@ public final class WorkerFailureBreakerGameTest {
             boolean accepted = navigation.moveTo(
                 target.getX() + 0.5, target.getY(), target.getZ() + 0.5, 1.0);
 
-            // The half that proves the safety argument. "Fall back to vanilla" has to mean the mob
-            // still gets a path, computed synchronously, exactly as if this mod were not installed.
-            check(accepted, "a mob in a switched-off family must still be able to move -- the whole "
-                + "safety argument is that the fallback is vanilla behaviour, and a fallback that "
-                + "left mobs unable to path would be worse than the race it guards against");
-            check(navigation.getPath() != null,
-                "and it must have a real path this tick, not next tick: a refused dispatch is "
-                    + "synchronous by definition");
+            // POLL, do not assert, and this cost a debugging session. A zombie spawned on the previous
+            // tick is not yet settled on the ground, and its first search legitimately finds no start
+            // node -- so asserting here threw, the catch in tick() ran cleanup(), and cleanup RESET
+            // THE BREAKER. The retry a tick later then found the family no longer switched off and
+            // failed on the outcome assertion instead, which reported a product defect that did not
+            // exist. A test whose failure path destroys the state it is testing can only lie.
+            if (!accepted || navigation.getPath() == null) {
+                if (helper.getTick() >= 700) {
+                    throw helper.assertionException("a mob in a switched-off family never got a "
+                        + "synchronous path. The whole safety argument is that the fallback is plain "
+                        + "vanilla behaviour, and a fallback that left mobs unable to move would be "
+                        + "worse than the race it guards against");
+                }
+                return;
+            }
 
             check(PathWeaverRuntime.get().dispatchedCount() == dispatchBefore,
                 "a switched-off family must not dispatch; got "
