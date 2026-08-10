@@ -14,8 +14,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Naming the mod is the half of this feature that pays on every install.
  *
- * <p>The breaker beside it may never fire — 731 dispatches on the reference pack produced zero search
- * failures — but a failure that names nothing is a failure nobody can report. These tests pin both
+ * <p>The breaker beside it may never fire — the reference pack produces zero search failures in a full
+ * validation run — but a failure that names nothing is a failure nobody can report. These tests pin both
  * signals and, just as importantly, pin that a signal which cannot fire says so instead of implying
  * no mod was involved.
  */

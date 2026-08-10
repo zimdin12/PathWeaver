@@ -15,8 +15,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p><b>What it is not.</b> A breaker sees throws. The failure a user actually fears is a silent torn
  * read that returns the wrong block and never throws, and nothing here catches that. On the reference
- * 221-jar pack, 731 dispatches produced zero search failures, so on a healthy install this may never
- * fire. The half that earns its place on every install is {@link ModAttribution}: when something does
+ * 221-jar pack a full validation run produces zero search failures, so on a healthy install this may
+ * never fire. The half that earns its place on every install is {@link ModAttribution}: when something does
  * go wrong, the log names the family, the exception and — when it can — the mod.
  *
  * <p><b>Windowed, not cumulative.</b> A counter that never decays converges on a certain trip given

@@ -79,7 +79,7 @@ cannot make anything worse than not having the mod installed.
   this many ticks** (default 1200 = one minute). Set the first to 0 to keep speeding mobs up no matter
   what — failures are still logged either way.
 - Existing configs are untouched. Both settings default in; nothing you have set changes.
-- On a healthy pack this produces **no output at all**. The reference 221-jar pack ran 731 searches
+- On a healthy pack this produces **no output at all**. The reference 221-jar pack ran 753 searches
   with zero failures. That is the correct result: it is a smoke detector.
 
 **Being honest about what it catches:** crashes, not silence. A search that returns a *wrong* path
