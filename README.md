@@ -122,9 +122,10 @@ On the same 221-jar server pack, tier set to `AUDITED` throughout:
 | 4 of the 9 | still refuses, now names the remaining 5 |
 | all 9 | **86 of 187** at stock settings; **184 of 187** with `allowModdedMobAsync=true` |
 
-*Measured with `/pathweaver mobs` on a 0.6.1 build, 221-jar pack, August 2026. The `UNSAFE` row in the
-table above was re-measured on the exact 0.6.1 artifact; these three were not, and the difference is
-worth stating rather than glossing.*
+*All four rows measured with `/pathweaver mobs` on the exact 0.6.1 artifact, 221-jar pack, 15 August
+2026 — the same jar as the `UNSAFE` row above. Read the command, not a scanning harness: a harness
+that inspects the evaluator but not the `PathFinder` a mob holds reports one higher, because the
+warden's evaluator is fine and its `PathFinder` is not.*
 
 That second column is the one to read carefully, and it was quoted here for two releases without its
 precondition. `allowModdedMobAsync` defaults to **false**, and at `AUDITED` it is the origin gate that
