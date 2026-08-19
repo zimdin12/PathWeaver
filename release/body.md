@@ -6,7 +6,9 @@ Every time a mob works out where to walk, Minecraft does that maths **on the ser
 
 PathWeaver moves those searches onto **spare CPU cores** instead. Same paths, same mob behaviour, just not blocking the tick.
 
-**Install it on the server (or in your singleplayer world). Clients need nothing.** Fabric, Minecraft 26.1.2, **Java 25 or newer** — most hosts still default to 21, so check. Needs Fabric API and Cloth Config.
+**Install it on the server (or in your singleplayer world). Clients need nothing.** Fabric, Minecraft **26.1.1, 26.1.2 or 26.2**, **Java 25 or newer** — most hosts still default to 21, so check. Needs Fabric API and Cloth Config.
+
+26.1.1 and 26.1.2 share one file; 26.2 is a separate build. One difference worth knowing: the checked tier (`compatibilityTier=AUDITED`) works **only on 26.1.2**. Its per-mod exemptions are pinned to the exact bytecode they were derived from, so on 26.1.1 and 26.2 they refuse and that tier switches the mod off. The shipped default performs no such check and is unaffected.
 
 ⚠ **It ships with its compatibility checking turned off.** Back up worlds you care about, and read [the warning below](#-read-this-before-installing) before you commit a world to it.
 

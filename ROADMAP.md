@@ -94,7 +94,26 @@ it. It is not the thing that will make PathWeaver safe on an arbitrary pack. 6a,
 
 ---
 
-## 0.6.1 — BUILT: detect unsafety instead of predicting it
+## 0.6.1 — SHIPPED (2026-08-15): detect unsafety instead of predicting it
+
+**Also the first multi-version release: 26.1.1, 26.1.2 and 26.2.** 26.1.1 and 26.1.2 are served by
+one file (every pathfinding and navigation class is byte-identical between them); 26.2 is built from
+the `mc-26.2` branch and needs no code change, only a retarget plus two test-source workarounds for
+vanilla churn (`EntityType` lost ~170 constants; `Minecraft.screen` moved to a private `Gui.screen`).
+
+### Candidate: make `AUDITED` version-portable
+
+Every audit gates on `MINECRAFT_VERSION.equals("26.1.2")`, so the checked tier refuses on 26.1.1 and
+26.2 and switches the mod off there. On **26.1.1 that is provably over-strict**: the pinned vanilla
+class bytes are byte-identical to 26.1.2 and the mod artifacts are the same builds, so the evidence
+genuinely still holds and only a string comparison rejects it. Gating on "do the pinned hashes match"
+rather than "does the version label match" would fix 26.1.1 for free and change nothing on 26.2,
+where the bytes really did change. It is a *loosening* of a safety gate, so it needs its own review
+and its own mutation test — the hash set must be proven to cover every input the proof depended on
+before the version string is allowed to stop being a backstop.
+
+26.2 is a different problem and not this one: `WalkNodeEvaluator`, `PathNavigation` and
+`BlockStateBase` all changed, so those proofs must actually be re-derived, not re-labelled.
 
 **The replacement for `AUDITED`, and it is a better mod for it.** Written below as it was planned;
 what shipped is described in `CHANGELOG.md`. Two things changed in the building: in-flight requests
