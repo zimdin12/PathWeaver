@@ -128,11 +128,11 @@ public final class PathNavigationRoutingGameTest {
             for (int z = 0; z <= 5; z++) helper.setBlock(x, 1, z, Blocks.STONE);
         }
 
-        Mob coordinateMob = helper.spawnWithNoFreeWill(EntityType.ZOMBIE, 1, 2, 1);
-        Mob zeroSpeedMob = helper.spawnWithNoFreeWill(EntityType.ZOMBIE, 1, 2, 2);
-        Mob nanSpeedMob = helper.spawnWithNoFreeWill(EntityType.ZOMBIE, 1, 2, 3);
-        Mob entityMob = helper.spawnWithNoFreeWill(EntityType.ZOMBIE, 1, 2, 4);
-        Mob targetMob = helper.spawnWithNoFreeWill(EntityType.VILLAGER, 6, 2, 4);
+        Mob coordinateMob = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.ZOMBIE), 1, 2, 1);
+        Mob zeroSpeedMob = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.ZOMBIE), 1, 2, 2);
+        Mob nanSpeedMob = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.ZOMBIE), 1, 2, 3);
+        Mob entityMob = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.ZOMBIE), 1, 2, 4);
+        Mob targetMob = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.VILLAGER), 6, 2, 4);
         coordinateMob.setOnGround(true);
         zeroSpeedMob.setOnGround(true);
         nanSpeedMob.setOnGround(true);
@@ -322,7 +322,7 @@ public final class PathNavigationRoutingGameTest {
                         // as eligible. A headless A/B could not show this: with no player on the
                         // server a spider never acquires a target, so moveTo(Entity, ...) is never
                         // called. Driving it directly is the only deterministic proof.
-                        Mob spider = helper.spawnWithNoFreeWill(EntityType.SPIDER, 1, 2, 3);
+                        Mob spider = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.SPIDER), 1, 2, 3);
                         spider.setOnGround(true);
                         PathNavigation spiderNav = spider.getNavigation();
                         check(helper, spiderNav instanceof
@@ -362,7 +362,7 @@ public final class PathNavigationRoutingGameTest {
                         // batch run CONCURRENTLY against one global PathWeaverConfig: a second test
                         // that set and restored maxResultAgeTicks pulled it back to 40 underneath
                         // this one mid-flight and made it fail on staleness. One config owner.
-                        Mob seamMob = helper.spawnWithNoFreeWill(EntityType.ZOMBIE, 1, 2, 5);
+                        Mob seamMob = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.ZOMBIE), 1, 2, 5);
                         seamMob.setOnGround(true);
                         PathNavigation seamNav = seamMob.getNavigation();
                         BlockPos seamA = helper.absolutePos(new BlockPos(8, 2, 5));
@@ -473,7 +473,7 @@ public final class PathNavigationRoutingGameTest {
                 helper.setBlock(x, 3, z, wall ? Blocks.STONE : Blocks.WATER);
             }
         }
-        Mob swimmer = helper.spawnWithNoFreeWill(EntityType.COD, 1, 2, 8);
+        Mob swimmer = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.COD), 1, 2, 8);
         PathNavigation navigation = swimmer.getNavigation();
         check(helper, nodeEvaluator(navigation).getClass() == SwimNodeEvaluator.class,
             "live proof requires the exact SwimNodeEvaluator class, not a subclass or Amphibious");

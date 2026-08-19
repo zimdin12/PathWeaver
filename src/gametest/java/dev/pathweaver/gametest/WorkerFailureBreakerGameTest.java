@@ -146,7 +146,7 @@ public final class WorkerFailureBreakerGameTest {
             for (int x = 0; x <= 12; x++) {
                 for (int z = 0; z <= 6; z++) helper.setBlock(x, 1, z, Blocks.STONE);
             }
-            Mob scanRefused = helper.spawnWithNoFreeWill(EntityType.ZOMBIE, 2, 2, 4);
+            Mob scanRefused = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.ZOMBIE), 2, 2, 4);
             scanRefused.setOnGround(true);
             BlockPos scanTarget = helper.absolutePos(new BlockPos(8, 2, 4));
             scanRefused.getNavigation().moveTo(
@@ -197,7 +197,7 @@ public final class WorkerFailureBreakerGameTest {
             check(!SafetyGate.isAllowed(WalkNodeEvaluator.class),
                 "the trip must reach the gate dispatch asks, not merely be recorded");
 
-            walker = helper.spawnWithNoFreeWill(EntityType.ZOMBIE, 1, 2, 2);
+            walker = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.ZOMBIE), 1, 2, 2);
             walker.setOnGround(true);
             dispatchBefore = PathWeaverRuntime.get().dispatchedCount();
             breakerOpenBefore = PathWeaverRuntime.get().outcomeCount(RequestOutcome.BREAKER_OPEN);

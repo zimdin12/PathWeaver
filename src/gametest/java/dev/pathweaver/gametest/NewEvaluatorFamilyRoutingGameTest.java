@@ -114,10 +114,10 @@ public final class NewEvaluatorFamilyRoutingGameTest {
                 for (int z = 0; z <= 6; z++) helper.setBlock(x, 1, z, Blocks.STONE);
             }
 
-            amphibian = helper.spawnWithNoFreeWill(EntityType.DROWNED, 1, 2, 2);
+            amphibian = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.DROWNED), 1, 2, 2);
             amphibian.setOnGround(true);
             amphibianNav = amphibian.getNavigation();
-            flyer = helper.spawnWithNoFreeWill(EntityType.BEE, 1, 4, 4);
+            flyer = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.BEE), 1, 4, 4);
             flyerNav = flyer.getNavigation();
 
             // Assert the subjects really are the families under test. Spawning a mob that turned out

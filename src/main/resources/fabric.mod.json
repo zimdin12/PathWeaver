@@ -19,7 +19,7 @@
   },
   "mixins": ["pathweaver.mixins.json"],
   "depends": {
-    "minecraft": ">=26.1 <26.2",
+    "minecraft": ">=26.1 <26.3",
     "java": ">=25",
     "fabricloader": ">=0.19",
     "fabric-api": "*",

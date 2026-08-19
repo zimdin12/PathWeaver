@@ -99,9 +99,9 @@ public final class ClientSingleplayerGameTest implements FabricClientGameTest {
                 float malusInFlight = Float.NaN;
 
                 for (Subject s : List.of(
-                        new Subject("zombie", EntityType.ZOMBIE),
-                        new Subject("bee", EntityType.BEE),
-                        new Subject("drowned", EntityType.DROWNED))) {
+                        new Subject("zombie", VanillaTypes.mob(VanillaTypes.ZOMBIE)),
+                        new Subject("bee", VanillaTypes.mob(VanillaTypes.BEE)),
+                        new Subject("drowned", VanillaTypes.mob(VanillaTypes.DROWNED)))) {
                     var entity = s.type().create(level, EntitySpawnReason.COMMAND);
                     if (!(entity instanceof Mob mob)) continue;
                     BlockPos at = origin.offset(-10, 1, spawned.size() * 3 - 3);
@@ -200,7 +200,7 @@ public final class ClientSingleplayerGameTest implements FabricClientGameTest {
             context.getInput().setCursorPos(4.0, 4.0);
             context.waitTicks(20);
             String screenName = context.computeOnClient(client ->
-                client.screen == null ? "<none>" : client.screen.getClass().getName());
+                CurrentScreen.get(client) == null ? "<none>" : CurrentScreen.get(client).getClass().getName());
             System.out.println("PW_CLIENT configScreen=" + screenName);
             check(!"<none>".equals(screenName),
                 "the settings screen must actually render; this is the only test that draws it");
@@ -218,7 +218,7 @@ public final class ClientSingleplayerGameTest implements FabricClientGameTest {
             // setting the list's scroll field: the point is to render what a user renders.
             context.runOnClient(client -> {
                 for (int i = 0; i < 12; i++) {
-                    client.screen.mouseScrolled(
+                    CurrentScreen.get(client).mouseScrolled(
                         client.getWindow().getGuiScaledWidth() / 2.0,
                         client.getWindow().getGuiScaledHeight() / 2.0,
                         0.0, -6.0);

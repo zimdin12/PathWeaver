@@ -110,7 +110,7 @@ public final class UnsafeTierWaiverGameTest {
             cfg.enabled = true;
             cfg.repathToleranceBlocks = 0;
 
-            walker = helper.spawnWithNoFreeWill(EntityType.ZOMBIE, 1, 2, 2);
+            walker = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.ZOMBIE), 1, 2, 2);
             walker.setOnGround(true);
             PathNavigation navigation = walker.getNavigation();
 

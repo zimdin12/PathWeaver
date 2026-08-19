@@ -140,7 +140,7 @@ public final class AuditedTierWalkRoutingGameTest {
             for (int x = 0; x <= 14; x++) {
                 for (int z = 0; z <= 4; z++) helper.setBlock(x, 1, z, Blocks.STONE);
             }
-            mob = helper.spawnWithNoFreeWill(EntityType.ZOMBIE, 1, 2, 2);
+            mob = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.ZOMBIE), 1, 2, 2);
             mob.setOnGround(true);
             navigation = mob.getNavigation();
             cfg.enabled = true;
