@@ -42,7 +42,7 @@
   "text.autoconfig.pathweaver.option.trustedMods.@Tooltip[1]": "The scoped version of Unsafe: accept the mods you have decided about, not every mod you ever install.",
   "text.autoconfig.pathweaver.option.trustedMods.@Tooltip[2]": "Not a safety feature. These run unchecked, exactly as Unsafe would, just aimed at fewer mods.",
   "text.autoconfig.pathweaver.option.trustedMods.@Tooltip[3]": "Matched by mod id, so an entry keeps applying after that mod updates. Restart to apply.",
-  "text.autoconfig.pathweaver.option.workerFailureLimit": "Switch a mob family off after N failed searches",
+  "text.autoconfig.pathweaver.option.workerFailureLimit": "Switch a mob family off after N failures",
   "text.autoconfig.pathweaver.option.workerFailureLimit.@Tooltip[0]": "If a search crashes on a worker this many times, that mob family paths normally again for the rest of the session.",
   "text.autoconfig.pathweaver.option.workerFailureLimit.@Tooltip[1]": "A safety net, not a fix: it catches crashes, not a bad path produced without one.",
   "text.autoconfig.pathweaver.option.workerFailureLimit.@Tooltip[2]": "Set to 0 to never switch anything off; failures are still logged and counted.",

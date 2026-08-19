@@ -81,9 +81,9 @@ log names the family, the exception and, where it can, the mod responsible. One 
 not switch anything off; it is logged and counted. Falling back to vanilla is always safe, so this
 cannot make anything worse than not having the mod installed.
 
-- Two new settings: **switch a family off after N failed searches** (default 3) and **counted within
-  this many ticks** (default 1200 = one minute). Set the first to 0 to keep speeding mobs up no matter
-  what — failures are still logged either way.
+- Two new settings, both under General: **Switch a mob family off after N failures** (default 3) and
+  **...counted within this many ticks** (default 1200 = one minute). Set the first to 0 to keep
+  speeding mobs up no matter what — failures are still logged either way.
 - Existing configs are untouched. Both settings default in; nothing you have set changes.
 - On a healthy pack this produces **no output at all**. The reference 221-jar pack ran 753 searches
   with zero failures. That is the correct result: it is a smoke detector.

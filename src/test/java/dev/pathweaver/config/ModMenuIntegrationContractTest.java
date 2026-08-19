@@ -95,6 +95,99 @@ class ModMenuIntegrationContractTest {
         assertTrue(drain.contains("already accepted finish"), drain);
     }
 
+    /**
+     * Every generated option must have a label and exactly the tooltip lines it declares.
+     *
+     * <p>Cloth renders a key it cannot resolve as the literal key, so a missing entry does not fail
+     * anything — it puts {@code text.autoconfig.pathweaver.option.workerFailureLimit} on screen in
+     * front of a user. This project has already shipped that once, when a tier's enum labels had no
+     * language entries, and the settings screen showed bare constants for a whole release.
+     *
+     * <p>The two directions are separate defects and are asserted separately:
+     * <ul>
+     *   <li>a declared line with no entry renders as a raw key;
+     *   <li>an entry past the declared count is text nobody will ever see — the author wrote a
+     *       sentence, lowered {@code count}, and the sentence silently stopped rendering.
+     * </ul>
+     *
+     * <p>The client game test draws this screen, but it captures one screenshot of the top of the
+     * General category, and these fields are below the fold. Nothing else looks at them.
+     */
+    @Test
+    void everyOptionHasALabelAndExactlyTheTooltipLinesItDeclares() throws Exception {
+        JsonObject lang = JsonParser.parseString(Files.readString(
+            RESOURCES.resolve(Path.of("assets", "pathweaver", "lang", "en_us.json"))))
+            .getAsJsonObject();
+
+        List<String> problems = new java.util.ArrayList<>();
+        int checkedFields = 0;
+        int checkedLines = 0;
+        for (Field field : PathWeaverConfig.class.getDeclaredFields()) {
+            if (Modifier.isStatic(field.getModifiers())) continue;
+            if (field.isAnnotationPresent(ConfigEntry.Gui.Excluded.class)) continue;
+            checkedFields++;
+
+            String base = "text.autoconfig.pathweaver.option." + field.getName();
+            if (!lang.has(base) || lang.get(base).getAsString().isBlank()) {
+                problems.add("no label for " + field.getName() + " (key " + base + ")");
+            }
+
+            ConfigEntry.Gui.Tooltip tooltip = field.getAnnotation(ConfigEntry.Gui.Tooltip.class);
+            int declared = tooltip == null ? 0 : tooltip.count();
+            for (int i = 0; i < declared; i++) {
+                String key = base + ".@Tooltip[" + i + "]";
+                checkedLines++;
+                if (!lang.has(key) || lang.get(key).getAsString().isBlank()) {
+                    problems.add("declared tooltip line missing: " + key);
+                }
+            }
+            // One past the end: an orphan line that no longer renders.
+            String orphan = base + ".@Tooltip[" + declared + "]";
+            if (lang.has(orphan)) {
+                problems.add("tooltip line beyond the declared count of " + declared
+                    + " never renders: " + orphan);
+            }
+        }
+
+        assertTrue(checkedFields > 0, "no config fields were inspected, so this asserts nothing");
+        assertTrue(checkedLines > 0, "no tooltip lines were inspected, so this asserts nothing");
+        assertEquals(List.of(), problems,
+            "the settings screen would show raw keys or hide written text");
+    }
+
+    /**
+     * No language entry may name an option that no longer exists.
+     *
+     * <p>The reverse of the check above, and the one that catches a renamed field: the old key stays
+     * behind, reads as covered, and the new field's own key is the one that is missing. Renaming
+     * {@code asyncEnabled} to {@code enabled} is exactly this shape and has happened here before.
+     */
+    @Test
+    void noLanguageEntryNamesAnOptionThatDoesNotExist() throws Exception {
+        JsonObject lang = JsonParser.parseString(Files.readString(
+            RESOURCES.resolve(Path.of("assets", "pathweaver", "lang", "en_us.json"))))
+            .getAsJsonObject();
+
+        java.util.Set<String> fields = new java.util.HashSet<>();
+        for (Field field : PathWeaverConfig.class.getDeclaredFields()) {
+            if (!Modifier.isStatic(field.getModifiers())) fields.add(field.getName());
+        }
+
+        String prefix = "text.autoconfig.pathweaver.option.";
+        List<String> orphans = new java.util.ArrayList<>();
+        for (String key : lang.keySet()) {
+            if (!key.startsWith(prefix)) continue;
+            String rest = key.substring(prefix.length());
+            int dot = rest.indexOf('.');
+            String owner = dot < 0 ? rest : rest.substring(0, dot);
+            // Enum-constant labels live under the option that declares them, e.g.
+            // option.compatibilityTier.UNSAFE -- those resolve to the field name too.
+            if (!fields.contains(owner)) orphans.add(key);
+        }
+        assertEquals(List.of(), orphans,
+            "language entries for options that no longer exist -- a rename left the old key behind");
+    }
+
     @Test
     void staticImplementationFieldsAreExcludedFromGeneratedGui() {
         List<String> exposedStatics = Arrays.stream(PathWeaverConfig.class.getDeclaredFields())

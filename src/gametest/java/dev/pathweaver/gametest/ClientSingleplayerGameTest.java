@@ -207,6 +207,42 @@ public final class ClientSingleplayerGameTest implements FabricClientGameTest {
             System.out.println("PW_CLIENT screenshot="
                 + context.takeScreenshot("pathweaver-config-general"));
 
+            // Scroll to the bottom of the same category and capture it too.
+            //
+            // 0.6.1 adds two settings, and both land below the fold of the shot above -- so the one
+            // test that draws this screen was drawing everything EXCEPT the release's new options.
+            // That is not hypothetical here: this release very nearly shipped a jar whose lang file
+            // was stale, and the tooltip it got wrong belongs to one of these two fields.
+            //
+            // Driven through mouseScrolled, which is the path a scroll wheel takes, rather than by
+            // setting the list's scroll field: the point is to render what a user renders.
+            context.runOnClient(client -> {
+                for (int i = 0; i < 12; i++) {
+                    client.screen.mouseScrolled(
+                        client.getWindow().getGuiScaledWidth() / 2.0,
+                        client.getWindow().getGuiScaledHeight() / 2.0,
+                        0.0, -6.0);
+                }
+            });
+            context.waitTicks(5);
+            System.out.println("PW_CLIENT screenshot="
+                + context.takeScreenshot("pathweaver-config-general-scrolled"));
+
+            // The other two categories, if Cloth exposes their tabs as clickable buttons. Reported
+            // rather than asserted: this is a rendering sweep looking for clipped labels, and a
+            // Cloth version that lays tabs out differently should not turn into a red test.
+            for (String category : new String[] {
+                    "Worker capacity (restart required)", "Repath and result validity"}) {
+                if (context.tryClickScreenButton(category)) {
+                    context.waitTicks(5);
+                    System.out.println("PW_CLIENT screenshot="
+                        + context.takeScreenshot("pathweaver-config-"
+                            + category.replaceAll("[^A-Za-z]+", "-").toLowerCase()));
+                } else {
+                    System.out.println("PW_CLIENT category-tab-not-clickable=" + category);
+                }
+            }
+
             context.setScreen(() -> null);
             context.waitTicks(5);
             System.out.println("PW_CLIENT DONE");
