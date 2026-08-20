@@ -70,6 +70,7 @@ class EpilogueLifecycleTest {
         @Override public NavigationIdentity pathweaver$identity() {
             return new NavigationIdentity(uuid, world, "overworld", this, null, 0L);
         }
+        @Override public void pathweaver$rearmRecompute() { }
         @Override public void pathweaver$rollbackOptimisticTarget() { rollbacks++; }
         @Override public void pathweaver$abortFailedInstall() { }
     }
@@ -91,7 +92,7 @@ class EpilogueLifecycleTest {
             CountingEvaluator evaluator = new CountingEvaluator();
             RequestKey requestKey = key(1L, 1);
             sink.setTick(100L);
-            sink.register(requestKey, nav, RequestTarget.of(java.util.Set.of(), 0, false, 0, 0.0F), false);
+            sink.register(requestKey, nav, RequestTarget.of(java.util.Set.of(), 0, false, 0, 0.0F), false, RequestOrigin.MOVE_TO);
             sink.armEpilogue(requestKey, evaluator, opened());
 
             route.run().accept(sink, requestKey);
@@ -134,11 +135,11 @@ class EpilogueLifecycleTest {
         RequestKey secondKey = key(2L, 7);
         sink.setTick(100L);
 
-        sink.register(firstKey, nav, RequestTarget.of(java.util.Set.of(), 0, false, 0, 0.0F), false);
+        sink.register(firstKey, nav, RequestTarget.of(java.util.Set.of(), 0, false, 0, 0.0F), false, RequestOrigin.MOVE_TO);
         sink.armEpilogue(firstKey, first, opened());
         sink.supersede(7);
 
-        sink.register(secondKey, nav, RequestTarget.of(java.util.Set.of(), 0, false, 0, 0.0F), false);
+        sink.register(secondKey, nav, RequestTarget.of(java.util.Set.of(), 0, false, 0, 0.0F), false, RequestOrigin.MOVE_TO);
         sink.armEpilogue(secondKey, second, opened());
 
         sink.runEpilogue(firstKey);
@@ -204,7 +205,7 @@ class EpilogueLifecycleTest {
         sink.setTick(100L);
         sink.armEpilogue(key(1L, 11), orphan, opened());
         RequestKey live = key(2L, 12);
-        sink.register(live, nav, RequestTarget.of(java.util.Set.of(), 0, false, 0, 0.0F), false);
+        sink.register(live, nav, RequestTarget.of(java.util.Set.of(), 0, false, 0, 0.0F), false, RequestOrigin.MOVE_TO);
         sink.armEpilogue(live, registered, opened());
 
         sink.clear();

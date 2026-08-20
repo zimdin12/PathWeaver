@@ -111,7 +111,11 @@ class PathNavigationRoutingContractTest {
         // Not just "register is called after the gate" -- that still passes when the gate's value is
         // replaced by a constant. The last thing pushed before the call must be a LOCAL VARIABLE
         // load, i.e. the decision itself, not ICONST_0.
+        // Two slots, not one. The land-registry decision is no longer the LAST argument pushed to
+        // register -- the request origin goes after it -- so tracking only the most recent push
+        // watches the wrong operand and this contract fails on a call that is perfectly correct.
         boolean[] lastPushWasVarLoad = {false};
+        boolean[] previousPushWasVarLoad = {false};
         boolean[] registerGetsTheDecision = {false};
         new ClassReader(classBytes(PathNavigationMixin.class)).accept(new ClassVisitor(Opcodes.ASM9) {
             @Override public MethodVisitor visitMethod(int access, String name, String descriptor,
@@ -159,7 +163,7 @@ class PathNavigationRoutingContractTest {
                         if (owner.equals("dev/pathweaver/async/EntityInstallSink")
                                 && method.equals("register")) {
                             registerCall[0] = instruction[0];
-                            registerGetsTheDecision[0] = lastPushWasVarLoad[0];
+                            registerGetsTheDecision[0] = previousPushWasVarLoad[0];
                         }
                         lastPushWasVarLoad[0] = false;
                         next();
@@ -172,11 +176,13 @@ class PathNavigationRoutingContractTest {
                         next();
                     }
                     @Override public void visitInsn(int opcode) {
+                        previousPushWasVarLoad[0] = lastPushWasVarLoad[0];
                         lastPushWasVarLoad[0] = false;
                         next();
                     }
                     @Override public void visitJumpInsn(int opcode, org.objectweb.asm.Label label) { next(); }
                     @Override public void visitVarInsn(int opcode, int varIndex) {
+                        previousPushWasVarLoad[0] = lastPushWasVarLoad[0];
                         lastPushWasVarLoad[0] = opcode == Opcodes.ILOAD;
                         next();
                     }

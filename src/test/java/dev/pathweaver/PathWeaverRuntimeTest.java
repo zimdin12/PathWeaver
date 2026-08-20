@@ -3,6 +3,7 @@ package dev.pathweaver;
 import dev.pathweaver.async.NavigationIdentity;
 import dev.pathweaver.async.RequestKey;
 import dev.pathweaver.async.RequestTarget;
+import dev.pathweaver.async.RequestOrigin;
 import dev.pathweaver.duck.PWNavigation;
 import net.minecraft.world.level.pathfinder.Path;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -109,6 +110,7 @@ class PathWeaverRuntimeTest {
         @Override public void pathweaver$exitMovementRequest() { movementDepth--; }
         @Override public boolean pathweaver$consumeAcceptedDeferred() { return false; }
 
+        @Override public void pathweaver$rearmRecompute() { }
         @Override public void pathweaver$rollbackOptimisticTarget() { }
         @Override public void pathweaver$abortFailedInstall() { }
 
@@ -154,7 +156,7 @@ class PathWeaverRuntimeTest {
             FakeNavigation navigation = new FakeNavigation();
             RequestKey key = runtime.nextRequestKey(77);
             runtime.entitySink().register(key, navigation,
-                RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false);
+                RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false, RequestOrigin.MOVE_TO);
 
             runtime.onServerStopping(null);
 

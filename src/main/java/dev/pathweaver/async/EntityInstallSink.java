@@ -21,7 +21,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
 
     private record Registration(RequestKey key, PWNavigation navigation,
                                 NavigationIdentity identity, RequestTarget target,
-                                boolean requiresEmptyLandRegistry) { }
+                                boolean requiresEmptyLandRegistry, RequestOrigin origin) { }
 
     private static final RequestTarget UNSPECIFIED_TARGET =
         RequestTarget.of(Set.of(), 0, false, 0, 0.0F);
@@ -70,6 +70,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     private final Map<Integer, Long> failUntilTick = new ConcurrentHashMap<>();
     private final AtomicBoolean callbackFailureLogged = new AtomicBoolean();
     private final AtomicBoolean rollbackFailureLogged = new AtomicBoolean();
+    private final AtomicBoolean rearmFailureLogged = new AtomicBoolean();
     private final BooleanSupplier landRegistryAllowsInstall;
     /** Tick at which expired cooldown entries were last swept, so the map cannot grow forever. */
     private long lastCooldownSweepTick;
@@ -92,9 +93,9 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
 
     /** Capture whether this exact request depends on Fabric's land-provider registry staying empty. */
     public void register(RequestKey key, PWNavigation navigation, RequestTarget target,
-                         boolean requiresEmptyLandRegistry) {
-        Registration next = new Registration(
-            key, navigation, navigation.pathweaver$identity(), target, requiresEmptyLandRegistry);
+                         boolean requiresEmptyLandRegistry, RequestOrigin origin) {
+        Registration next = new Registration(key, navigation, navigation.pathweaver$identity(),
+            target, requiresEmptyLandRegistry, origin);
         Registration existing = inFlight.putIfAbsent(key.entityId(), next);
         if (existing != null) {
             throw new IllegalStateException("Entity " + key.entityId()
@@ -107,7 +108,9 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         // Explicit false, not a defaulted one. The 3-arg overload this used to call defaulted the
         // land-registry flag to fail-open and had no production caller, so a future call site that
         // forgot the argument would have silently disarmed the install-time re-check.
-        register(key, navigation, UNSPECIFIED_TARGET, false);
+        // MOVE_TO explicitly, for the reason the land-registry flag is explicit: RECOMPUTE is the
+        // origin with the extra obligation, so a defaulted origin would silently skip it.
+        register(key, navigation, UNSPECIFIED_TARGET, false, RequestOrigin.MOVE_TO);
     }
 
     public boolean isRegistered(int entityId) {
@@ -168,7 +171,40 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
      */
     private void finishDiscard(Registration registration, RequestOutcome reason) {
         rollbackOptimisticTarget(registration);
+        rearmRecomputeIfStranded(registration, reason);
         dev.pathweaver.PathWeaverRuntime.get().markOutcome(reason);
+    }
+
+    /**
+     * Hand a stranded {@code recomputePath} caller back to vanilla instead of leaving it frozen.
+     *
+     * <p>Cancelling {@code createPath} on the recompute path makes vanilla stamp
+     * {@code timeLastRecompute} and clear {@code hasDelayedRecomputation} on a mob whose path it
+     * just nulled. If the search then produces nothing, both of vanilla's retry routes stay shut for
+     * twenty ticks and the mob stands still for up to a second.
+     *
+     * <p>The retry is also forced synchronous. Re-arming alone would let the next tick dispatch
+     * again, fail the same way, and re-arm again — a per-tick dispatch loop in place of a stall.
+     * One vanilla search is what the mob would have had if this mod were not installed, which is the
+     * direction every other fallback here takes.
+     */
+    private void rearmRecomputeIfStranded(Registration registration, RequestOutcome reason) {
+        if (registration.origin() != RequestOrigin.RECOMPUTE || !reason.strandsRecompute()) return;
+        failUntilTick.put(registration.key().entityId(), currentTick + FAIL_COOLDOWN_TICKS);
+        try {
+            registration.navigation().pathweaver$rearmRecompute();
+        } catch (Throwable rearmFailure) {
+            // Vanilla is left in the state it was already in -- suppressed for twenty ticks -- which
+            // is the pre-existing behaviour, not a new one. Never let this break the discard.
+            if (rearmFailureLogged.compareAndSet(false, true)) {
+                try {
+                    PathWeaver.LOG.warn("Re-arming vanilla's path recompute threw; the mob may pause "
+                        + "briefly before it paths again.", rearmFailure);
+                } catch (Throwable ignored) {
+                    // Discard stays terminal even if the logging backend is compromised.
+                }
+            }
+        }
     }
 
     /** Install threw: clear any partially-applied path AND restore the pre-dispatch target. */

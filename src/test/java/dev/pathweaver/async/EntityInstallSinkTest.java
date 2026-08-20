@@ -4,6 +4,7 @@ import dev.pathweaver.duck.PWNavigation;
 import net.minecraft.world.level.pathfinder.Path;
 
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -26,6 +27,8 @@ class EntityInstallSinkTest {
             aborts++; pathCleared = true; rollbacks++;
         }
         @Override public void pathweaver$rollbackOptimisticTarget() { rollbacks++; }
+        int rearms;
+        @Override public void pathweaver$rearmRecompute() { rearms++; }
 
         int installs;
         boolean stale;
@@ -60,8 +63,8 @@ class EntityInstallSinkTest {
         RequestTarget target = RequestTarget.of(java.util.Set.of("walk"), 8, false, 1, 32.0F);
         RequestKey walk = key(1L, 1L, 20);
         RequestKey swim = key(1L, 2L, 21);
-        sink.register(walk, new FakeNav(), target, true);
-        sink.register(swim, new FakeNav(), target, false);
+        sink.register(walk, new FakeNav(), target, true, RequestOrigin.MOVE_TO);
+        sink.register(swim, new FakeNav(), target, false, RequestOrigin.MOVE_TO);
         assertFalse(sink.isStale(walk, 1L, 0.0, 0.0, 0.0));
         assertFalse(sink.isStale(swim, 1L, 0.0, 0.0, 0.0));
 
@@ -374,7 +377,7 @@ class EntityInstallSinkTest {
         FakeNav nav = new FakeNav();
         RequestTarget first = RequestTarget.of(java.util.Set.of("a"), 8, false, 1, 32.0F);
         RequestTarget changed = RequestTarget.of(java.util.Set.of("b"), 8, false, 1, 32.0F);
-        sink.register(key(1L, 9L, 15), nav, first, false);
+        sink.register(key(1L, 9L, 15), nav, first, false, RequestOrigin.MOVE_TO);
 
         assertEquals(EntityInstallSink.PendingDecision.PRESERVE,
             sink.pendingDecision(15, nav, first));
@@ -447,7 +450,7 @@ class EntityInstallSinkTest {
         FakeNav nav = new FakeNav();
         RequestKey key = key(1L, 3L, 17);
         RequestTarget target = RequestTarget.of(java.util.Set.of("same"), 8, false, 1, 32.0F);
-        sink.register(key, nav, target, false);
+        sink.register(key, nav, target, false, RequestOrigin.MOVE_TO);
         installer.enqueue(key, 0L, PathOutcome.success(dummyPath()), 0.0, 0.0, 0.0);
         assertEquals(1, installer.pending(), "accepted worker result must be queued before OFF");
         try {
@@ -511,5 +514,63 @@ class EntityInstallSinkTest {
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
+    }
+
+    /**
+     * A stranded recompute hands control back to vanilla; nothing else does.
+     *
+     * <p>The bug: cancelling {@code createPath} inside {@code recomputePath} makes vanilla stamp
+     * {@code timeLastRecompute} and clear {@code hasDelayedRecomputation} on a mob whose path it just
+     * nulled. If the search then yields nothing, both of vanilla's retry routes are shut for twenty
+     * ticks and the mob stands still for up to a second. Verified against the real 26.1.2 bytecode:
+     * the stamp is at offset 54-62 and the flag at 65-67, both after the createPath call at 48.
+     *
+     * <p>Three cases in one test because the controls are the point. A version that always re-armed
+     * would pass the first assertion alone, and re-arming a superseded request fights the newer one
+     * that is already in flight to install.
+     */
+    @Test
+    void aStrandedRecomputeReArmsVanillaAndTheControlsDoNot() {
+        // POSITIVE: recompute origin, search threw, nothing else coming.
+        EntityInstallSink stranded = new EntityInstallSink();
+        stranded.setTick(100L);
+        FakeNav strandedNav = new FakeNav();
+        RequestKey strandedKey = key(1L, 1L, 7);
+        stranded.register(strandedKey, strandedNav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F),
+            false, RequestOrigin.RECOMPUTE);
+        // ARRIVED_STALE, deliberately, not failed(). failed() sets the sync cooldown itself, so a
+        // test driven through it asserts a cooldown that exists whether or not this feature does --
+        // mutation M4 removed the cooldown line here and that version of this test still passed.
+        stranded.discard(strandedKey, RequestOutcome.ARRIVED_STALE);
+        assertEquals(1, strandedNav.rearms,
+            "a recompute whose search produced nothing must hand back to vanilla, or the mob stands "
+                + "still for twenty ticks while vanilla believes it already recomputed");
+        assertTrue(stranded.shouldForceSync(7, 100L),
+            "the re-armed retry must run synchronously, or the next tick dispatches, fails the same "
+                + "way and re-arms again -- a per-tick dispatch loop instead of a stall");
+
+        // NEGATIVE 1: same terminal outcome, but the request came from moveTo, which still holds its
+        // path. Nothing was suppressed, so nothing needs undoing.
+        EntityInstallSink fromMoveTo = new EntityInstallSink();
+        fromMoveTo.setTick(100L);
+        FakeNav moveToNav = new FakeNav();
+        RequestKey moveToKey = key(1L, 1L, 8);
+        fromMoveTo.register(moveToKey, moveToNav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F),
+            false, RequestOrigin.MOVE_TO);
+        fromMoveTo.discard(moveToKey, RequestOutcome.ARRIVED_STALE);
+        assertEquals(0, moveToNav.rearms, "a moveTo caller was never suppressed; re-arming it would "
+            + "make this mod recompute where vanilla would not have");
+
+        // NEGATIVE 2: recompute origin, but superseded -- a newer request for this mob is already in
+        // flight and will install. Re-arming would race it.
+        EntityInstallSink superseded = new EntityInstallSink();
+        superseded.setTick(100L);
+        FakeNav supersededNav = new FakeNav();
+        RequestKey supersededKey = key(1L, 1L, 9);
+        superseded.register(supersededKey, supersededNav,
+            RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false, RequestOrigin.RECOMPUTE);
+        superseded.supersede(9);
+        assertEquals(0, supersededNav.rearms,
+            "a superseded request is replaced, not stranded -- the newer one installs");
     }
 }

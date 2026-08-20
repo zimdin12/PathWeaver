@@ -131,6 +131,38 @@ public enum RequestOutcome {
         }
     }
 
+    /**
+     * Did this outcome leave a {@code recomputePath} caller stranded — no path, and nothing else
+     * coming to give it one?
+     *
+     * <p>Only meaningful for {@link RequestOrigin#RECOMPUTE}. It is not "did we install": vanilla
+     * would have ended in the same state for some of these, and re-arming its retry then would make
+     * this mod retry where vanilla would have waited.
+     *
+     * <p>Exhaustive switch with no default, for the reason {@link #countsAgainstDispatched} states:
+     * a new constant must not silently pick a side. Here the silent side would be "not stranded",
+     * which reintroduces the twenty-tick freeze this exists to prevent.
+     */
+    public boolean strandsRecompute() {
+        return switch (this) {
+            // It has a path.
+            case INSTALLED -> false;
+            // A newer request for this mob is in flight and will install; re-arming would fight it.
+            case SUPERSEDED -> false;
+            // It stopped on purpose, or the world is going away. Nothing wants a path.
+            case NAVIGATION_STOPPED, SERVER_RESET -> false;
+            // The search proved there is no path. Vanilla's own createPath would have returned null
+            // here too and suppressed its retry identically, so this is not a divergence to correct.
+            case NO_PATH -> false;
+            // Never reached a worker: the dispatch site fell through to vanilla, which computed
+            // synchronously and left a real path. Nothing was cancelled.
+            case POOL_SATURATED, SETUP_FAILED_PRE_DISPATCH, BREAKER_OPEN -> false;
+            // Dispatched, cancelled vanilla's call, and then produced nothing. These are the cases
+            // where the mob is standing still and vanilla thinks it already handled it.
+            case ARRIVED_STALE, SETUP_FAILED, SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED -> true;
+        };
+    }
+
     public boolean isDiscard() {
         // BREAKER_OPEN joins the exemptions for the same reason POOL_SATURATED is one: nothing was
         // computed, so nothing was thrown away. Counting a refusal as waste would make the waste

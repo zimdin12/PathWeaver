@@ -40,6 +40,7 @@ class NavigationIdentityTest {
         @Override public void pathweaver$exitMovementRequest() { movementDepth--; }
         @Override public boolean pathweaver$consumeAcceptedDeferred() { return false; }
 
+        @Override public void pathweaver$rearmRecompute() { }
         @Override public void pathweaver$rollbackOptimisticTarget() { }
         @Override public void pathweaver$abortFailedInstall() { }
 

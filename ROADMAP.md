@@ -162,6 +162,16 @@ Also in 0.6.1:
 
 ## 0.7 — Requests carry their origin
 
+**The recompute half is DONE.** `RequestOrigin` is threaded to the sink, and a stranded
+`RECOMPUTE` request restores `timeLastRecompute` and re-arms `hasDelayedRecomputation`, with the
+retry forced synchronous. Note for anyone reading the old plan: re-arming the flag alone does not
+work — `recomputePath` is gated on the stamp, so the flag just spins for twenty ticks. Both halves
+are required, and DESIGN.md §13 now carries the bytecode that shows it. Five mutations killed,
+including one that first SURVIVED because the test drove `failed()`, which sets the sync cooldown
+itself and so asserted a property that held with the feature removed.
+
+Still open in 0.7: splitting `ARRIVED_STALE` into its real causes.
+
 Plumbing with a real payoff, and a prerequisite for everything after it.
 
 A result currently arrives knowing only which navigation asked. It must arrive knowing **why**, so

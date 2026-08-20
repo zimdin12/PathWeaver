@@ -92,4 +92,14 @@ public interface PWNavigation {
      * {@link #pathweaver$rollbackOptimisticTarget()} instead, which preserves the existing path.
      */
     void pathweaver$abortFailedInstall();
+
+    /**
+     * Undo the suppression a cancelled {@code recomputePath} left behind, so vanilla retries.
+     *
+     * <p>Restores {@code timeLastRecompute} to its pre-dispatch value AND sets
+     * {@code hasDelayedRecomputation}. Both are required and neither is sufficient: {@code tick()}
+     * only calls {@code recomputePath} when the flag is set, and {@code recomputePath} only acts
+     * when {@code gameTime - timeLastRecompute > 20}. Setting the flag alone spins for twenty ticks.
+     */
+    void pathweaver$rearmRecompute();
 }

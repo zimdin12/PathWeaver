@@ -51,6 +51,8 @@ public abstract class PathNavigationMixin implements PWNavigation {
     @Shadow protected NodeEvaluator nodeEvaluator;
     @Shadow @org.spongepowered.asm.mixin.Final private PathFinder pathFinder;
     @Shadow private BlockPos targetPos;
+    @Shadow protected long timeLastRecompute;
+    @Shadow protected boolean hasDelayedRecomputation;
     @Shadow public abstract void stop();
     @Shadow private int reachRange;
     @Shadow private float maxVisitedNodesMultiplier;
@@ -80,6 +82,14 @@ public abstract class PathNavigationMixin implements PWNavigation {
     @Unique private int pathweaver$navigationRequestDepth;
     @Unique private long pathweaver$targetRevision;
     @Unique private boolean pathweaver$recomputeInvalidated;
+    /**
+     * Which vanilla call site the in-flight request came from. MOVE_TO unless the recompute wrap is
+     * on the stack, because that wrap is the only origin with an obligation on the way out.
+     */
+    @Unique private dev.pathweaver.async.RequestOrigin pathweaver$currentOrigin =
+        dev.pathweaver.async.RequestOrigin.MOVE_TO;
+    /** {@code timeLastRecompute} as it stood before vanilla stamped it over our cancelled call. */
+    @Unique private long pathweaver$recomputeStampBeforeDispatch;
     /**
      * The navigation's target as it stood when {@code recomputePath} was entered.
      *
@@ -291,6 +301,12 @@ public abstract class PathNavigationMixin implements PWNavigation {
             this.targetPos = this.pathweaver$recomputeTargetClaim;
             target = this.pathweaver$recomputeTargetClaim;
         }
+        // Origin and the pre-dispatch stamp, captured HERE because this is the only place that
+        // knows the request came from recomputePath, and because vanilla has not stamped yet -- it
+        // does that two bytecodes after createPath returns. Read it after and we would capture our
+        // own suppression instead of the value to restore.
+        this.pathweaver$currentOrigin = dev.pathweaver.async.RequestOrigin.RECOMPUTE;
+        this.pathweaver$recomputeStampBeforeDispatch = this.timeLastRecompute;
         this.pathweaver$navigationRequestDepth++;
         this.pathweaver$recomputeInvalidated = true;
         this.pathweaver$requestSpeed = this.pathweaver$recomputeRequestSpeed;
@@ -299,6 +315,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
         } finally {
             this.pathweaver$recomputeInvalidated = false;
             this.pathweaver$navigationRequestDepth--;
+            this.pathweaver$currentOrigin = dev.pathweaver.async.RequestOrigin.MOVE_TO;
         }
     }
 
@@ -562,7 +579,8 @@ public abstract class PathNavigationMixin implements PWNavigation {
             requestKey = rt.nextRequestKey(entityId);
             final RequestKey submittedKey = requestKey;
             if (!intentAdvanced) pathweaver$targetRevision++;
-            sink.register(requestKey, this, requestTarget, requiresEmptyLandRegistry);
+            sink.register(requestKey, this, requestTarget, requiresEmptyLandRegistry,
+                this.pathweaver$currentOrigin);
             stage = dev.pathweaver.async.RequestOutcome.DispatchStage.REGISTERED;
             boolean accepted = rt.pool().submit(new PathRequest(submittedKey, tick, search,
                 result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz),
@@ -685,6 +703,16 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // A real path is now installed, so there is nothing optimistic left to undo.
         this.pathweaver$optimisticTargetPos = null;
         this.pathweaver$targetPosBeforeDispatch = null;
+    }
+
+    @Override
+    public void pathweaver$rearmRecompute() {
+        // Both halves, or neither works. tick() only calls recomputePath when the flag is set, and
+        // recomputePath only acts when gameTime - timeLastRecompute > 20. Restoring the stamp alone
+        // leaves nothing calling it this tick; setting the flag alone makes tick() call a method that
+        // takes its own else-branch and just sets the flag again, spinning until the stamp ages out.
+        this.timeLastRecompute = this.pathweaver$recomputeStampBeforeDispatch;
+        this.hasDelayedRecomputation = true;
     }
 
     @Override
