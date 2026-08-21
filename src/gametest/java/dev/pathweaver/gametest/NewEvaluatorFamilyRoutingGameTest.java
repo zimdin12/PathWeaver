@@ -100,10 +100,10 @@ public final class NewEvaluatorFamilyRoutingGameTest {
             // This harness declares no mixin config, so nothing is denied and nothing here needs to
             // touch the shared denial set. That matters: mutating it concurrently with the long
             // routing test is what made the default gate flaky when this test lived there.
-            synchronized (SafetyGate.deniedBySafety) {
-                check(SafetyGate.deniedBySafety.isEmpty(),
+            {
+                check(SafetyGate.snapshotDenials().isEmpty(),
                     "this harness must deny nothing; it declares no sensitive mixin: "
-                        + SafetyGate.deniedBySafety);
+                        + SafetyGate.snapshotDenials());
             }
             check(SafetyGate.isAllowed(FlyNodeEvaluator.class),
                 "the flying evaluator must be admitted once its randomness is thread-confined");

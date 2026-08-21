@@ -103,8 +103,8 @@ public final class WorkerFailureBreakerGameTest {
             this.oldEnabled = cfg.enabled;
             this.oldLimit = cfg.workerFailureLimit;
             this.oldWindow = cfg.workerFailureWindowTicks;
-            synchronized (SafetyGate.deniedBySafety) {
-                this.oldDenials = Set.copyOf(SafetyGate.deniedBySafety);
+            {
+                this.oldDenials = SafetyGate.snapshotDenials();
             }
         }
 
@@ -158,9 +158,7 @@ public final class WorkerFailureBreakerGameTest {
             scanRefused.discard();
             // The harness ships a mixin into pathfinding, so the scan denies everything here. Clearing
             // that is what makes the rest of this test about the breaker rather than about the scan.
-            synchronized (SafetyGate.deniedBySafety) {
-                SafetyGate.deniedBySafety.clear();
-            }
+            SafetyGate.restoreDenialsForTesting(java.util.Set.of());
             WorkerFailureBreaker.reset(1L);
 
             check(SafetyGate.isAllowed(WalkNodeEvaluator.class),
@@ -258,10 +256,7 @@ public final class WorkerFailureBreakerGameTest {
             cfg.workerFailureLimit = oldLimit;
             cfg.workerFailureWindowTicks = oldWindow;
             WorkerFailureBreaker.reset(1L);
-            synchronized (SafetyGate.deniedBySafety) {
-                SafetyGate.deniedBySafety.clear();
-                SafetyGate.deniedBySafety.addAll(oldDenials);
-            }
+            SafetyGate.restoreDenialsForTesting(oldDenials);
         }
     }
 }

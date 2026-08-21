@@ -101,6 +101,10 @@ public final class MobEligibility {
         // on a real pack the third refusal was `Warden$1$1`, an anonymous PathFinder that VANILLA
         // constructs inside the warden's navigation. Blaming a mod for a vanilla class is the sort of
         // invented cause the rest of this release exists to remove.
+        if (pathFinderClass == PathWeaverCommand.NULL_PATH_FINDER) {
+            return new Verdict(false, "has no PathFinder yet, so dispatch declines and this mob "
+                + "paths on the server thread");
+        }
         if (pathFinderClass != null
                 && pathFinderClass != net.minecraft.world.level.pathfinder.PathFinder.class) {
             return new Verdict(false, "navigates with " + describe(pathFinderClass)

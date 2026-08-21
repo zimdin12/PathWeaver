@@ -28,18 +28,15 @@ class MobEligibilityTest {
 
     @BeforeEach
     void clearDenials() {
-        synchronized (SafetyGate.deniedBySafety) {
-            savedDenials = java.util.Set.copyOf(SafetyGate.deniedBySafety);
-            SafetyGate.deniedBySafety.clear();
+        {
+            savedDenials = SafetyGate.snapshotDenials();
+            SafetyGate.restoreDenialsForTesting(java.util.Set.of());
         }
     }
 
     @AfterEach
     void restoreDenials() {
-        synchronized (SafetyGate.deniedBySafety) {
-            SafetyGate.deniedBySafety.clear();
-            SafetyGate.deniedBySafety.addAll(savedDenials);
-        }
+        SafetyGate.restoreDenialsForTesting(savedDenials);
     }
 
     @Test
@@ -56,7 +53,7 @@ class MobEligibilityTest {
         // evaluator" -- about the most vanilla evaluator there is. The mob was refused because the
         // scan denied the family, which is a fact about the modlist, not about the zombie, and the
         // two send an operator to completely different places.
-        SafetyGate.deniedBySafety.add(WalkNodeEvaluator.class);
+        SafetyGate.denyForTesting(WalkNodeEvaluator.class);
         MobEligibility.Verdict verdict =
             MobEligibility.of(Zombie.class, WalkNodeEvaluator.class, false);
         assertFalse(verdict.eligible());
@@ -83,7 +80,7 @@ class MobEligibilityTest {
     void theThreeEvaluatorRefusalsDoNotReadAlike() {
         // Not vanilla, cannot be rebuilt, and denied by the scan are three different problems with
         // three different answers. Lumping them together is what produced the nonsense sentence.
-        SafetyGate.deniedBySafety.add(WalkNodeEvaluator.class);
+        SafetyGate.denyForTesting(WalkNodeEvaluator.class);
         String denied = MobEligibility.of(Zombie.class, WalkNodeEvaluator.class, false).reason();
         String foreign = MobEligibility.of(Zombie.class, UnbuildableEvaluator.class, false).reason();
         assertFalse(denied.equals(foreign), "distinct causes produced identical text");

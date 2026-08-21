@@ -243,13 +243,13 @@ class ScanSummaryTest {
     @Test
     void eachScanLabelCarriesTheNumberItNames() {
         java.util.Set<Class<?>> saved;
-        synchronized (SafetyGate.deniedBySafety) {
-            saved = java.util.Set.copyOf(SafetyGate.deniedBySafety);
+        {
+            saved = SafetyGate.snapshotDenials();
         }
         try {
-            synchronized (SafetyGate.deniedBySafety) {
-                SafetyGate.deniedBySafety.clear();
-                SafetyGate.deniedBySafety.add(SwimNodeEvaluator.class);
+            {
+                SafetyGate.restoreDenialsForTesting(java.util.Set.of());
+                SafetyGate.denyForTesting(SwimNodeEvaluator.class);
             }
             var decision = new dev.pathweaver.gate.ForeignMixinScanner.ScanDecision(
                 java.util.Set.of(net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class,
@@ -265,10 +265,7 @@ class ScanSummaryTest {
             assertTrue(line.contains("scanned=331") && line.contains("failed=0"),
                 "and the other two must survive the refactor: " + line);
         } finally {
-            synchronized (SafetyGate.deniedBySafety) {
-                SafetyGate.deniedBySafety.clear();
-                SafetyGate.deniedBySafety.addAll(saved);
-            }
+            SafetyGate.restoreDenialsForTesting(saved);
         }
     }
 
@@ -301,6 +298,10 @@ class ScanSummaryTest {
                                                                  String d2) {
                                 calls.add(o + "." + f);
                             }
+                            @Override public void visitMethodInsn(int op, String o, String m,
+                                                                  String d2, boolean itf) {
+                                calls.add(o + "." + m);
+                            }
                         };
                     }
                 }, org.objectweb.asm.ClassReader.SKIP_FRAMES);
@@ -311,9 +312,12 @@ class ScanSummaryTest {
             "status must name what is ENFORCED distinctly: " + constants);
         assertFalse(constants.stream().anyMatch(c -> c.contains("deniedFamilies=")),
             "and must not reuse the startup log's label, which counts the other one: " + constants);
-        assertTrue(calls.contains("dev/pathweaver/gate/SafetyGate.deniedBySafety"),
+        assertTrue(calls.contains("dev/pathweaver/gate/SafetyGate.scanEnforcedFamilyCount"),
             "the enforced count must come from the set dispatch actually consults, which is the same "
-                + "expression the startup log reports: " + calls);
+                + "expression the startup log reports. The set stopped being a public field -- it was "
+                + "world-writable, so any class could clear every scan denial. Both sites now read "
+                + "the CLOSURE rather than the raw set size, because denial is by isAssignableFrom "
+                + "and the raw size under-reports it: " + calls);
     }
 
 

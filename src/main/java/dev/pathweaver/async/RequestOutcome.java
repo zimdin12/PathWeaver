@@ -154,12 +154,21 @@ public enum RequestOutcome {
             // The search proved there is no path. Vanilla's own createPath would have returned null
             // here too and suppressed its retry identically, so this is not a divergence to correct.
             case NO_PATH -> false;
-            // Never reached a worker: the dispatch site fell through to vanilla, which computed
-            // synchronously and left a real path. Nothing was cancelled.
-            case POOL_SATURATED, SETUP_FAILED_PRE_DISPATCH, BREAKER_OPEN -> false;
+            // Never reached a worker, or reached it and then fell through to vanilla anyway, which
+            // computed synchronously and left a real path. Nothing was cancelled.
+            //
+            // SETUP_FAILED belongs here and an earlier version of this switch had it on the other
+            // arm. Its only producer is the catch in pathweaver$asyncCreatePath, which deliberately
+            // does NOT call cir.cancel() -- "fall through so vanilla computes the path
+            // synchronously this tick". So the mob ends the tick holding a real path. Worse, the
+            // re-arm it triggered ran from INSIDE vanilla's recomputePath, three bytecodes before
+            // vanilla unconditionally overwrites both fields it writes, so the re-arm was a
+            // guaranteed no-op and the forced-sync penalty was the only surviving effect: a mob
+            // punished for a search that succeeded.
+            case POOL_SATURATED, SETUP_FAILED_PRE_DISPATCH, SETUP_FAILED, BREAKER_OPEN -> false;
             // Dispatched, cancelled vanilla's call, and then produced nothing. These are the cases
             // where the mob is standing still and vanilla thinks it already handled it.
-            case ARRIVED_STALE, SETUP_FAILED, SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED -> true;
+            case ARRIVED_STALE, SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED -> true;
         };
     }
 

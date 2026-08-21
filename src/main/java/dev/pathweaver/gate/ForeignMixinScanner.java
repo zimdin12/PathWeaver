@@ -890,8 +890,8 @@ public final class ForeignMixinScanner {
             PathWeaver.LOG.warn("what the scan found, not the scan being unable to look.");
             PathWeaver.LOG.warn("==================================================================");
         } else if (ActiveCompatibilityPolicy.bypassesScan()
-                && !SafetyGate.deniedBySafety.isEmpty()) {
-            Set<Class<?>> overridden = Set.copyOf(SafetyGate.deniedBySafety);
+                && !SafetyGate.snapshotDenials().isEmpty()) {
+            Set<Class<?>> overridden = SafetyGate.snapshotDenials();
             // Simple names. Set.toString() over Class objects prints
             // "[class net.minecraft.world.level.pathfinder.SwimNodeEvaluator, class ...]" -- one
             // 400-character line of fully-qualified noise in the block a user is most likely to read
@@ -945,7 +945,9 @@ public final class ForeignMixinScanner {
             PathWeaver.LOG.warn("of the above in trustedMods to accept those and keep checking the rest.");
             PathWeaver.LOG.warn("==================================================================");
         }
+        // The CLOSURE, matching /pathweaver status. Denial is by isAssignableFrom, so the raw set
+        // size printed "deniedFamilies=1" while five of six families were refused on every tick.
         PathWeaver.LOG.info("Foreign-mixin scan complete: scanned={}, failed={}, deniedFamilies={}.",
-            decision.scanned(), decision.failed(), SafetyGate.deniedBySafety.size());
+            decision.scanned(), decision.failed(), SafetyGate.scanEnforcedFamilyCount());
     }
 }

@@ -164,6 +164,15 @@ public final class WorkerFailureBreaker {
         int limit = config.workerFailureLimit;
         long window = config.workerFailureWindowTicks;
 
+        // Re-read before touching shared state. reset() runs at onServerStarting BEFORE
+        // pool.start() issues shutdownNow(), so previous-generation workers are provably still
+        // running while it clears COUNTERS and ModAttribution's one-shot set. A straggler that read
+        // the epoch above, was descheduled through reset(), and resumed here would insert a counter
+        // into the NEW session's map and fire the new world's one-shot first-failure block for a
+        // failure belonging to the old one -- leaving that world's genuine first failure unlogged,
+        // which is the outcome reset() exists to produce. The trip was already re-validated; the
+        // counting and the report were not.
+        if (sessionEpoch != session) return false;
         Counter counter = COUNTERS.computeIfAbsent(family, ignored -> new Counter());
         // ONE acquisition of the counter's monitor for record-and-decide. It was three, so the count
         // that crossed the threshold was not the count that got reported: sixteen workers failing at
@@ -176,6 +185,9 @@ public final class WorkerFailureBreaker {
         // the breaker off does not also turn the diagnostics off, which is the trade the settings
         // screen describes and not a wider one.
         Decision decision = counter.recordAndDecide(currentTick, window, limit);
+        // Checked again either side of the counter update: this is the one-shot that silences the
+        // next world's first genuine failure if it burns here.
+        if (sessionEpoch != session) return false;
         if (decision.firstEver()) ModAttribution.reportFirstFailure(family, failure);
 
         TripReason reason = decision.reason();

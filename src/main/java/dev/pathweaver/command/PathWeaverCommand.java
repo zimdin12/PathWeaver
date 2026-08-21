@@ -286,12 +286,31 @@ public final class PathWeaverCommand {
             return List.copyOf(lines);
         }
         if (waived) {
-            return withExtra(List.of(
-                "  §e" + denied.size() + " family/families were denied by the scan and are running "
-                    + "anyway, because the tier is Unsafe",
-                "  §7waived: " + String.join(", ", denied),
-                "  §7That is what Unsafe means: uninspected mod code is running on worker threads. "
-                    + "Keep backups."), extra);
+            // The tier waives SCAN denials. It does not waive a runtime trip, and cannot: the
+            // breaker's denials live in a separate set that no tier consults. Listing a
+            // breaker-stopped family as "running anyway" contradicted the switched-OFF line printed
+            // a few rows above in the same output, and the optimistic line is the one an operator
+            // pastes into a bug report.
+            List<String> stillRunning = new java.util.ArrayList<>();
+            List<String> stoppedByBreaker = new java.util.ArrayList<>();
+            for (Class<?> family : deniedFamilies) {
+                (dev.pathweaver.gate.SafetyGate.isDeniedByRuntimeFailure(family)
+                    ? stoppedByBreaker : stillRunning).add(family.getSimpleName());
+            }
+            List<String> lines = new java.util.ArrayList<>();
+            lines.add("  §e" + stillRunning.size() + " family/families were denied by the scan and "
+                + "are running anyway, because the tier is Unsafe");
+            if (!stillRunning.isEmpty()) {
+                lines.add("  §7waived: " + String.join(", ", stillRunning));
+            }
+            if (!stoppedByBreaker.isEmpty()) {
+                lines.add("  §c" + stoppedByBreaker.size() + " of those are NOT running: "
+                    + String.join(", ", stoppedByBreaker) + " — switched off after their searches "
+                    + "threw. No tier waives that.");
+            }
+            lines.add("  §7That is what Unsafe means: uninspected mod code is running on worker "
+                + "threads. Keep backups.");
+            return withExtra(List.copyOf(lines), extra);
         }
         List<String> inherited = familiesRefusedByInheritance(deniedFamilies);
         int refused = denied.size() + inherited.size();
@@ -461,7 +480,7 @@ public final class PathWeaverCommand {
     record ScanCounts(int scanned, int failed, int deniedByScan, int enforced) {
         static ScanCounts of(ForeignMixinScanner.ScanDecision decision) {
             return new ScanCounts(decision.scanned(), decision.failed(), decision.denied().size(),
-                dev.pathweaver.gate.SafetyGate.deniedBySafety.size());
+                dev.pathweaver.gate.SafetyGate.scanEnforcedFamilyCount());
         }
 
         String line() {
@@ -494,6 +513,14 @@ public final class PathWeaverCommand {
      * <p>Returns null when it cannot be read, which {@link MobEligibility} treats as "not inspected"
      * rather than as a refusal — a diagnostic that cannot see a field should not invent a verdict.
      */
+    /**
+     * Stands for "the field exists and holds null", which refuses, unlike "unreadable", which does
+     * not invent a verdict. Any class distinct from PathFinder and its subclasses works; this one is
+     * private so it can never be a real evaluator.
+     */
+    private static final class NoPathFinder { private NoPathFinder() { } }
+    static final Class<?> NULL_PATH_FINDER = NoPathFinder.class;
+
     private static Class<?> pathFinderOf(PathNavigation navigation) {
         for (Class<?> type = navigation.getClass(); type != null; type = type.getSuperclass()) {
             for (Field field : type.getDeclaredFields()) {
@@ -504,7 +531,12 @@ public final class PathWeaverCommand {
                 try {
                     field.setAccessible(true);
                     Object value = field.get(navigation);
-                    return value == null ? null : value.getClass();
+                    // NULL_PATH_FINDER, not null. Returning null for "the field holds null" made it
+                    // indistinguishable from "no such field" and "could not read it", and only the
+                    // first of those refuses. Dispatch declines on `pathFinder == null` as well as on
+                    // a subclass, so a navigation that builds its PathFinder lazily reported eligible
+                    // here while returning to vanilla on every tick.
+                    return value == null ? NULL_PATH_FINDER : value.getClass();
                 } catch (ReflectiveOperationException | RuntimeException unreadable) {
                     return null;
                 }

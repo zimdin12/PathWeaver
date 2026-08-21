@@ -93,11 +93,11 @@ public final class UnsafeTierWaiverGameTest {
                     + "This harness must ship a mixin into sensitive pathfinding code");
 
             // 3. The waiver actually cleared the denials rather than merely being configured.
-            synchronized (SafetyGate.deniedBySafety) {
-                check(SafetyGate.deniedBySafety.isEmpty(),
+            {
+                check(SafetyGate.snapshotDenials().isEmpty(),
                     "the unsafe tier did not clear the denial set; " + blockers.size()
-                        + " mod(s) denied and " + SafetyGate.deniedBySafety.size()
-                        + " family/families are still refused: " + SafetyGate.deniedBySafety);
+                        + " mod(s) denied and " + SafetyGate.denialCount()
+                        + " family/families are still refused: " + SafetyGate.snapshotDenials());
             }
             check(SafetyGate.isAllowed(WalkNodeEvaluator.class),
                 "the walk evaluator is still refused after the denial set was cleared, so something "

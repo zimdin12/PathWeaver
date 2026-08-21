@@ -146,8 +146,8 @@ class LandRegistryDispatchGateTest {
     @Test
     void denyingOneEvaluatorDeniesEverythingThatInheritsFromIt() {
         java.util.Set<Class<?>> restore;
-        synchronized (SafetyGate.deniedBySafety) {
-            restore = java.util.Set.copyOf(SafetyGate.deniedBySafety);
+        {
+            restore = SafetyGate.snapshotDenials();
         }
         try {
             SafetyGate.replaceDenials(java.util.Set.of(WalkNodeEvaluator.class));

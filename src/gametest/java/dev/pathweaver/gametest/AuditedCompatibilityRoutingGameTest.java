@@ -72,8 +72,8 @@ public final class AuditedCompatibilityRoutingGameTest {
             this.oldModded = cfg.allowModdedMobAsync;
             this.oldTolerance = cfg.repathToleranceBlocks;
             this.oldMaxResultAge = cfg.maxResultAgeTicks;
-            synchronized (SafetyGate.deniedBySafety) {
-                this.oldDenials = Set.copyOf(SafetyGate.deniedBySafety);
+            {
+                this.oldDenials = SafetyGate.snapshotDenials();
             }
         }
 
@@ -223,9 +223,8 @@ public final class AuditedCompatibilityRoutingGameTest {
             cfg.allowModdedMobAsync = oldModded;
             cfg.repathToleranceBlocks = oldTolerance;
             cfg.maxResultAgeTicks = oldMaxResultAge;
-            synchronized (SafetyGate.deniedBySafety) {
-                SafetyGate.deniedBySafety.clear();
-                SafetyGate.deniedBySafety.addAll(oldDenials);
+            {
+                SafetyGate.restoreDenialsForTesting(oldDenials);
             }
         }
     }
@@ -245,9 +244,8 @@ public final class AuditedCompatibilityRoutingGameTest {
     }
 
     private static void apply(Set<Class<?>> denied) {
-        synchronized (SafetyGate.deniedBySafety) {
-            SafetyGate.deniedBySafety.clear();
-            SafetyGate.deniedBySafety.addAll(denied);
+        {
+            SafetyGate.restoreDenialsForTesting(denied);
         }
     }
 

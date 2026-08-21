@@ -68,6 +68,14 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     private record OwedEpilogue(net.minecraft.world.level.pathfinder.NodeEvaluator evaluator,
                                 SearchStartGate gate) {}
     private final Map<Integer, Long> failUntilTick = new ConcurrentHashMap<>();
+    /**
+     * Entities whose NEXT dispatch must run synchronously, consumed on read.
+     *
+     * <p>Separate from {@link #failUntilTick} because the two answer different questions. That one
+     * throttles an entity after a worker failure and lasts 40 ticks; this one hands a single
+     * re-armed recompute back to vanilla and then gets out of the way.
+     */
+    private final Set<Integer> syncNextDispatch = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean callbackFailureLogged = new AtomicBoolean();
     private final AtomicBoolean rollbackFailureLogged = new AtomicBoolean();
     private final AtomicBoolean rearmFailureLogged = new AtomicBoolean();
@@ -190,7 +198,13 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
      */
     private void rearmRecomputeIfStranded(Registration registration, RequestOutcome reason) {
         if (registration.origin() != RequestOrigin.RECOMPUTE || !reason.strandsRecompute()) return;
-        failUntilTick.put(registration.key().entityId(), currentTick + FAIL_COOLDOWN_TICKS);
+        // ONE dispatch, not a window. This used to reuse failUntilTick, the 40-tick entity-wide
+        // failure cooldown, which is cleared only by a successful async install -- and a synchronous
+        // search never goes through this sink. So one stranded recompute made that mob run EVERY
+        // path search synchronously for two seconds, not the single retry the javadoc claims.
+        // ARRIVED_STALE is a race and the commonest non-install outcome, so a one-tick miss became a
+        // two-second opt-out from the mod for that mob.
+        syncNextDispatch.add(registration.key().entityId());
         try {
             registration.navigation().pathweaver$rearmRecompute();
         } catch (Throwable rearmFailure) {
@@ -315,6 +329,8 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     int cooldownEntryCount() { return failUntilTick.size(); }
 
     public boolean shouldForceSync(int entityId, long tick) {
+        // Consumed, not peeked: this is the single retry a stranded recompute is owed.
+        if (syncNextDispatch.remove(entityId)) return true;
         sweepExpiredCooldowns(tick);
         Long until = failUntilTick.get(entityId);
         if (until == null) return false;
@@ -379,6 +395,12 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
                 // Abort clears the path and restores the target together.
                 abortFailedInstall(registration);
                 failUntilTick.put(key.entityId(), currentTick + FAIL_COOLDOWN_TICKS);
+                // A recompute that got this far had vanilla's retry suppressed and now has no path
+                // at all, because abortFailedInstall calls stop(). strandsRecompute() has always
+                // declared INSTALL_FAILED stranding; nothing delivered it here, because this catch
+                // handles the outcome inline instead of going through finishDiscard. That made the
+                // classification dead on the one outcome where another mod is provably misbehaving.
+                rearmRecomputeIfStranded(registration, RequestOutcome.INSTALL_FAILED);
                 dev.pathweaver.PathWeaverRuntime.get().markOutcome(RequestOutcome.INSTALL_FAILED);
                 if (installFailureLogged.compareAndSet(false, true)) {
                     try {
@@ -480,12 +502,18 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         // without this a failure logged once in world A silenced the FIRST failure of every later
         // world in the same JVM -- leaving an operator with a non-zero failure counter and no stack
         // trace anywhere to identify the cause. PathWeaverRuntime already re-arms its waste report
-        // per world; these four were the inconsistency.
+        // per world; these were the inconsistency.
+        //
+        // Count them rather than trusting the sentence: a fifth flag was added later and not added
+        // here, so on a singleplayer client the first re-arm failure of every world after the first
+        // logged nothing. Any new one-shot log flag on this class belongs in this block.
         callbackFailureLogged.set(false);
         rollbackFailureLogged.set(false);
         installFailureLogged.set(false);
         epilogueDropLogged.set(false);
+        rearmFailureLogged.set(false);
         failUntilTick.clear();
+        syncNextDispatch.clear();
         // Reset the sweep clock too. A new server starts its tick count near zero, so a
         // timestamp left from a long previous run would suppress sweeping until the new
         // server had been up as long as the old one.

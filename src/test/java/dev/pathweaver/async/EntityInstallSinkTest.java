@@ -573,4 +573,75 @@ class EntityInstallSinkTest {
         assertEquals(0, supersededNav.rearms,
             "a superseded request is replaced, not stranded -- the newer one installs");
     }
+
+    /**
+     * An install that throws still hands a stranded recompute back to vanilla.
+     *
+     * <p>strandsRecompute() declared INSTALL_FAILED stranding from the start, but install()'s catch
+     * handles the outcome inline instead of calling finishDiscard, so nothing ever delivered it.
+     * The arm was dead on the one outcome where another mod is provably misbehaving: abortFailedInstall
+     * calls stop(), so the mob ends with no path AND vanilla's retry still suppressed.
+     */
+    @Test
+    void anInstallThatThrowsStillReArmsAStrandedRecompute() {
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(100L);
+        FakeNav nav = new FakeNav() {
+            @Override public void pathweaver$install(Path path) {
+                throw new IllegalStateException("a foreign mixin in moveTo threw");
+            }
+        };
+        RequestKey key = key(1L, 1L, 21);
+        sink.register(key, nav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false,
+            RequestOrigin.RECOMPUTE);
+        sink.install(key, null);
+        assertEquals(1, nav.rearms,
+            "INSTALL_FAILED leaves the mob with no path and vanilla's retry suppressed, which is "
+                + "exactly the state the re-arm exists to undo");
+    }
+
+    /**
+     * A setup failure must NOT re-arm, and must not cost the mob a forced-sync dispatch.
+     *
+     * <p>The dispatch catch that produces SETUP_FAILED deliberately does not cancel vanilla's call:
+     * it falls through so vanilla computes synchronously this tick. The mob therefore ends the tick
+     * holding a real path. Treating that as stranded punished a mob for a search that succeeded, and
+     * the re-arm itself was a no-op because vanilla overwrites both fields three bytecodes later.
+     */
+    @Test
+    void aSetupFailureNeitherReArmsNorForcesTheNextDispatchSync() {
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(100L);
+        FakeNav nav = new FakeNav();
+        RequestKey key = key(1L, 1L, 22);
+        sink.register(key, nav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false,
+            RequestOrigin.RECOMPUTE);
+        sink.discard(key, RequestOutcome.SETUP_FAILED);
+        assertEquals(0, nav.rearms, "vanilla computed this path synchronously; nothing is stranded");
+        assertFalse(sink.shouldForceSync(22, 100L),
+            "a mob that just got a good path must not be forced synchronous");
+    }
+
+    /**
+     * The forced retry is ONE dispatch, not a window.
+     *
+     * <p>This used to reuse the 40-tick failure cooldown, which a synchronous search never clears
+     * because it does not go through the sink. One stranded recompute then made that mob run every
+     * search synchronously for two seconds.
+     */
+    @Test
+    void aStrandedRecomputeForcesExactlyOneSynchronousDispatch() {
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(100L);
+        FakeNav nav = new FakeNav();
+        RequestKey key = key(1L, 1L, 23);
+        sink.register(key, nav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false,
+            RequestOrigin.RECOMPUTE);
+        sink.discard(key, RequestOutcome.ARRIVED_STALE);
+        assertTrue(sink.shouldForceSync(23, 100L), "the re-armed retry runs synchronously");
+        assertFalse(sink.shouldForceSync(23, 100L),
+            "and only that one. The mob must be eligible for async again immediately, not after 40 "
+                + "ticks -- ARRIVED_STALE is a race, not a broken mob");
+        assertFalse(sink.shouldForceSync(23, 101L), "still eligible on the following tick");
+    }
 }
