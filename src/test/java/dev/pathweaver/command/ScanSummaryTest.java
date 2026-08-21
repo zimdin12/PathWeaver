@@ -249,7 +249,11 @@ class ScanSummaryTest {
         try {
             {
                 SafetyGate.restoreDenialsForTesting(java.util.Set.of());
-                SafetyGate.denyForTesting(SwimNodeEvaluator.class);
+                // WalkNodeEvaluator, deliberately, NOT Swim. Swim extends NodeEvaluator directly,
+                // so it is the one allowlisted family whose closure size equals the raw set size --
+                // seeding it made this value assertion agree with the bug it is meant to catch, and
+                // reverting the reporting site to the raw size kept it green.
+                SafetyGate.denyForTesting(WalkNodeEvaluator.class);
             }
             var decision = new dev.pathweaver.gate.ForeignMixinScanner.ScanDecision(
                 java.util.Set.of(net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class,
@@ -259,9 +263,12 @@ class ScanSummaryTest {
             String line = PathWeaverCommand.ScanCounts.of(decision).line();
             assertTrue(line.contains("deniedByScan=3"),
                 "deniedByScan must be what the SCAN found: " + line);
-            assertTrue(line.contains("enforced=1"),
-                "enforced must be what is actually being refused, which is a different set and, at "
-                    + "the unsafe default, a different size: " + line);
+            assertTrue(line.contains("enforced=5"),
+                "enforced must be what is actually being refused: denying WalkNodeEvaluator refuses "
+                    + "every family that extends it, so this is 5 while the scan's own list is 3. "
+                    + "Reverting the reporting site to the raw set size yields 1 and fails here, "
+                    + "which is the point -- the previous fixture seeded SwimNodeEvaluator, the one "
+                    + "family whose closure equals its set size, so both answers agreed: " + line);
             assertTrue(line.contains("scanned=331") && line.contains("failed=0"),
                 "and the other two must survive the refactor: " + line);
         } finally {

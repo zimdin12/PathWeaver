@@ -482,7 +482,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
         final long tick = ((ServerLevel) this.level).getServer().getTickCount();
 
         // This entity's last async search failed and it's in cooldown -> run vanilla sync this tick.
-        if (sink.shouldForceSync(entityId, tick)) return;
+        if (sink.shouldForceSync(entityId, tick, this.pathweaver$currentOrigin)) return;
 
         // A same-target pending operation returned above; anything still registered is conservatively sync.
         if (sink.isRegistered(entityId)) {

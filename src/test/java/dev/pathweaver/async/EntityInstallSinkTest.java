@@ -83,12 +83,12 @@ class EntityInstallSinkTest {
         sink.setTick(100L);
         sink.register(key, nav);
 
-        assertFalse(sink.shouldForceSync(1, 100L));
+        assertFalse(sink.shouldForceSync(1, 100L, RequestOrigin.RECOMPUTE));
         sink.failed(key, new IllegalStateException("search failed"));
 
-        assertTrue(sink.shouldForceSync(1, 101L));
-        assertTrue(sink.shouldForceSync(1, 139L));
-        assertFalse(sink.shouldForceSync(1, 140L));
+        assertTrue(sink.shouldForceSync(1, 101L, RequestOrigin.RECOMPUTE));
+        assertTrue(sink.shouldForceSync(1, 139L, RequestOrigin.RECOMPUTE));
+        assertFalse(sink.shouldForceSync(1, 140L, RequestOrigin.RECOMPUTE));
         assertEquals(0, nav.installs);
     }
 
@@ -141,7 +141,7 @@ class EntityInstallSinkTest {
         assertTrue(throwing.pathCleared,
             "the partially applied path must be cleared, not left paired with the old target");
         assertFalse(sink.isRegistered(12));
-        assertTrue(sink.shouldForceSync(12, 31L));
+        assertTrue(sink.shouldForceSync(12, 31L, RequestOrigin.RECOMPUTE));
     }
 
     @Test void nonInstallRoutesPreserveTheExistingPath() {
@@ -169,7 +169,7 @@ class EntityInstallSinkTest {
         RequestKey oldKey = key(1L, 1L, 1);
         sink.register(oldKey, old);
         sink.failed(oldKey, new IllegalStateException("x"));
-        sink.shouldForceSync(1, 500_000L);      // advances the sweep clock to a large tick
+        sink.shouldForceSync(1, 500_000L, RequestOrigin.MOVE_TO);      // advances the sweep clock to a large tick
 
         sink.clear();
 
@@ -181,7 +181,7 @@ class EntityInstallSinkTest {
         sink.failed(freshKey, new IllegalStateException("x"));
         assertEquals(1, sink.cooldownEntryCount());
 
-        sink.shouldForceSync(9999, 10L + 40L + 21L);
+        sink.shouldForceSync(9999, 10L + 40L + 21L, RequestOrigin.MOVE_TO);
 
         assertEquals(0, sink.cooldownEntryCount(),
             "a fresh server must sweep on its own tick timeline, not the previous server's");
@@ -202,7 +202,7 @@ class EntityInstallSinkTest {
         assertEquals(50, sink.cooldownEntryCount(), "all 50 cooldowns should be live initially");
 
         // A single unrelated query well after expiry must clear the abandoned entries.
-        sink.shouldForceSync(9999, 100L + 40L + 21L);
+        sink.shouldForceSync(9999, 100L + 40L + 21L, RequestOrigin.MOVE_TO);
 
         assertEquals(0, sink.cooldownEntryCount(),
             "expired cooldowns for entities that never returned must be swept");
@@ -215,13 +215,13 @@ class EntityInstallSinkTest {
         RequestKey first = key(1L, 1L, 7);
         sink.register(first, nav1);
         sink.failed(first, new IllegalStateException("search failed"));
-        assertTrue(sink.shouldForceSync(7, 11L));
+        assertTrue(sink.shouldForceSync(7, 11L, RequestOrigin.RECOMPUTE));
 
         FakeNav nav2 = new FakeNav();
         RequestKey second = key(1L, 2L, 7);
         sink.register(second, nav2);
         sink.install(second, dummyPath());
-        assertFalse(sink.shouldForceSync(7, 12L));
+        assertFalse(sink.shouldForceSync(7, 12L, RequestOrigin.RECOMPUTE));
         assertEquals(1, nav2.installs);
     }
 
@@ -236,7 +236,7 @@ class EntityInstallSinkTest {
 
         sink.clear();
 
-        assertFalse(sink.shouldForceSync(3, 6L));
+        assertFalse(sink.shouldForceSync(3, 6L, RequestOrigin.RECOMPUTE));
         assertEquals(0, sink.inFlightCount());
     }
 
@@ -280,7 +280,7 @@ class EntityInstallSinkTest {
         assertEquals(1, throwing.rollbacks,
             "a throwing install never installed a path, so the optimistic target must be undone");
         assertFalse(sink.isRegistered(8));
-        assertTrue(sink.shouldForceSync(8, 31L));
+        assertTrue(sink.shouldForceSync(8, 31L, RequestOrigin.RECOMPUTE));
     }
 
     @Test void lateOldResultCannotInstallIntoReplacementRegistrationForSameEntityId() {
@@ -311,7 +311,7 @@ class EntityInstallSinkTest {
 
         sink.failed(oldKey, new IllegalStateException("search failed"));
 
-        assertFalse(sink.shouldForceSync(12, 21L));
+        assertFalse(sink.shouldForceSync(12, 21L, RequestOrigin.RECOMPUTE));
         assertTrue(sink.isRegistered(12));
     }
 
@@ -403,7 +403,7 @@ class EntityInstallSinkTest {
         sink.noPath(key);
 
         assertFalse(sink.isRegistered(19));
-        assertFalse(sink.shouldForceSync(19, 101L));
+        assertFalse(sink.shouldForceSync(19, 101L, RequestOrigin.RECOMPUTE));
         assertEquals(0, nav.installs);
     }
 
@@ -545,7 +545,7 @@ class EntityInstallSinkTest {
         assertEquals(1, strandedNav.rearms,
             "a recompute whose search produced nothing must hand back to vanilla, or the mob stands "
                 + "still for twenty ticks while vanilla believes it already recomputed");
-        assertTrue(stranded.shouldForceSync(7, 100L),
+        assertTrue(stranded.shouldForceSync(7, 100L, RequestOrigin.RECOMPUTE),
             "the re-armed retry must run synchronously, or the next tick dispatches, fails the same "
                 + "way and re-arms again -- a per-tick dispatch loop instead of a stall");
 
@@ -618,7 +618,7 @@ class EntityInstallSinkTest {
             RequestOrigin.RECOMPUTE);
         sink.discard(key, RequestOutcome.SETUP_FAILED);
         assertEquals(0, nav.rearms, "vanilla computed this path synchronously; nothing is stranded");
-        assertFalse(sink.shouldForceSync(22, 100L),
+        assertFalse(sink.shouldForceSync(22, 100L, RequestOrigin.RECOMPUTE),
             "a mob that just got a good path must not be forced synchronous");
     }
 
@@ -638,10 +638,68 @@ class EntityInstallSinkTest {
         sink.register(key, nav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false,
             RequestOrigin.RECOMPUTE);
         sink.discard(key, RequestOutcome.ARRIVED_STALE);
-        assertTrue(sink.shouldForceSync(23, 100L), "the re-armed retry runs synchronously");
-        assertFalse(sink.shouldForceSync(23, 100L),
+        assertTrue(sink.shouldForceSync(23, 100L, RequestOrigin.RECOMPUTE), "the re-armed retry runs synchronously");
+        assertFalse(sink.shouldForceSync(23, 100L, RequestOrigin.RECOMPUTE),
             "and only that one. The mob must be eligible for async again immediately, not after 40 "
                 + "ticks -- ARRIVED_STALE is a race, not a broken mob");
-        assertFalse(sink.shouldForceSync(23, 101L), "still eligible on the following tick");
+        assertFalse(sink.shouldForceSync(23, 101L, RequestOrigin.RECOMPUTE), "still eligible on the following tick");
+    }
+
+    /**
+     * A goal's moveTo must not spend the retry a stranded recompute is owed.
+     *
+     * <p>Goals run before navigation: {@code Mob.serverAiStep} ticks the goal selector, then
+     * {@code navigation.tick()}. So on the tick after a stranding, a MeleeAttackGoal's moveTo reaches
+     * dispatch first. A token that any dispatch could claim was consumed there — the goal got its
+     * synchronous path, and the re-armed recompute that followed nulled that path and dispatched
+     * asynchronously because the token was gone, leaving the mob pathless again after briefly holding
+     * a good route. That is worse than the entity-wide cooldown it replaced, so this pins the scope.
+     */
+    @Test
+    void aGoalsMoveToDoesNotConsumeTheRetryOwedToTheRecompute() {
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(100L);
+        FakeNav nav = new FakeNav();
+        RequestKey key = key(1L, 1L, 31);
+        sink.register(key, nav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false,
+            RequestOrigin.RECOMPUTE);
+        sink.discard(key, RequestOutcome.ARRIVED_STALE);
+
+        assertFalse(sink.shouldForceSync(31, 100L, RequestOrigin.MOVE_TO),
+            "the goal that ticks first must not claim the recompute's retry");
+        assertTrue(sink.shouldForceSync(31, 100L, RequestOrigin.RECOMPUTE),
+            "and the recompute must still find it waiting");
+        assertFalse(sink.shouldForceSync(31, 100L, RequestOrigin.RECOMPUTE),
+            "consumed exactly once");
+    }
+
+    /**
+     * The retry token cannot outlive the mob that earned it.
+     *
+     * <p>A mob that strands and then dies, despawns or changes dimension never dispatches again, and
+     * entity ids are not reused within a run. A bare set leaked one id per stranding for the life of
+     * the server, which is the bug sweepExpiredCooldowns already exists to prevent for its sibling.
+     */
+    @Test
+    void anUnclaimedRetryTokenIsSweptRatherThanLeaked() {
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(100L);
+        FakeNav nav = new FakeNav();
+        RequestKey key = key(1L, 1L, 32);
+        sink.register(key, nav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false,
+            RequestOrigin.RECOMPUTE);
+        sink.discard(key, RequestOutcome.ARRIVED_STALE);
+
+        assertEquals(1, sink.retryTokenCount(), "precondition: the token is held");
+
+        // The mob dies here and never dispatches again, so nothing will ever consume its token.
+        // Another entity keeps the server ticking, which is what drives the sweep.
+        sink.setTick(100_000L);
+        sink.shouldForceSync(999, 100_000L, RequestOrigin.MOVE_TO);
+        assertEquals(0, sink.retryTokenCount(),
+            "the token must be SWEPT, not merely ignored when read. Asserting only that a stale "
+                + "token is not honoured passes whether or not the sweep exists, because the read "
+                + "removes the entry itself -- a mutation deleting the sweep survived that version "
+                + "of this test.");
     }
 }

@@ -188,11 +188,15 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
             // inversion the override=false migration below refuses to perform, reached by a
             // different route. A v2 config without the key is a different case and is left alone:
             // UNSAFE is genuinely its shipped default.
-            if (version != PathWeaverConfig.CURRENT_CONFIG_VERSION
-                    && !raw.has("compatibilityTier")) {
+            // v0/v1 explicitly, NOT "anything that is not current". Written the other way, the
+            // next schema bump would sweep every v2 config on disk into AUDITED -- and a v2 config
+            // omits compatibilityTier precisely when the operator accepted the shipped default, so
+            // that would silently convert the whole installed base into a mod measured at 0 of 187
+            // eligible mob types.
+            if (version <= 1 && !raw.has("compatibilityTier")) {
                 raw.addProperty("compatibilityTier", CompatibilityTier.AUDITED.name());
                 try {
-                    dev.pathweaver.PathWeaver.LOG.info("Your config predates the compatibility tier "
+                    dev.pathweaver.PathWeaver.LOG.warn("Your config predates the compatibility tier "
                         + "setting entirely. The versions that wrote it ran with the compatibility "
                         + "scan armed, so it has been migrated to compatibilityTier=AUDITED rather "
                         + "than inheriting today's UNSAFE default. On a heavily-modded pack expect "

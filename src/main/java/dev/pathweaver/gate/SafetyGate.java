@@ -135,21 +135,17 @@ public final class SafetyGate {
     }
 
     /**
-     * Every allowlisted family a runtime trip currently refuses, by simple name, sorted.
-     *
-     * <p>The denial SET is not the answer. It holds classes, and {@link #isDenied} matches by
-     * inheritance, so a single {@code WalkNodeEvaluator} entry refuses five of the six families —
-     * and every diagnostic that reported the set reported one. {@code PathWeaverRuntime} already
-     * carries a long comment about this exact trap for the scan's denials; the runtime denials
-     * needed the same answer and did not have one.
-     */
-    /**
      * A copy of the scan denials, for a harness that has to put them back afterwards.
      *
-     * <p>The set itself is no longer public. It was {@code public static final} and mutable, so any
-     * class on the classpath could call {@code clear()} on it and waive every scan denial -- including
-     * ones a FAILED scan installed, which no tier is permitted to waive. The runtime-trip set beside
-     * it was already private behind accessors for exactly this reason; this one had been left open.
+     * <p>The set itself is no longer public: it was {@code public static final} and mutable, so any
+     * class on the classpath could call {@code clear()} on it and waive every scan denial, including
+     * ones a FAILED scan installed, which no tier is permitted to waive.
+     *
+     * <p><b>This buys auditability, not access control, and the difference is worth stating.</b> The
+     * mutating seams below are still {@code public} because tests in three other packages need them,
+     * so a hostile mod can still reach the set — it just has to call a method whose name says what it
+     * is doing, and every such call is greppable. Closing the hole properly means making those seams
+     * unreachable from outside this package, which is filed rather than claimed here.
      */
     public static Set<Class<?>> snapshotDenials() {
         synchronized (deniedBySafety) {
@@ -209,6 +205,15 @@ public final class SafetyGate {
         }
     }
 
+    /**
+     * Every allowlisted family a runtime trip currently refuses, by simple name, sorted.
+     *
+     * <p>The denial SET is not the answer. It holds classes, and {@link #isDenied} matches by
+     * inheritance, so a single {@code WalkNodeEvaluator} entry refuses five of the six families —
+     * and every diagnostic that reported the set reported one. {@code PathWeaverRuntime} already
+     * carries a long comment about this exact trap for the scan's denials; the runtime denials
+     * needed the same answer and did not have one.
+     */
     public static java.util.List<String> familiesRefusedByRuntimeFailure() {
         java.util.List<String> names = new java.util.ArrayList<>();
         for (Class<?> family : ALLOWED) {

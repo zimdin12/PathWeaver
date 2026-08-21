@@ -120,6 +120,8 @@ not vacuous by re-running the production decision over Lithium's own live config
 evidence withheld and requiring that it denies Walk. At `compatibilityTier=STRICT` the same
 environment reports `deniedFamilies=2`.
 
+> **The `deniedFamilies` figure changed meaning in 0.7.** It used to be the size of the denial set; it is now the size of the closure that set actually refuses, because denial is by `isAssignableFrom` and a single `WalkNodeEvaluator` entry refuses five of the six families. Every `deniedFamilies=` reading on this page above 0 was taken before that change and is a raw set size, so the figure a current build prints for the same environment will be the same or higher. The `=0` readings are unaffected: an empty set has an empty closure.
+
 ### Diagonal Blocks `26.1.0` — audited tier
 
 Shipped as a jar nested inside Diagonal Fences, Walls and Windows. The audited artifact is the

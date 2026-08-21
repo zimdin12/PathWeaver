@@ -69,13 +69,24 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
                                 SearchStartGate gate) {}
     private final Map<Integer, Long> failUntilTick = new ConcurrentHashMap<>();
     /**
-     * Entities whose NEXT dispatch must run synchronously, consumed on read.
+     * Entities whose next RECOMPUTE dispatch must run synchronously, with a deadline.
      *
      * <p>Separate from {@link #failUntilTick} because the two answer different questions. That one
      * throttles an entity after a worker failure and lasts 40 ticks; this one hands a single
      * re-armed recompute back to vanilla and then gets out of the way.
+     *
+     * <p><b>Scoped to the recompute, and that is load-bearing.</b> A bare "next dispatch" token was
+     * claimed by whichever call arrived first, and goals run before navigation: {@code serverAiStep}
+     * ticks the goal selector before {@code navigation.tick()}. So a MeleeAttackGoal's {@code moveTo}
+     * consumed the token, got its synchronous path, and then the re-armed {@code recomputePath} nulled
+     * that path and dispatched asynchronously because the token was gone — leaving the mob pathless
+     * again after briefly holding a good route. Worse than the 40-tick cooldown it replaced.
+     *
+     * <p>The deadline exists for the reason {@code sweepExpiredCooldowns} exists: a mob that strands
+     * and then dies, despawns or changes dimension never dispatches again, and entity ids are not
+     * reused within a run, so a bare set leaked an id per stranding for the life of the server.
      */
-    private final Set<Integer> syncNextDispatch = ConcurrentHashMap.newKeySet();
+    private final Map<Integer, Long> syncNextRecompute = new ConcurrentHashMap<>();
     private final AtomicBoolean callbackFailureLogged = new AtomicBoolean();
     private final AtomicBoolean rollbackFailureLogged = new AtomicBoolean();
     private final AtomicBoolean rearmFailureLogged = new AtomicBoolean();
@@ -199,12 +210,12 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     private void rearmRecomputeIfStranded(Registration registration, RequestOutcome reason) {
         if (registration.origin() != RequestOrigin.RECOMPUTE || !reason.strandsRecompute()) return;
         // ONE dispatch, not a window. This used to reuse failUntilTick, the 40-tick entity-wide
-        // failure cooldown, which is cleared only by a successful async install -- and a synchronous
+        // failure cooldown, which is cleared by a successful async install or by expiry -- and a synchronous
         // search never goes through this sink. So one stranded recompute made that mob run EVERY
         // path search synchronously for two seconds, not the single retry the javadoc claims.
         // ARRIVED_STALE is a race and the commonest non-install outcome, so a one-tick miss became a
         // two-second opt-out from the mod for that mob.
-        syncNextDispatch.add(registration.key().entityId());
+        syncNextRecompute.put(registration.key().entityId(), currentTick + FAIL_COOLDOWN_TICKS);
         try {
             registration.navigation().pathweaver$rearmRecompute();
         } catch (Throwable rearmFailure) {
@@ -328,9 +339,16 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     /** Test seam: number of live sync-cooldown entries. */
     int cooldownEntryCount() { return failUntilTick.size(); }
 
-    public boolean shouldForceSync(int entityId, long tick) {
-        // Consumed, not peeked: this is the single retry a stranded recompute is owed.
-        if (syncNextDispatch.remove(entityId)) return true;
+    /** Test seam: number of unclaimed recompute retry tokens still held. */
+    int retryTokenCount() { return syncNextRecompute.size(); }
+
+    public boolean shouldForceSync(int entityId, long tick, RequestOrigin origin) {
+        // Consumed, not peeked, and only by the origin it was issued for: this is the single retry a
+        // stranded recompute is owed, and a goal's moveTo arriving first must not spend it.
+        if (origin == RequestOrigin.RECOMPUTE) {
+            Long owed = syncNextRecompute.remove(entityId);
+            if (owed != null && tick < owed) return true;
+        }
         sweepExpiredCooldowns(tick);
         Long until = failUntilTick.get(entityId);
         if (until == null) return false;
@@ -350,11 +368,16 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
      * because the map is normally empty and is only walked once per second of server time.
      */
     private void sweepExpiredCooldowns(long tick) {
-        if (failUntilTick.isEmpty() || tick - lastCooldownSweepTick < COOLDOWN_SWEEP_INTERVAL_TICKS) {
+        // BOTH maps, or the early-out defeats half the sweep. Keyed on failUntilTick alone, the
+        // retry tokens were never swept in the ordinary case -- failUntilTick is empty unless a
+        // worker actually threw, which on a healthy pack is never.
+        if ((failUntilTick.isEmpty() && syncNextRecompute.isEmpty())
+                || tick - lastCooldownSweepTick < COOLDOWN_SWEEP_INTERVAL_TICKS) {
             return;
         }
         lastCooldownSweepTick = tick;
         failUntilTick.entrySet().removeIf(entry -> tick >= entry.getValue());
+        syncNextRecompute.entrySet().removeIf(entry -> tick >= entry.getValue());
     }
 
     private Registration matching(RequestKey key) {
@@ -513,7 +536,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         epilogueDropLogged.set(false);
         rearmFailureLogged.set(false);
         failUntilTick.clear();
-        syncNextDispatch.clear();
+        syncNextRecompute.clear();
         // Reset the sweep clock too. A new server starts its tick count near zero, so a
         // timestamp left from a long previous run would suppress sweeping until the new
         // server had been up as long as the old one.

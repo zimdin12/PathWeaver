@@ -298,9 +298,9 @@ public final class PathWeaverCommand {
                     ? stoppedByBreaker : stillRunning).add(family.getSimpleName());
             }
             List<String> lines = new java.util.ArrayList<>();
-            lines.add("  §e" + stillRunning.size() + " family/families were denied by the scan and "
-                + "are running anyway, because the tier is Unsafe");
             if (!stillRunning.isEmpty()) {
+                lines.add("  §e" + stillRunning.size() + " family/families were denied by the scan "
+                    + "and are running anyway, because the tier is Unsafe");
                 lines.add("  §7waived: " + String.join(", ", stillRunning));
             }
             if (!stoppedByBreaker.isEmpty()) {

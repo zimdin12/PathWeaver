@@ -260,8 +260,11 @@ public class PathWeaverConfig implements ConfigData {
         // Zero is a documented choice: never switch a family off. A NEGATIVE is not a choice, and
         // clamping it to zero silently landed it on that documented meaning -- turning the
         // family-shutdown safety net off for the session while the GUI and /pathweaver status both
-        // showed a legal value. This is the only numeric field whose out-of-range repair could reach
-        // the permissive end; every other one floors at 1. Invalid input goes to the default.
+        // showed a legal value. Invalid input goes to the default instead.
+        //
+        // Other fields also floor at 0 -- poolThreads, repathToleranceBlocks and
+        // workerFailureWindowTicks -- and for them 0 is the STRICT end, so landing there is safe.
+        // This was the only one where the documented meaning of 0 was "switch the safety net off".
         if (workerFailureLimit < 0) workerFailureLimit = DEFAULT_WORKER_FAILURE_LIMIT;
         workerFailureLimit = Math.clamp(workerFailureLimit, 0, MAX_WORKER_FAILURE_LIMIT);
         workerFailureWindowTicks = Math.clamp(

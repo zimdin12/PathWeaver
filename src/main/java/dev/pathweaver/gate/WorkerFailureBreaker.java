@@ -173,7 +173,11 @@ public final class WorkerFailureBreaker {
         // which is the outcome reset() exists to produce. The trip was already re-validated; the
         // counting and the report were not.
         if (sessionEpoch != session) return false;
-        Counter counter = COUNTERS.computeIfAbsent(family, ignored -> new Counter());
+        // Replace rather than reuse when the stamp does not match: that is what discards a stale
+        // straggler's entry instead of letting the new session inherit its count.
+        Counter counter = COUNTERS.compute(family,
+            (ignored, existing) -> existing != null && existing.epoch == session
+                ? existing : new Counter(session));
         // ONE acquisition of the counter's monitor for record-and-decide. It was three, so the count
         // that crossed the threshold was not the count that got reported: sixteen workers failing at
         // once with a limit of three reported seven -- neither the threshold nor the total. It also
@@ -185,9 +189,10 @@ public final class WorkerFailureBreaker {
         // the breaker off does not also turn the diagnostics off, which is the trade the settings
         // screen describes and not a wider one.
         Decision decision = counter.recordAndDecide(currentTick, window, limit);
-        // Checked again either side of the counter update: this is the one-shot that silences the
-        // next world's first genuine failure if it burns here.
-        if (sessionEpoch != session) return false;
+        // Compared against the counter's own immutable stamp, not against a second read of the
+        // volatile: this is the one-shot that silences the next world's first genuine failure if it
+        // burns here, and a value comparison cannot be raced the way the re-read could.
+        if (counter.epoch != sessionEpoch) return false;
         if (decision.firstEver()) ModAttribution.reportFirstFailure(family, failure);
 
         TripReason reason = decision.reason();
@@ -203,12 +208,27 @@ public final class WorkerFailureBreaker {
 
     /** Per-family counts. Synchronized because two workers can fail in the same instant. */
     private static final class Counter {
+        /**
+         * The session this counter belongs to, immutable.
+         *
+         * <p>Re-checking a volatile epoch either side of the map mutation only narrowed the race: a
+         * straggler from the previous generation could still pass the check, be descheduled through
+         * {@code reset()}, and then insert its counter into the freshly-cleared map -- so the new
+         * world reported a failure count belonging to the old one. Stamping the counter instead
+         * makes a stale entry identifiable rather than indistinguishable, and the next genuine
+         * record for that family replaces it before anything is counted.
+         */
+        private final long epoch;
         private long windowStartTick;
         private int inWindow;
         private int cumulative;
         private boolean everReported;
 
         /** Record one failure and decide what it means, under a single lock acquisition. */
+        Counter(long epoch) {
+            this.epoch = epoch;
+        }
+
         synchronized Decision recordAndDecide(long tick, long windowTicks, int limit) {
             // A clock that went backwards would freeze the window and quietly turn the breaker into
             // the cumulative counter it was designed not to be. Unreachable today -- getTickCount()
