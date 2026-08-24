@@ -415,6 +415,38 @@ public abstract class PathNavigationMixin implements PWNavigation {
         return this.targetPos;
     }
 
+    /**
+     * Feature B: answer with the path already in hand when the target only drifted.
+     *
+     * <p>Opt-in, and off by default. Recompute -- including changed-block invalidation -- always
+     * bypasses tolerance reuse; ordinary target drift must still satisfy endpoint, reach and
+     * navigation validity before the existing route is handed back.
+     *
+     * @return true when the caller has been answered and dispatch must not run
+     */
+    @Unique
+    private boolean pathweaver$reuseExistingPathWithinTolerance(
+            Set<BlockPos> targets, int reachRange, PathWeaverConfig cfg,
+            CallbackInfoReturnable<Path> cir) {
+        if (cfg.repathToleranceBlocks <= 0 || this.path == null) return false;
+        Path currentPath = this.path;
+        net.minecraft.world.level.pathfinder.Node endpoint = currentPath.getEndNode();
+        var current = new dev.pathweaver.elision.RepathTolerance.CurrentPath(
+            currentPath.getTarget(),
+            endpoint == null ? null : new BlockPos(endpoint.x, endpoint.y, endpoint.z),
+            currentPath.canReach(), currentPath.isDone(), true,
+            this.pathweaver$recomputeInvalidated, this.reachRange);
+        BlockPos reusableTarget = dev.pathweaver.elision.RepathTolerance.reusableTarget(
+            targets, current, reachRange, cfg.repathToleranceBlocks);
+        if (reusableTarget == null) return false;
+        if (!reusableTarget.equals(this.targetPos)) {
+            this.targetPos = reusableTarget;
+            this.pathweaver$targetRevision++;
+        }
+        cir.setReturnValue(currentPath);
+        return true;
+    }
+
     @Inject(
         method = "createPath(Ljava/util/Set;IZIF)Lnet/minecraft/world/level/pathfinder/Path;",
         at = @At("HEAD"),
@@ -465,27 +497,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // returned above and drains through its existing registration; changed intent was balanced above.
         if (!cfg.enabled) return;
 
-        // Feature B remains opt-in. Recompute (including changed-block invalidation) always bypasses
-        // tolerance reuse; ordinary target drift must satisfy endpoint, reach and navigation validity.
-        if (cfg.repathToleranceBlocks > 0 && this.path != null) {
-            Path currentPath = this.path;
-            net.minecraft.world.level.pathfinder.Node endpoint = currentPath.getEndNode();
-            var current = new dev.pathweaver.elision.RepathTolerance.CurrentPath(
-                currentPath.getTarget(),
-                endpoint == null ? null : new BlockPos(endpoint.x, endpoint.y, endpoint.z),
-                currentPath.canReach(), currentPath.isDone(), true,
-                this.pathweaver$recomputeInvalidated, this.reachRange);
-            BlockPos reusableTarget = dev.pathweaver.elision.RepathTolerance.reusableTarget(
-                targets, current, reachRange, cfg.repathToleranceBlocks);
-            if (reusableTarget != null) {
-                if (!reusableTarget.equals(this.targetPos)) {
-                    this.targetPos = reusableTarget;
-                    this.pathweaver$targetRevision++;
-                }
-                cir.setReturnValue(currentPath);
-                return;
-            }
-        }
+        if (pathweaver$reuseExistingPathWithinTolerance(targets, reachRange, cfg, cir)) return;
 
         // Feature A: async dispatch.
         if (!rt.isRunning()) return;

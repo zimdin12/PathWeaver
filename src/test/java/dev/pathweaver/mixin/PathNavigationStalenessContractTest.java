@@ -173,11 +173,18 @@ class PathNavigationStalenessContractTest {
                 // Path reuse is controlled solely by the tolerance now; the separate boolean was
                 // removed because it defaulted to on while the tolerance defaulted to 0, so the
                 // feature advertised itself as enabled and was inert.
-                if (field.name.equals("repathToleranceBlocks")) elision = i;
             } else if (insns[i] instanceof MethodInsnNode call
                     && call.owner.equals("dev/pathweaver/gate/SafetyGate")
                     && call.name.equals("isAllowed")) {
                 safety = i;
+            } else if (insns[i] instanceof MethodInsnNode call
+                    && call.name.equals("pathweaver$reuseExistingPathWithinTolerance")) {
+                // The CALL, not the config field it reads. Repath elision moved into a named step,
+                // so the field read is no longer in this method -- but the property being asserted
+                // is about where elision happens relative to the master switch, and the call site is
+                // exactly that. Matching by name also survives edits inside the step, which tracking
+                // an operand never did.
+                elision = i;
             }
         }
         assertTrue(enabled >= 0, "master Enabled must be read in the routing injection");
