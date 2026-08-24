@@ -1,1 +1,5 @@
 * text=auto eol=lf
+
+# Windows batch files are read by cmd.exe, which needs CRLF. The blanket rule above
+# would rewrite gradlew.bat to LF on any `git add --renormalize`, so pin it.
+*.bat text eol=crlf
