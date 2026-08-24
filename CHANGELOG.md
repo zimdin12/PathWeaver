@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.7.0 — Fewer wrong answers, and fewer places to hide one
+
+Mostly defects. Twenty-odd of them, found by four parallel read-only hunts over the async, mixin,
+gate and config packages, then by an adversarial review of the whole release diff.
+
+### Player-visible
+
+- **Mobs no longer freeze for up to a second after the world changes under them.** Vanilla nulls a
+  mob's path, asks for a new one, and — because we answered a tick later — recorded a recompute that
+  never produced a path. Both of its retry routes then stayed shut for twenty ticks on a mob standing
+  still. It hands control back to vanilla now.
+- **A goal can no longer be told a mob is reachable using a route to somewhere it abandoned.**
+  During the one tick a search is in flight, `path` and `targetPos` name different destinations, and
+  vanilla's own path-reuse check treats them as a pair. Direct queries got the stale route.
+- **`AUDITED` now works on 26.1.1**, not only 26.1.2. The audits gate on the bytes they pinned rather
+  than a version label; 26.1.1's pinned vanilla classes are byte-identical, and 26.2's are not, so
+  that one still refuses.
+- **Workers skip searches nobody wants any more** instead of computing them and throwing the result
+  away.
+
+### Fail-open defects, all live in 0.6.1
+
+- A negative `workerFailureLimit` landed on the documented "never switch anything off" value,
+  silently disabling the family-shutdown safety net while the GUI showed something legal.
+- A config predating the tier setting inherited today's permissive default, upgrading an operator
+  from "scan armed" to "waive everything" with no log line.
+- `SafetyGate`'s denial set was public and mutable: any class on the classpath could clear every scan
+  denial, including ones a FAILED scan installed, which no tier may waive.
+- A mixin config registered after startup was invisible to the scan, because pathfinding classes are
+  not transformed until a world starts. That was the one place where absent evidence produced ALLOW.
+- One third-party jar with unusual capitalisation in its manifest could make the mod permanently
+  inert, via a scan failure no tier can waive.
+- `trustedMods: null` made the settings screen unopenable with no message.
+
+### Reporting honesty
+
+- `/pathweaver mobs` called a mob eligible when dispatch would refuse it.
+- The status line claimed breaker-stopped families were "running anyway", contradicting a line three
+  rows above it, and asserted uninspected code was running when none was.
+- Both reporting sites printed the raw denial set size — `1` while five of six families were refused.
+- A trimmed path was counted as a successful install, clearing the failure cooldown with no route in
+  place.
+- Requests left over from a previous session were divided into this session's dispatch total.
+
+### Internal
+
+The dispatch injection is 109 lines instead of 311, with its guard ordering now expressed as named
+calls rather than instruction offsets. `PathNavigationMixin` is deliberately NOT split; the reasoning
+is in `ROADMAP.md`.
+
+375 unit tests, four game-test harnesses, and roughly thirty mutations compiled and observed to fail.
+Three of those survived their first defence, including two tests of mine that passed for the wrong
+reason.
+
 ## 0.6.1 — Notice, instead of predicting
 
 PathWeaver had two modes: one that did nothing, and one that checked nothing.
