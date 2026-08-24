@@ -408,7 +408,16 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         Registration registration = matching(key);
         if (registration != null && inFlight.remove(key.entityId(), registration)) {
             try {
-                registration.navigation().pathweaver$install(path);
+                if (!registration.navigation().pathweaver$install(path)) {
+                    // Vanilla declined it. Ordinary, not a failure: no cooldown, because nothing
+                    // misbehaved and throttling this mob would punish it for a trimmed path. The
+                    // rollback still runs, and a recompute is still stranded -- it has no route.
+                    rollbackOptimisticTarget(registration);
+                    rearmRecomputeIfStranded(registration, RequestOutcome.INSTALL_REJECTED);
+                    dev.pathweaver.PathWeaverRuntime.get()
+                        .markOutcome(RequestOutcome.INSTALL_REJECTED);
+                    return;
+                }
                 failUntilTick.remove(key.entityId());
                 dev.pathweaver.PathWeaverRuntime.get().markOutcome(RequestOutcome.INSTALLED);
             } catch (Throwable installFailure) {

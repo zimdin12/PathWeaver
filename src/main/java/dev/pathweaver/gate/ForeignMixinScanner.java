@@ -360,9 +360,16 @@ public final class ForeignMixinScanner {
                 }
                 String environment = entry.has("environment")
                     ? entry.get("environment").getAsString() : "*";
-                if (environment.equals("*") || environment.equals(runtimeEnvironment)) {
+                // Fabric lower-cases this value and treats "" as universal, so "Client" and "" are
+                // both legal manifests it loads happily. Rejecting them turned one third-party jar
+                // out of hundreds into a scan FAILURE, and a scan failure denies every family at
+                // every tier -- no tier may waive it. One mod with unusual capitalisation made the
+                // whole mod permanently inert, blaming the wrong thing.
+                String normalised = environment.toLowerCase(java.util.Locale.ROOT);
+                if (normalised.isEmpty() || normalised.equals("*")
+                        || normalised.equals(runtimeEnvironment)) {
                     configs.add(entry.get("config").getAsString());
-                } else if (!environment.equals("client") && !environment.equals("server")) {
+                } else if (!normalised.equals("client") && !normalised.equals("server")) {
                     throw new IllegalArgumentException("Unknown Fabric mixin environment: " + environment);
                 }
             } else {

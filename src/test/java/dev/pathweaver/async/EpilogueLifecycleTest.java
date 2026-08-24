@@ -65,7 +65,7 @@ class EpilogueLifecycleTest {
         private final Object uuid = new Object();
         private final Object world = new Object();
 
-        @Override public void pathweaver$install(Path path) { }
+        @Override public boolean pathweaver$install(Path path) { return true; }
         @Override public boolean pathweaver$stale(double x, double y, double z) { return false; }
         @Override public NavigationIdentity pathweaver$identity() {
             return new NavigationIdentity(uuid, world, "overworld", this, null, 0L);

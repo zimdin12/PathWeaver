@@ -138,6 +138,20 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
         }
     }
 
+    /** A JSON array of strings, or absent. Explicit null is a type error, as it is everywhere else. */
+    private static void strictOptionalStringList(JsonObject raw, String key) {
+        if (!raw.has(key)) return;
+        com.google.gson.JsonElement value = raw.get(key);
+        if (!value.isJsonArray()) {
+            throw new IllegalArgumentException(key + " must be an array of strings");
+        }
+        for (com.google.gson.JsonElement element : value.getAsJsonArray()) {
+            if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+                throw new IllegalArgumentException(key + " must contain only strings");
+            }
+        }
+    }
+
     private static void validateCurrentFieldTypes(JsonObject raw) {
         strictOptionalBoolean(raw, "allowModdedMobAsync");
         strictOptionalInteger(raw, "poolThreads");
@@ -151,6 +165,11 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
         strictOptionalInteger(raw, "workerFailureLimit");
         strictOptionalInteger(raw, "workerFailureWindowTicks");
         strictOptionalEnum(raw, "compatibilityTier");
+        // The only persisted field that had no type check. `"trustedMods": null` passed every other
+        // guard, Gson overwrote the initialised list with null, and the null survived into the
+        // config -- the scanner null-guards it, but Cloth's list entry builder does not, so the
+        // settings screen threw and ModMenu bounced the user straight back with no message.
+        strictOptionalStringList(raw, "trustedMods");
     }
 
     /**

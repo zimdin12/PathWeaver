@@ -162,7 +162,9 @@ public final class PathWeaverCommand {
         }
         out.add("  §7Green means the search produced an answer. Amber means it did not -- most "
             + "of that is normal (a mob stopping, a request superseded), and only the failure rows "
-            + "are work actually wasted. Rows with no percentage never reached a worker.");
+            + "are work actually wasted. Rows with no percentage are not part of this session's "
+            + "dispatch total: either they never reached a worker, or they were dispatched by a "
+            + "previous session and only surfaced at this one's startup.");
         return java.util.List.copyOf(out);
     }
 

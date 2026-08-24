@@ -116,7 +116,7 @@ class PathWeaverRuntimeTest {
 
         int dones;
         private final Object world = new Object();
-        public void pathweaver$install(Path path) { }
+        public boolean pathweaver$install(Path path) { return true; }
         public boolean pathweaver$stale(double x, double y, double z) { return false; }
         public NavigationIdentity pathweaver$identity() {
             return new NavigationIdentity("uuid", world, "dimension", this, null, 1L);

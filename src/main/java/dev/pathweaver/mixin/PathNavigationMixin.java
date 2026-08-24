@@ -687,10 +687,14 @@ public abstract class PathNavigationMixin implements PWNavigation {
     // ---- PWNavigation duck ----
 
     @Override
-    public void pathweaver$install(Path path) {
+    public boolean pathweaver$install(Path path) {
         // Vanilla's own install path: handles sameAs/trim/stuck bookkeeping. Use the caller's real
         // intended speed bound to this registration, including vanilla-valid non-positive/NaN values.
-        moveTo(path, this.pathweaver$pendingInstallSpeed);
+        //
+        // The return value is not decoration: moveTo answers false for a path that is already done or
+        // that trims to zero nodes, having already assigned `path`. Replaying the createPath tail on
+        // top of that wrote a targetPos with no route to it.
+        if (!moveTo(path, this.pathweaver$pendingInstallSpeed)) return false;
 
         // Replay selected createPath bookkeeping needed by genuine navigation/recompute requests.
         // Query-only createPath calls cannot reach this async install path because routing depth stays zero.
@@ -703,6 +707,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // A real path is now installed, so there is nothing optimistic left to undo.
         this.pathweaver$optimisticTargetPos = null;
         this.pathweaver$targetPosBeforeDispatch = null;
+        return true;
     }
 
     @Override

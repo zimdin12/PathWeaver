@@ -38,7 +38,7 @@ class EntityInstallSinkTest {
         Object path;
         long revision;
         PWNavigation identityNavigation = this;
-        public void pathweaver$install(Path p) { installs++; }
+        public boolean pathweaver$install(Path p) { installs++; return true; }
         public boolean pathweaver$stale(double x, double y, double z) { return stale; }
         public NavigationIdentity pathweaver$identity() {
             return new NavigationIdentity(uuid, world, dimension, identityNavigation, path, revision);
@@ -125,7 +125,7 @@ class EntityInstallSinkTest {
         EntityInstallSink sink = new EntityInstallSink();
         sink.setTick(30L);
         FakeNav throwing = new FakeNav() {
-            @Override public void pathweaver$install(Path path) {
+            @Override public boolean pathweaver$install(Path path) {
                 installs++;
                 this.path = new Object();      // vanilla already applied a path
                 throw new IllegalStateException("foreign injection threw after moveTo");
@@ -266,7 +266,7 @@ class EntityInstallSinkTest {
         EntityInstallSink sink = new EntityInstallSink();
         sink.setTick(30L);
         FakeNav throwing = new FakeNav() {
-            @Override public void pathweaver$install(Path path) {
+            @Override public boolean pathweaver$install(Path path) {
                 installs++;
                 throw new IllegalStateException("install boom");
             }
@@ -587,7 +587,7 @@ class EntityInstallSinkTest {
         EntityInstallSink sink = new EntityInstallSink();
         sink.setTick(100L);
         FakeNav nav = new FakeNav() {
-            @Override public void pathweaver$install(Path path) {
+            @Override public boolean pathweaver$install(Path path) {
                 throw new IllegalStateException("a foreign mixin in moveTo threw");
             }
         };
@@ -701,5 +701,36 @@ class EntityInstallSinkTest {
                 + "token is not honoured passes whether or not the sweep exists, because the read "
                 + "removes the entry itself -- a mutation deleting the sweep survived that version "
                 + "of this test.");
+    }
+
+    /**
+     * A path vanilla declines is not an install.
+     *
+     * <p>{@code moveTo} returns false for a path already done or trimmed to zero nodes, having
+     * already assigned {@code path}. Ignoring that return credited a successful install, cleared the
+     * entity's failure cooldown and destroyed the rollback record with no route in place. It is not a
+     * failure either: nothing misbehaved, so it must not earn the 40-tick sync cooldown.
+     */
+    @Test
+    void aPathVanillaDeclinesIsNotCountedAsInstalledAndEarnsNoCooldown() {
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(100L);
+        FakeNav nav = new FakeNav() {
+            @Override public boolean pathweaver$install(Path path) {
+                installs++;
+                return false;   // vanilla trimmed it to nothing
+            }
+        };
+        RequestKey key = key(1L, 1L, 41);
+        sink.register(key, nav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false,
+            RequestOrigin.RECOMPUTE);
+        sink.install(key, null);
+
+        assertEquals(1, nav.rollbacks,
+            "the optimistic target must be rolled back; there is no route to it");
+        assertEquals(1, nav.rearms,
+            "a recompute left without a route is stranded exactly as any other empty result");
+        assertFalse(sink.shouldForceSync(41, 100L, RequestOrigin.MOVE_TO),
+            "a trimmed path is ordinary, not a misbehaving mod: no failure cooldown");
     }
 }

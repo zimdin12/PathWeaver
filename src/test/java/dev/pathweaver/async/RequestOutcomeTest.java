@@ -86,11 +86,18 @@ class RequestOutcomeTest {
             // SETUP_FAILED is NOT here: the mixin selects it only after markDispatched(), so it is
             // part of the dispatched total. This test previously enforced the opposite and so
             // actively defended the bug.
-            boolean neverDispatched = outcome == RequestOutcome.POOL_SATURATED
+            boolean notInThisSessionsTotal = outcome == RequestOutcome.POOL_SATURATED
                 || outcome == RequestOutcome.SETUP_FAILED_PRE_DISPATCH
                 // Refused at the gate, before anything reaches a worker.
-                || outcome == RequestOutcome.BREAKER_OPEN;
-            assertEquals(!neverDispatched, outcome.countsAgainstDispatched(),
+                || outcome == RequestOutcome.BREAKER_OPEN
+                // Dispatched, but in the PREVIOUS session. onServerStarting zeroes `dispatched` and
+                // the outcome array, then records one SERVER_RESET per leftover registration --
+                // deliberately, because that is the only evidence leftovers existed. The numerator
+                // therefore lands in this session's array while the denominator does not include it,
+                // which is exactly the failure this test's own message names. The question here is
+                // not "did it reach a worker" but "is it part of the total it is divided by".
+                || outcome == RequestOutcome.SERVER_RESET;
+            assertEquals(!notInThisSessionsTotal, outcome.countsAgainstDispatched(),
                 outcome + " is on the wrong side of the dispatched-total line, so its percentage "
                     + "is measured against a total it does not belong to");
         }
