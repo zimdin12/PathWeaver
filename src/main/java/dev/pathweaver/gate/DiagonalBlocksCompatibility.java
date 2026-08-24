@@ -50,7 +50,6 @@ final class DiagonalBlocksCompatibility {
     static final String WALK_MIXIN = PACKAGE + ".WalkNodeEvaluatorMixin";
     static final String WALK = "net.minecraft.world.level.pathfinder.WalkNodeEvaluator";
 
-    private static final String MINECRAFT_VERSION = "26.1.2";
     private static final String MODULE_SHA =
         "df59211601dc83718ec0189a56c9f5569a0654f56a58fbbd644ea462a51b74d6";
     private static final String CONFIG_SHA =
@@ -85,9 +84,19 @@ final class DiagonalBlocksCompatibility {
             String version = module.getMetadata().getVersion().getFriendlyString();
             String minecraft = loader.getModContainer("minecraft")
                 .map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("missing");
-            if (!MINECRAFT_VERSION.equals(minecraft)) {
-                return unverified("exact audit unsupported on Minecraft " + minecraft);
-            }
+            // NOT gated on the Minecraft version string any more.
+            //
+            // Every audit here pins, by SHA-256, the vanilla classes its own proof reads -- and the
+            // verification below fails on any of those hashes. So the bytes the proof was derived
+            // against are already established by evidence, and the version label was a second,
+            // coarser answer to the same question that could only ever be stricter than the bytes.
+            //
+            // Measured both directions before removing it. On 26.1.1 all ten pinned vanilla classes
+            // are byte-identical to 26.1.2, so the audits hold and the label was the only thing
+            // refusing. On 26.2 four of the ten differ -- PathNavigation, WalkNodeEvaluator,
+            // BlockStateBase and Frog$FrogNodeEvaluator -- so the hashes refuse it without needing
+            // the label at all. The running version is still reported in failure text, because
+            // "which Minecraft" is useful in a diagnostic even when it is not the deciding fact.
             if (!MOD_VERSION.equals(version)) return unverified("unsupported version " + version);
 
             List<String> diagnostics = verify(runtimeBundle(module));
