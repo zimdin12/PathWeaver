@@ -4,6 +4,7 @@ import dev.pathweaver.PathWeaverRuntime;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.gate.ForeignMixinScanner;
 import dev.pathweaver.gate.SafetyGate;
+import dev.pathweaver.gate.SafetyGateTestAccess;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -224,7 +225,7 @@ public final class AuditedCompatibilityRoutingGameTest {
             cfg.repathToleranceBlocks = oldTolerance;
             cfg.maxResultAgeTicks = oldMaxResultAge;
             {
-                SafetyGate.restoreDenialsForTesting(oldDenials);
+                SafetyGateTestAccess.restore(oldDenials);
             }
         }
     }
@@ -245,7 +246,7 @@ public final class AuditedCompatibilityRoutingGameTest {
 
     private static void apply(Set<Class<?>> denied) {
         {
-            SafetyGate.restoreDenialsForTesting(denied);
+            SafetyGateTestAccess.restore(denied);
         }
     }
 

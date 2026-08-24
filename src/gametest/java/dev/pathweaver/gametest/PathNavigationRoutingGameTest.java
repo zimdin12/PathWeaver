@@ -9,6 +9,7 @@ import dev.pathweaver.async.RequestKey;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.gate.ForeignMixinScanner;
 import dev.pathweaver.gate.SafetyGate;
+import dev.pathweaver.gate.SafetyGateTestAccess;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -66,7 +67,7 @@ public final class PathNavigationRoutingGameTest {
         Runnable teardown = () -> {
             cfg.maxResultAgeTicks = oldMaxResultAge;
             restore(cfg, oldEnabled, oldModdedMobOverride, oldTolerance);
-            SafetyGate.restoreDenialsForTesting(oldDenials);
+            SafetyGateTestAccess.restore(oldDenials);
         };
 
         try {
@@ -116,7 +117,7 @@ public final class PathNavigationRoutingGameTest {
             check(helper, oldDenials.equals(SafetyGate.allowlisted()),
                 "stock full Fabric API must fail closed for every family until its separate "
                     + "interaction BlockStateBase mixin is independently audited");
-            SafetyGate.restoreDenialsForTesting(java.util.Set.of());
+            SafetyGateTestAccess.clear();
             cfg.enabled = true;
             cfg.allowModdedMobAsync = false;
             cfg.repathToleranceBlocks = 0;
@@ -405,7 +406,7 @@ public final class PathNavigationRoutingGameTest {
                         seamMob.discard();
                         // ---- end recompute seam arm ----
 
-                        SafetyGate.restoreDenialsForTesting(oldDenials);
+                        SafetyGateTestAccess.restore(oldDenials);
 
                         double oldX = coordinateMob.getX();
                         double oldY = coordinateMob.getY();
@@ -449,7 +450,7 @@ public final class PathNavigationRoutingGameTest {
         // independent BlockStateBase interaction mixin. Keep production fail-closed; clear only
         // that Swim denial here to retain a live routing/cache-isolation witness for the prototype.
         {
-            SafetyGate.undenyForTesting(SwimNodeEvaluator.class);
+            SafetyGateTestAccess.undeny(SwimNodeEvaluator.class);
         }
         cfg.enabled = true;
         cfg.allowModdedMobAsync = false;

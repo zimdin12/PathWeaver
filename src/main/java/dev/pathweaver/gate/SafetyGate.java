@@ -141,11 +141,11 @@ public final class SafetyGate {
      * class on the classpath could call {@code clear()} on it and waive every scan denial, including
      * ones a FAILED scan installed, which no tier is permitted to waive.
      *
-     * <p><b>This buys auditability, not access control, and the difference is worth stating.</b> The
-     * mutating seams below are still {@code public} because tests in three other packages need them,
-     * so a hostile mod can still reach the set — it just has to call a method whose name says what it
-     * is doing, and every such call is greppable. Closing the hole properly means making those seams
-     * unreachable from outside this package, which is filed rather than claimed here.
+     * <p>The mutating seams below are package-private, so nothing outside {@code dev.pathweaver.gate}
+     * can reach them at all. Tests in other packages go through {@code SafetyGateTestAccess}, which
+     * exists once per non-shipping source set and therefore never reaches a user's classpath —
+     * verified by {@code noPublicMutatorSurvivesOnTheShippedGate}. Read accessors stay public because
+     * reporting sites in other packages legitimately need them and reading cannot waive anything.
      */
     public static Set<Class<?>> snapshotDenials() {
         synchronized (deniedBySafety) {
@@ -184,21 +184,21 @@ public final class SafetyGate {
     }
 
     /** Test seam: deny one family. Not called from production code. */
-    public static void denyForTesting(Class<?> family) {
+    static void denyForTesting(Class<?> family) {
         synchronized (deniedBySafety) {
             deniedBySafety.add(family);
         }
     }
 
     /** Test seam: lift one family's denial. Not called from production code. */
-    public static void undenyForTesting(Class<?> family) {
+    static void undenyForTesting(Class<?> family) {
         synchronized (deniedBySafety) {
             deniedBySafety.remove(family);
         }
     }
 
     /** Test seam: replace the scan denials wholesale. Not called from production code. */
-    public static void restoreDenialsForTesting(Set<Class<?>> denials) {
+    static void restoreDenialsForTesting(Set<Class<?>> denials) {
         synchronized (deniedBySafety) {
             deniedBySafety.clear();
             deniedBySafety.addAll(denials);

@@ -5,6 +5,7 @@ import dev.pathweaver.async.PathRequest;
 import dev.pathweaver.async.RequestOutcome;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.gate.SafetyGate;
+import dev.pathweaver.gate.SafetyGateTestAccess;
 import dev.pathweaver.gate.WorkerFailureBreaker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
@@ -158,7 +159,7 @@ public final class WorkerFailureBreakerGameTest {
             scanRefused.discard();
             // The harness ships a mixin into pathfinding, so the scan denies everything here. Clearing
             // that is what makes the rest of this test about the breaker rather than about the scan.
-            SafetyGate.restoreDenialsForTesting(java.util.Set.of());
+            SafetyGateTestAccess.clear();
             WorkerFailureBreaker.reset(1L);
 
             check(SafetyGate.isAllowed(WalkNodeEvaluator.class),
@@ -256,7 +257,7 @@ public final class WorkerFailureBreakerGameTest {
             cfg.workerFailureLimit = oldLimit;
             cfg.workerFailureWindowTicks = oldWindow;
             WorkerFailureBreaker.reset(1L);
-            SafetyGate.restoreDenialsForTesting(oldDenials);
+            SafetyGateTestAccess.restore(oldDenials);
         }
     }
 }

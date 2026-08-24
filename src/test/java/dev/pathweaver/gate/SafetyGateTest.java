@@ -83,4 +83,33 @@ class SafetyGateTest {
         }
         SafetyGate.restoreDenialsForTesting(java.util.Set.of());
     }
+
+    /**
+     * Nothing outside this package can change what the scan denied.
+     *
+     * <p>The denial set was once a {@code public static final} mutable collection, so any class on a
+     * user's classpath could clear it and waive every scan denial — including ones a FAILED scan
+     * installed, which no tier is permitted to waive. Hiding the field was not enough on its own:
+     * the accessors that replaced it were public too, which moved the hole rather than closing it.
+     *
+     * <p>Reflection over the public surface, not a source grep, because that is what a hostile mod
+     * actually sees.
+     */
+    @org.junit.jupiter.api.Test
+    void noPublicMutatorSurvivesOnTheShippedGate() {
+        java.util.List<String> reachable = java.util.Arrays.stream(SafetyGate.class.getMethods())
+            .filter(m -> m.getDeclaringClass() == SafetyGate.class)
+            .filter(m -> {
+                String n = m.getName().toLowerCase(java.util.Locale.ROOT);
+                return n.contains("deny") || n.contains("restore") || n.contains("undeny");
+            })
+            .filter(m -> m.getReturnType() == void.class)
+            .map(java.lang.reflect.Method::getName)
+            .filter(n -> !n.equals("denyAllEligible") && !n.equals("replaceDenials"))
+            .toList();
+        org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of(), reachable,
+            "these mutate the denial set and are reachable from any class on the classpath. Tests "
+                + "outside dev.pathweaver.gate must go through SafetyGateTestAccess, which lives in "
+                + "a source set that is never packaged into the mod jar.");
+    }
 }

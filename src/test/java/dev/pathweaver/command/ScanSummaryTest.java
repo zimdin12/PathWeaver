@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.pathweaver.gate.SafetyGate;
+import dev.pathweaver.gate.SafetyGateTestAccess;
 import java.util.List;
 import java.util.Set;
 import net.minecraft.world.level.pathfinder.SwimNodeEvaluator;
@@ -248,12 +249,12 @@ class ScanSummaryTest {
         }
         try {
             {
-                SafetyGate.restoreDenialsForTesting(java.util.Set.of());
+                SafetyGateTestAccess.clear();
                 // WalkNodeEvaluator, deliberately, NOT Swim. Swim extends NodeEvaluator directly,
                 // so it is the one allowlisted family whose closure size equals the raw set size --
                 // seeding it made this value assertion agree with the bug it is meant to catch, and
                 // reverting the reporting site to the raw size kept it green.
-                SafetyGate.denyForTesting(WalkNodeEvaluator.class);
+                SafetyGateTestAccess.deny(WalkNodeEvaluator.class);
             }
             var decision = new dev.pathweaver.gate.ForeignMixinScanner.ScanDecision(
                 java.util.Set.of(net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class,
@@ -272,7 +273,7 @@ class ScanSummaryTest {
             assertTrue(line.contains("scanned=331") && line.contains("failed=0"),
                 "and the other two must survive the refactor: " + line);
         } finally {
-            SafetyGate.restoreDenialsForTesting(saved);
+            SafetyGateTestAccess.restore(saved);
         }
     }
 
