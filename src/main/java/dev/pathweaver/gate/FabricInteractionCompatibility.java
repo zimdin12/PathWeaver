@@ -143,22 +143,22 @@ final class FabricInteractionCompatibility {
         if (!MODULE_SHAS.contains(moduleSha)) {
             diagnostics.add("module jar hash mismatch: " + moduleSha);
         }
-        checkHash("mixin config", b.config(), CONFIG_SHA, diagnostics);
-        checkHash("interaction mixin", b.mixin(), MIXIN_SHA, diagnostics);
-        checkHash("vanilla BlockStateBase", b.blockStateBase(), BLOCK_STATE_BASE_SHA, diagnostics);
-        checkHash("vanilla PathFinder", b.pathFinder(), PATH_FINDER_SHA, diagnostics);
-        checkHash("vanilla NodeEvaluator", b.nodeEvaluator(), NODE_EVALUATOR_SHA, diagnostics);
-        checkHash("vanilla WalkNodeEvaluator", b.walkNodeEvaluator(), WALK_SHA, diagnostics);
-        checkHash("vanilla PathfindingContext", b.pathContext(), PATH_CONTEXT_SHA, diagnostics);
-        checkHash("vanilla PathTypeCache", b.pathTypeCache(), PATH_TYPE_CACHE_SHA, diagnostics);
-        checkHash("vanilla PathNavigationRegion", b.pathRegion(), PATH_REGION_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("mixin config", b.config(), CONFIG_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("interaction mixin", b.mixin(), MIXIN_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla BlockStateBase", b.blockStateBase(), BLOCK_STATE_BASE_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla PathFinder", b.pathFinder(), PATH_FINDER_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla NodeEvaluator", b.nodeEvaluator(), NODE_EVALUATOR_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla WalkNodeEvaluator", b.walkNodeEvaluator(), WALK_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla PathfindingContext", b.pathContext(), PATH_CONTEXT_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla PathTypeCache", b.pathTypeCache(), PATH_TYPE_CACHE_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla PathNavigationRegion", b.pathRegion(), PATH_REGION_SHA, diagnostics);
         for (Map.Entry<String, String> pinned : WORKER_EVALUATOR_SHAS.entrySet()) {
             byte[] bytes = b.workerEvaluators().get(pinned.getKey());
             if (bytes == null) {
                 diagnostics.add("worker-reachable evaluator unavailable: " + pinned.getKey());
                 continue;
             }
-            checkHash("vanilla " + pinned.getKey(), bytes, pinned.getValue(), diagnostics);
+            AuditedMixinCompatibility.checkHash("vanilla " + pinned.getKey(), bytes, pinned.getValue(), diagnostics);
         }
         Set<String> targets = new HashSet<>();
         Set<String> workerCalls = new HashSet<>();
@@ -377,19 +377,7 @@ final class FabricInteractionCompatibility {
         return value instanceof List<?> list && list.size() == 1 && expected.equals(list.get(0));
     }
 
-    private static void checkHash(String label, byte[] bytes, String expected,
-                                  List<String> diagnostics) {
-        String actual = sha256(bytes);
-        if (!expected.equals(actual)) diagnostics.add(label + " hash mismatch: " + actual);
-    }
 
-    private static String sha256(byte[] bytes) {
-        try {
-            return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-    }
 
     private static byte[] readModuleArtifact(ModContainer module) throws IOException {
         ModOrigin origin = module.getOrigin();
