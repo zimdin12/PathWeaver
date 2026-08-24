@@ -681,8 +681,96 @@ public final class ForeignMixinScanner {
      * expands jar-in-jar candidates into their own containers; active config targets include plugin
      * contributions returned by IMixinConfigPlugin.getMixins(). Any discovery ambiguity fails closed.
      */
+    /** Config names seen at scan time, so a later arrival is detectable. Empty until a scan runs. */
+    private static volatile List<String> scannedConfigCensus = List.of();
+
+    /**
+     * Every mixin config Mixin knows about, in any state, by name.
+     *
+     * <p>Three states, and {@link #activeMixinConfigs} deliberately reads only the last of them
+     * because it needs prepared claims. {@code Mixins.getConfigs()} holds configs registered but not
+     * yet selected; {@code MixinProcessor.pendingConfigs} holds selected but not yet prepared;
+     * {@code MixinProcessor.configs} holds prepared. A config in any state can still apply to
+     * pathfinding classes, which are not loaded until a world starts.
+     *
+     * <p>Names only. An unprepared config cannot answer {@code getMixinsFor}, so it cannot yield
+     * claims — but it can say what it is called, and that is enough to notice it arrived.
+     */
+    private static List<String> configCensus() throws ReflectiveOperationException {
+        java.util.TreeSet<String> names = new java.util.TreeSet<>();
+        for (IMixinConfig config : activeMixinConfigs()) names.add(config.getName());
+        Object transformer = MixinEnvironment.getCurrentEnvironment().getActiveTransformer();
+        var processorField = transformer.getClass().getDeclaredField("processor");
+        processorField.setAccessible(true);
+        Object processor = processorField.get(transformer);
+        var pendingField = processor.getClass().getDeclaredField("pendingConfigs");
+        pendingField.setAccessible(true);
+        if (pendingField.get(processor) instanceof Collection<?> pending) {
+            for (Object config : pending) {
+                if (config instanceof IMixinConfig typed) names.add(typed.getName());
+            }
+        }
+        for (Object registered : org.spongepowered.asm.mixin.Mixins.getConfigs()) {
+            var getName = registered.getClass().getMethod("getName");
+            getName.setAccessible(true);
+            Object name = getName.invoke(registered);
+            if (name != null) names.add(name.toString());
+        }
+        return List.copyOf(names);
+    }
+
+    /**
+     * Re-scan if any mixin config arrived after the startup scan.
+     *
+     * <p>The scan runs from {@code onInitialize}. Pathfinding classes are not transformed until a
+     * world starts, so a mod whose own initialiser runs after this one -- or anything calling
+     * {@code Mixins.addConfiguration} late -- could register a config into {@code WalkNodeEvaluator}
+     * that the scan never saw, contributed no claim for, and therefore never denied. That is the one
+     * place in this file where absent evidence produced ALLOW rather than DENY.
+     *
+     * <p>Called at server start, which is the last moment before the decision is used and the first
+     * at which everything relevant has been registered. A census that cannot be read at all is
+     * treated as a scan failure, which denies every family, because "cannot tell" must not read as
+     * "nothing arrived".
+     */
+    public static void rescanIfConfigsChanged() {
+        List<String> now;
+        try {
+            now = configCensus();
+        } catch (Throwable t) {
+            // Publish it as a scan FAILURE, not merely a denial: a failure is the one state no
+            // tier may waive, and "cannot tell what is loaded" must not be waivable.
+            SafetyGate.denyAllEligible();
+            ScanDecision failed = decide(List.of(),
+                List.of("mixin config census unreadable at server start: " + t));
+            lastScanReport = new ScanReport(failed, List.of(),
+                AuditedExemptionEvidence.unverified("census unreadable"));
+            scanCompleted = true;
+            SafetyGate.replaceDenials(failed.denied());
+            return;
+        }
+        if (now.equals(scannedConfigCensus)) return;
+        List<String> arrived = new ArrayList<>(now);
+        arrived.removeAll(scannedConfigCensus);
+        try {
+            PathWeaver.LOG.info("Mixin configs changed since the startup scan ({} new, e.g. {}); "
+                + "re-scanning before deciding what may run off-thread.",
+                arrived.size(), arrived.isEmpty() ? "<none>" : arrived.getFirst());
+        } catch (Throwable ignored) {
+            // Re-scanning must not depend on a logging backend being healthy.
+        }
+        scanAndPopulate();
+    }
+
     public static void scanAndPopulate() {
         SafetyGate.denyAllEligible();
+        try {
+            scannedConfigCensus = configCensus();
+        } catch (Throwable ignored) {
+            // Leave the census empty. An unreadable census makes the next comparison differ, which
+            // re-scans rather than assuming nothing changed -- the safe direction.
+            scannedConfigCensus = List.of();
+        }
         Map<String, DeclaredConfig> owners = new HashMap<>();
         List<String> failures = new ArrayList<>();
         try {

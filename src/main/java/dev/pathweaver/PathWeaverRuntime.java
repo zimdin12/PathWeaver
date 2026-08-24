@@ -142,6 +142,10 @@ public final class PathWeaverRuntime {
         // starts many servers in one JVM. A trip that survived into the next world would be worse
         // than a stale counter -- a permanently inert movement family with NO log line, because the
         // one-shot report had already burned in the previous world.
+        // Close the window between the startup scan and here. Pathfinding classes are not
+        // transformed until a world starts, so a config registered after onInitialize could target
+        // WalkNodeEvaluator without the scan ever seeing it.
+        dev.pathweaver.gate.ForeignMixinScanner.rescanIfConfigsChanged();
         dev.pathweaver.gate.WorkerFailureBreaker.reset(epoch);
         entitySink.clear(false);
         installer.clear();
