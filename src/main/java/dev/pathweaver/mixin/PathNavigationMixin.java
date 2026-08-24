@@ -712,6 +712,15 @@ public abstract class PathNavigationMixin implements PWNavigation {
 
     @Override
     public void pathweaver$rearmRecompute() {
+        // Only if this is still the navigation being ticked.
+        //
+        // Vanilla 26.1.2 writes Mob.navigation exactly once, in the constructor -- verified by
+        // scanning every class in the jar for a write to that field, which found the constructor and
+        // nothing else. So for vanilla this guard never fires. A mod that swaps navigation objects
+        // is a different matter: the result would arrive stale, strand, and re-arm a navigation that
+        // Mob.tick() no longer ticks. Writing there cannot help, and the navigation now in use never
+        // had a recompute suppressed, so there is nothing to undo on it either.
+        if (this.mob.getNavigation() != (Object) this) return;
         // Both halves, or neither works. tick() only calls recomputePath when the flag is set, and
         // recomputePath only acts when gameTime - timeLastRecompute > 20. Restoring the stamp alone
         // leaves nothing calling it this tick; setting the flag alone makes tick() call a method that
