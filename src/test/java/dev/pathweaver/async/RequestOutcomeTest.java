@@ -41,7 +41,12 @@ class RequestOutcomeTest {
                 || outcome == RequestOutcome.POOL_SATURATED
                 || outcome == RequestOutcome.SETUP_FAILED_PRE_DISPATCH
                 // Nothing was computed, so nothing was thrown away.
-                || outcome == RequestOutcome.BREAKER_OPEN;
+                || outcome == RequestOutcome.BREAKER_OPEN
+                // Same rule, later constant: a worker reached this one, asked whether anybody still
+                // wanted it, and stopped before running the search. The whole point of that check is
+                // that this row grows as the genuine discard rows shrink, so counting it as waste
+                // would make the waste ratio rise exactly when less work is being wasted.
+                || outcome == RequestOutcome.CANCELLED_BEFORE_START;
             assertEquals(!exempt, outcome.isDiscard(), outcome + " is on the wrong side of the line");
         }
     }

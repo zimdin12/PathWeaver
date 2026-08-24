@@ -74,6 +74,11 @@ public class ResultInstaller {
             }
             switch (result.outcome().status()) {
                 case NO_PATH -> sink.noPath(result.key());
+                // Nothing was computed, so nothing was thrown away -- reported as its own
+                // outcome rather than folded into NO_PATH, which asserts a fact about the
+                // world that this request never established.
+                case CANCELLED -> sink.discard(result.key(),
+                    RequestOutcome.CANCELLED_BEFORE_START);
                 case FAILED -> sink.failed(result.key(), result.outcome().failure());
                 case SUCCESS -> {
                     if (sink.isStale(result.key(), result.dispatchTick(),

@@ -230,7 +230,7 @@ class PathWorkerPoolTest {
                 () -> { throw new IllegalStateException("synthetic worker failure"); },
                 outcome -> done.countDown(),
                 ignored -> { },
-                net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class)));
+                () -> true, net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class)));
             assertTrue(done.await(2, TimeUnit.SECONDS));
 
             assertEquals(1, dev.pathweaver.gate.WorkerFailureBreaker.windowedCount(
@@ -257,7 +257,7 @@ class PathWorkerPoolTest {
             CountDownLatch done = new CountDownLatch(1);
             assertTrue(pool.submit(new PathRequest(key(8), 0L,
                 () -> { throw new IllegalStateException("synthetic worker failure"); },
-                outcome -> done.countDown(), ignored -> { }, null)));
+                outcome -> done.countDown(), ignored -> { }, () -> true, null)));
             assertTrue(done.await(2, TimeUnit.SECONDS));
             assertEquals(0, dev.pathweaver.gate.WorkerFailureBreaker.windowedCount(
                     net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class),
@@ -267,4 +267,54 @@ class PathWorkerPoolTest {
         }
     }
 
+
+    /**
+     * A request nobody wants any more is not computed, and does not claim there is no path.
+     *
+     * <p>A request can wait several ticks for a worker. By the time one is free the mob may have
+     * stopped or a newer request may have replaced it, and running the A* then is CPU spent for
+     * nothing. Every discard measured on the reference pack was of this shape: 88 of 88 were "mob
+     * stopped".
+     *
+     * <p>The status matters as much as the skipping. Returning null would be reported as NO_PATH,
+     * which asserts that no route exists -- a claim this request never established, and one that
+     * other code acts on: strandsRecompute() treats NO_PATH as not stranded precisely because
+     * vanilla would have reached the same state, which is untrue of a cancellation.
+     */
+    @Test
+    void aRequestNobodyWantsIsCancelledRatherThanSearchedOrReportedAsNoPath() throws Exception {
+        java.util.concurrent.atomic.AtomicBoolean searchRan =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+        java.util.concurrent.atomic.AtomicReference<PathOutcome> seen =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        CountDownLatch done = new CountDownLatch(1);
+
+        assertTrue(pool.submit(new PathRequest(key(11), 0L,
+            () -> { searchRan.set(true); return null; },
+            outcome -> { seen.set(outcome); done.countDown(); },
+            ignored -> { },
+            () -> false,
+            net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class)));
+        assertTrue(done.await(2, TimeUnit.SECONDS));
+
+        assertFalse(searchRan.get(), "the search must not run for a request nobody wants");
+        assertEquals(PathOutcome.Status.CANCELLED, seen.get().status(),
+            "reporting NO_PATH here would assert no route exists, which was never established");
+    }
+
+    /** The control: a wanted request still runs and still answers. */
+    @Test
+    void aWantedRequestStillRuns() throws Exception {
+        java.util.concurrent.atomic.AtomicBoolean searchRan =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+        CountDownLatch done = new CountDownLatch(1);
+        assertTrue(pool.submit(new PathRequest(key(12), 0L,
+            () -> { searchRan.set(true); return null; },
+            outcome -> done.countDown(),
+            ignored -> { },
+            () -> true,
+            net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class)));
+        assertTrue(done.await(2, TimeUnit.SECONDS));
+        assertTrue(searchRan.get(), "a wanted request must still be computed");
+    }
 }

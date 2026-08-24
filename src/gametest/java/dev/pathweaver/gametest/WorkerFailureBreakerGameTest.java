@@ -178,6 +178,7 @@ public final class WorkerFailureBreakerGameTest {
                     () -> { throw new IllegalStateException("synthetic worker failure"); },
                     outcome -> { },
                     ignored -> { },
+                    () -> true,
                     WalkNodeEvaluator.class));
                 check(accepted, "the pool refused a submission, so nothing can throw on a worker");
             }

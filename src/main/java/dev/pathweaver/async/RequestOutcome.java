@@ -86,7 +86,14 @@ public enum RequestOutcome {
      * -- credited a successful install, cleared the entity's failure cooldown and destroyed the
      * rollback record, with no path in place.
      */
-    INSTALL_REJECTED("vanilla declined the path");
+    INSTALL_REJECTED("vanilla declined the path"),
+    /**
+     * A worker reached the request and nobody wanted it any more, so it never ran.
+     *
+     * <p>Not a discard: no search was performed, so no work was thrown away. The point of the check
+     * is that this row should GROW as the other discard rows shrink.
+     */
+    CANCELLED_BEFORE_START("nobody wanted it by the time a worker was free");
 
     private final String description;
 
@@ -180,6 +187,9 @@ public enum RequestOutcome {
             // where the mob is standing still and vanilla thinks it already handled it.
             case ARRIVED_STALE, SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED,
                  INSTALL_REJECTED -> true;
+            // Cancelled because nobody wanted it -- typically the mob stopped, which is
+            // not a mob left standing with vanilla's retry suppressed.
+            case CANCELLED_BEFORE_START -> false;
         };
     }
 
@@ -189,7 +199,8 @@ public enum RequestOutcome {
         // ratio -- which drives an operator warning -- rise precisely when the mod stopped doing work.
         // INSTALL_REJECTED is a discard: the search ran, produced a path, and it was thrown away.
         return this != INSTALLED && this != NO_PATH && this != POOL_SATURATED
-            && this != SETUP_FAILED_PRE_DISPATCH && this != BREAKER_OPEN;
+            && this != SETUP_FAILED_PRE_DISPATCH && this != BREAKER_OPEN
+            && this != CANCELLED_BEFORE_START;
     }
 
     /**
@@ -220,7 +231,8 @@ public enum RequestOutcome {
             // on the false arm reproduced, inside this enum, the exact symptom the split was written
             // to remove: a row printed with no percentage while being 100% of them.
             case SETUP_FAILED, INSTALLED, NO_PATH, SUPERSEDED, NAVIGATION_STOPPED, ARRIVED_STALE,
-                 SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED, INSTALL_REJECTED -> true;
+                 SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED, INSTALL_REJECTED,
+                 CANCELLED_BEFORE_START -> true;
         };
     }
 
@@ -237,7 +249,8 @@ public enum RequestOutcome {
             case INSTALLED, NO_PATH -> true;
             case POOL_SATURATED, SETUP_FAILED, SETUP_FAILED_PRE_DISPATCH, SUPERSEDED,
                  NAVIGATION_STOPPED, ARRIVED_STALE, SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED,
-                 INSTALL_REJECTED, SERVER_RESET, BREAKER_OPEN -> false;
+                 INSTALL_REJECTED, CANCELLED_BEFORE_START, SERVER_RESET,
+                 BREAKER_OPEN -> false;
         };
     }
 }

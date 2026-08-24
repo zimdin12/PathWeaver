@@ -631,6 +631,11 @@ public abstract class PathNavigationMixin implements PWNavigation {
             boolean accepted = rt.pool().submit(new PathRequest(submittedKey, tick, search,
                 result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz),
                 rt.installer()::enqueueDiscard,
+                // Asked on the worker just before the search. Registration is removed by stop(),
+                // supersede() and every terminal path, so "still registered under this exact key"
+                // is precisely "somebody still wants this answer". Reading the sink from a worker is
+                // safe: it is a ConcurrentHashMap and this is a lookup.
+                () -> sink.isRegistered(entityId, this),
                 this.nodeEvaluator.getClass()));
 
             if (!accepted) {
