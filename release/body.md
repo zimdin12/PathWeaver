@@ -8,7 +8,7 @@ PathWeaver moves those searches onto **spare CPU cores** instead. Same paths, sa
 
 **Install it on the server (or in your singleplayer world). Clients need nothing.** Fabric, Minecraft **26.1.1, 26.1.2 or 26.2**, **Java 25 or newer** — most hosts still default to 21, so check. Needs Fabric API and Cloth Config.
 
-26.1.1 and 26.1.2 share one file; 26.2 is a separate build. One difference worth knowing: the checked tier (`compatibilityTier=AUDITED`) works **only on 26.1.2**. Its per-mod exemptions are pinned to the exact bytecode they were derived from, so on 26.1.1 and 26.2 they refuse and that tier switches the mod off. The shipped default performs no such check and is unaffected.
+26.1.1 and 26.1.2 share one file; 26.2 is a separate build. One difference worth knowing: the checked tier (`compatibilityTier=AUDITED`) works on **26.1.1 and 26.1.2**, and refuses on **26.2**. Its per-mod exemptions are pinned to the exact bytecode they were derived from; 26.1.1's is identical, 26.2's is not, so there the tier switches the mod off. The shipped default performs no such check and is unaffected.
 
 ⚠ **It ships with its compatibility checking turned off.** Back up worlds you care about, and read [the warning below](#-read-this-before-installing) before you commit a world to it.
 

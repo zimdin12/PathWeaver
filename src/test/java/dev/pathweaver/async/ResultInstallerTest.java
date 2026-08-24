@@ -104,4 +104,34 @@ class ResultInstallerTest {
             throw new RuntimeException("could not allocate dummy Path", t);
         }
     }
+
+    /**
+     * A cancelled search is actually COUNTED, not silently dropped.
+     *
+     * <p>This is the test that was missing. The pre-flight cancel was routed through
+     * {@code sink.discard}, which requires a live registration under that exact key -- and a
+     * cancellation happens precisely when no such registration exists. So every cancellation
+     * no-opped, the outcome was unreachable, and the row an operator was told to watch grow was
+     * provably always zero.
+     *
+     * <p>It drives the real installer against a real sink with NOTHING registered, which is the
+     * state a cancellation actually occurs in. The previous coverage handed the pool a literal
+     * {@code () -> false} and never went through the sink at all, so it could not see this.
+     */
+    @Test
+    void aCancelledSearchIsCountedEvenThoughNothingIsRegistered() {
+        dev.pathweaver.PathWeaverRuntime runtime = dev.pathweaver.PathWeaverRuntime.get();
+        long before = runtime.outcomeCount(RequestOutcome.CANCELLED_BEFORE_START);
+
+        EntityInstallSink sink = new EntityInstallSink();
+        ResultInstaller installer = new ResultInstaller();
+        RequestKey key = new RequestKey(1L, 1L, 4242);
+
+        installer.enqueue(key, 0L, PathOutcome.cancelled(), 0.0, 0.0, 0.0);
+        installer.drain(sink);
+
+        assertEquals(before + 1, runtime.outcomeCount(RequestOutcome.CANCELLED_BEFORE_START),
+            "a cancellation must be recorded even with no registration -- that absence is exactly "
+                + "what a cancellation means, and routing it through discard() recorded nothing");
+    }
 }

@@ -74,11 +74,15 @@ public class ResultInstaller {
             }
             switch (result.outcome().status()) {
                 case NO_PATH -> sink.noPath(result.key());
-                // Nothing was computed, so nothing was thrown away -- reported as its own
-                // outcome rather than folded into NO_PATH, which asserts a fact about the
-                // world that this request never established.
-                case CANCELLED -> sink.discard(result.key(),
-                    RequestOutcome.CANCELLED_BEFORE_START);
+                // Recorded directly, NOT through discard(). A cancellation happens precisely
+                // when this key is no longer registered, and discard() requires a live
+                // registration under that exact key -- so routing it there recorded nothing at
+                // all, and the row an operator was told would grow was provably always zero.
+                // There is also nothing to unwind: no registration means no optimistic target and
+                // no rollback owed. The epilogue still runs, because drain() honours it in a
+                // finally regardless of outcome.
+                case CANCELLED -> dev.pathweaver.PathWeaverRuntime.get()
+                    .markOutcome(RequestOutcome.CANCELLED_BEFORE_START);
                 case FAILED -> sink.failed(result.key(), result.outcome().failure());
                 case SUCCESS -> {
                     if (sink.isStale(result.key(), result.dispatchTick(),

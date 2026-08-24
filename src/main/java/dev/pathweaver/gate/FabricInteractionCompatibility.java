@@ -77,8 +77,8 @@ final class FabricInteractionCompatibility {
     private static final String BLOCK_STATE_BASE_SHA = "91a6b29e9ec0bd3ca18c05cd677b3a8e689c7849a3793c27373e531f9a1834fb";
     private static final String PATH_FINDER_SHA = "095d620eaac37aa71af017858682e89689039a3b999cf2a5fcfce3f1c3973b2c";
     private static final String NODE_EVALUATOR_SHA = "8ac7d5eef6bad45b148a051ee8d5d3d890281c66672d761e785361c506f421e1";
-    private static final String WALK_SHA = "dd94893c06c47e3bb386cf3e521ffa2c8c71d31e547b162a138c02ac9312568f";
-    private static final String PATH_CONTEXT_SHA = "30aae3ceae3c27e7f3071d8d9b8232035ad8b15ae8d7999da3fbbaa49add6a9b";
+    static final String WALK_SHA = "dd94893c06c47e3bb386cf3e521ffa2c8c71d31e547b162a138c02ac9312568f";
+    static final String PATH_CONTEXT_SHA = "30aae3ceae3c27e7f3071d8d9b8232035ad8b15ae8d7999da3fbbaa49add6a9b";
     private static final String PATH_TYPE_CACHE_SHA = "1073ec12b68b267a928316c2ddab85cd7af2220c8b8eeca482a84fdff164a7d3";
     private static final String PATH_REGION_SHA = "96b574637c3782d38ea2af0534ee644bd899fdf19f803bfd6bebe922ab016d8d";
 

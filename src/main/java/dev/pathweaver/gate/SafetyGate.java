@@ -249,7 +249,7 @@ public final class SafetyGate {
      * trip that survived into world B would be worse still: a permanently inert mod with no log line,
      * because the one-shot had already burned.
      */
-    public static void resetRuntimeFailureDenials() {
+    static void resetRuntimeFailureDenials() {
         synchronized (RUNTIME_TRIP_LOCK) {
             deniedByRuntimeFailure = Set.of();
         }

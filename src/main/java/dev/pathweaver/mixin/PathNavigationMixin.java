@@ -305,6 +305,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // knows the request came from recomputePath, and because vanilla has not stamped yet -- it
         // does that two bytecodes after createPath returns. Read it after and we would capture our
         // own suppression instead of the value to restore.
+        final dev.pathweaver.async.RequestOrigin enclosingOrigin = this.pathweaver$currentOrigin;
         this.pathweaver$currentOrigin = dev.pathweaver.async.RequestOrigin.RECOMPUTE;
         this.pathweaver$recomputeStampBeforeDispatch = this.timeLastRecompute;
         this.pathweaver$navigationRequestDepth++;
@@ -315,7 +316,12 @@ public abstract class PathNavigationMixin implements PWNavigation {
         } finally {
             this.pathweaver$recomputeInvalidated = false;
             this.pathweaver$navigationRequestDepth--;
-            this.pathweaver$currentOrigin = dev.pathweaver.async.RequestOrigin.MOVE_TO;
+            // Restored, not assigned a literal -- the depth counter beside it uses ++/-- for the
+            // same reason. A foreign injection that calls moveTo from inside recomputePath would
+            // otherwise register as RECOMPUTE and, if it stranded, re-arm from a stamp captured by
+            // the ENCLOSING recompute for a caller that was never suppressed. Vanilla 26.1.2 has no
+            // such nesting; a mod can create it.
+            this.pathweaver$currentOrigin = enclosingOrigin;
         }
     }
 
@@ -671,11 +677,15 @@ public abstract class PathNavigationMixin implements PWNavigation {
             boolean accepted = rt.pool().submit(new PathRequest(submittedKey, tick, search,
                 result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz),
                 rt.installer()::enqueueDiscard,
-                // Asked on the worker just before the search. Registration is removed by stop(),
-                // supersede() and every terminal path, so "still registered under this exact key"
-                // is precisely "somebody still wants this answer". Reading the sink from a worker is
-                // safe: it is a ConcurrentHashMap and this is a lookup.
-                () -> sink.isRegistered(entityId, this),
+                // Asked on the worker just before the search, and scoped to THIS key. Registration
+                // is removed by stop(), supersede() and every terminal path, so "still registered
+                // under this exact key" is precisely "somebody still wants this answer". The
+                // entity-and-navigation form this used to ask answered true for a request already
+                // superseded by a newer one on the same navigation, so the old worker computed a
+                // search whose result was then thrown away -- the case the check exists for.
+                // Reading the sink from a worker is safe: a ConcurrentHashMap lookup, and the
+                // registration happens-before the start gate the worker waited on.
+                () -> sink.isRegisteredUnder(submittedKey),
                 this.nodeEvaluator.getClass()));
 
             if (!accepted) {

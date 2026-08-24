@@ -32,4 +32,9 @@ public final class SafetyGateTestAccess {
     public static void clear() {
         SafetyGate.restoreDenialsForTesting(Set.of());
     }
+
+    /** Clears the runtime-failure (breaker) denials, which are a separate set from the scan's. */
+    public static void clearRuntimeFailureDenials() {
+        SafetyGate.resetRuntimeFailureDenials();
+    }
 }

@@ -476,6 +476,17 @@ public final class ForeignMixinScanner {
         return decision.failed() == 0;
     }
 
+    /**
+     * The tier this process was frozen at, for a re-scan that must not outrun the freeze.
+     *
+     * <p>Only the audited capability matters here: evidence generation is what a later, looser
+     * config change could otherwise unlock. A frozen process that did not allow audited evidence
+     * keeps not allowing it, whatever the config says now.
+     */
+    private static CompatibilityTier frozenEquivalentTier() {
+        return tierBypassesScan ? CompatibilityTier.UNSAFE : CompatibilityTier.AUDITED;
+    }
+
     private static synchronized void freezeActiveTier(boolean allowsAudited, boolean bypassesScan) {
         if (tierFrozen) return;
         tierAllowsAudited = allowsAudited;
@@ -738,6 +749,12 @@ public final class ForeignMixinScanner {
         try {
             now = configCensus();
         } catch (Throwable t) {
+            // Forget the recorded census as well. Leaving the last SUCCESSFUL census in place
+            // meant a transient failure here stuck for the life of the JVM: the next world start
+            // would read the same census, match, early-return, and never repair the blanket denial
+            // -- the mod inert forever while looking healthy, with one warn line in a previous
+            // world as the only evidence. scanAndPopulate's own catch already does this.
+            scannedConfigCensus = List.of();
             // Publish it as a scan FAILURE, not merely a denial: a failure is the one state no
             // tier may waive, and "cannot tell what is loaded" must not be waivable.
             SafetyGate.denyAllEligible();
@@ -883,7 +900,16 @@ public final class ForeignMixinScanner {
 
         try {
             FabricLoader loader = FabricLoader.getInstance();
+            // Read live, then reconciled against the freeze below. Before 0.7 this method ran
+            // exactly once, so the live read and the frozen value were the same by construction.
+            // It can now run again at world start, and a process frozen at a stricter tier must not
+            // start handing out evidence for a looser one the operator selected afterwards: every
+            // reporting site and the land-registry gate still answer from the frozen value, so the
+            // two would describe different processes.
             CompatibilityTier tier = PathWeaverConfig.get().compatibilityTier;
+            if (tierFrozen && !tierAllowsAudited && tier.allowsAudited()) {
+                tier = CompatibilityTier.UNSAFE == tier ? tier : frozenEquivalentTier();
+            }
             // Freeze it here, where the evidence that depends on it is computed. Everything else
             // reads the frozen answer, so a later settings save cannot leave startup denials waived
             // while per-request checks tighten.

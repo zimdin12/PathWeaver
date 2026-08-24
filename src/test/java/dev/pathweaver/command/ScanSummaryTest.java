@@ -369,7 +369,7 @@ class ScanSummaryTest {
             assertTrue(lines.stream().anyMatch(l -> l.contains("WalkNodeEvaluator")),
                 "including which family: " + lines);
         } finally {
-            dev.pathweaver.gate.SafetyGate.resetRuntimeFailureDenials();
+            dev.pathweaver.gate.SafetyGateTestAccess.clearRuntimeFailureDenials();
         }
     }
 
@@ -510,7 +510,7 @@ class ScanSummaryTest {
             assertFalse(line.contains("SwimNodeEvaluator"),
                 "swim shares none of walk's code and keeps dispatching: " + line);
         } finally {
-            dev.pathweaver.gate.SafetyGate.resetRuntimeFailureDenials();
+            dev.pathweaver.gate.SafetyGateTestAccess.clearRuntimeFailureDenials();
         }
     }
 
