@@ -86,10 +86,11 @@ final class DiagonalBlocksCompatibility {
                 .map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("missing");
             // NOT gated on the Minecraft version string any more.
             //
-            // Every audit here pins, by SHA-256, the vanilla classes its own proof reads -- and the
-            // verification below fails on any of those hashes. So the bytes the proof was derived
-            // against are already established by evidence, and the version label was a second,
-            // coarser answer to the same question that could only ever be stricter than the bytes.
+            // NOT gated on the Minecraft version string. This audit reads NO vanilla bytes at
+            // all -- its bundle is the module jar, the mixin config and Diagonal Blocks' own
+            // WalkNodeEvaluatorMixin, all three hash-pinned -- and its proof is about that mixin
+            // never reaching a mutable shared cache. With no vanilla dependency there is nothing
+            // for a version label to protect that the pins do not already cover.
             //
             // Measured both directions before removing it. On 26.1.1 all ten pinned vanilla classes
             // are byte-identical to 26.1.2, so the audits hold and the label was the only thing
