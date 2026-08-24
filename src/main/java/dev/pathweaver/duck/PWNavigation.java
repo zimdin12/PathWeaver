@@ -53,7 +53,14 @@ public interface PWNavigation {
      * completion is owned centrally by the request registration so install exceptions are also
      * balanced.
      */
-    void pathweaver$install(Path path);
+    /**
+     * Install a finished path, reporting whether vanilla accepted it.
+     *
+     * <p>Returns what {@code moveTo} returned. It is false when the path is already done or trims to
+     * zero nodes, and it has assigned {@code path} by then, so the caller must undo rather than
+     * count a success.
+     */
+    boolean pathweaver$install(Path path);
 
     /** Main thread: true if the owning mob is gone or has moved too far from the dispatch position. */
     boolean pathweaver$stale(double dispatchX, double dispatchY, double dispatchZ);
@@ -92,4 +99,14 @@ public interface PWNavigation {
      * {@link #pathweaver$rollbackOptimisticTarget()} instead, which preserves the existing path.
      */
     void pathweaver$abortFailedInstall();
+
+    /**
+     * Undo the suppression a cancelled {@code recomputePath} left behind, so vanilla retries.
+     *
+     * <p>Restores {@code timeLastRecompute} to its pre-dispatch value AND sets
+     * {@code hasDelayedRecomputation}. Both are required and neither is sufficient: {@code tick()}
+     * only calls {@code recomputePath} when the flag is set, and {@code recomputePath} only acts
+     * when {@code gameTime - timeLastRecompute > 20}. Setting the flag alone spins for twenty ticks.
+     */
+    void pathweaver$rearmRecompute();
 }

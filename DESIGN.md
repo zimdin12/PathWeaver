@@ -284,8 +284,31 @@ re-pathed to a destination it had already abandoned, discarding a move whose `mo
 `true`. The claimed destination is now preserved across the supersede, and the routing game test
 asserts it.
 
-**The direction for a real fix** is to re-arm `hasDelayedRecomputation` when a recompute-originated
-request reaches a terminal state without installing, so vanilla's own retry takes over instead of
-waiting out its 20-tick cooldown. That needs the registration to carry its origin, which is a change
-to the request record rather than a one-line patch, and it belongs in a release that can be soaked
-rather than a hotfix.
+**Fixed in 0.7.** The registration now carries a `RequestOrigin`, and a `RECOMPUTE`-origin request
+that reaches a terminal state without installing hands control back to vanilla.
+
+The direction recorded here previously — "re-arm `hasDelayedRecomputation`" — was **incomplete**, and
+the 26.1.2 bytecode says why. `recomputePath` is itself guarded:
+
+```
+ 0-16: if (gameTime - timeLastRecompute > 20)   <- else branch: just set the flag again
+19-23:     && canUpdatePath()
+33-35:     this.path = null
+   48:     createPath(...)                      <- intercepted; returns null
+54-62:     this.timeLastRecompute = gameTime    <- the lockout we caused
+65-67:     this.hasDelayedRecomputation = false
+```
+
+`tick()` calls `recomputePath()` whenever the flag is set. So setting the flag alone makes `tick()`
+call a method that takes its own else-branch and sets the flag again — spinning for twenty ticks
+without recomputing. **Both halves are required**: restore `timeLastRecompute` to its pre-dispatch
+value AND set the flag. The stamp is captured in the recompute wrap, before vanilla overwrites it.
+
+The retry is additionally forced synchronous through the existing fail-cooldown. Without that, the
+re-armed tick dispatches again, fails the same way, and re-arms again — a per-tick dispatch loop in
+place of a stall. One vanilla search is what the mob would have had without this mod.
+
+Not every terminal outcome qualifies. `SUPERSEDED` means a newer request will install; `NO_PATH`
+means vanilla would have reached the identical state on its own; `POOL_SATURATED` and
+`BREAKER_OPEN` never cancelled anything. `RequestOutcome.strandsRecompute()` derives the set with an
+exhaustive switch, so a new constant is a compile error rather than a silent "not stranded".

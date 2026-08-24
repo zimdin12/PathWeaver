@@ -143,7 +143,7 @@ public class PathWeaverConfig implements ConfigData {
      */
     @ConfigEntry.Gui.Tooltip(count = 4)
     @ConfigEntry.Category("general")
-    public int workerFailureLimit = 3;
+    public int workerFailureLimit = DEFAULT_WORKER_FAILURE_LIMIT;
 
     /**
      * The window those failures must fall inside, in ticks. {@code 0} means "never decays".
@@ -233,6 +233,10 @@ public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Gui.Excluded
     @ConfigEntry.Category("general")
     public static final int MAX_WORKER_FAILURE_LIMIT = 1000;
+    /** Shipped default, named because the invalid-input repair below has to land on it. */
+    @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
+    public static final int DEFAULT_WORKER_FAILURE_LIMIT = 3;
 
     /** One real-time hour of ticks. Beyond this a window is a cumulative count with extra steps. */
     @ConfigEntry.Gui.Excluded
@@ -253,6 +257,15 @@ public class PathWeaverConfig implements ConfigData {
         maxResultAgeTicks = Math.clamp(maxResultAgeTicks, 1, MAX_RESULT_AGE_TICKS);
         // Clamped here with every other int, because a hand-edited negative limit would otherwise
         // read as "off" through one code path and "trip immediately" through another.
+        // Zero is a documented choice: never switch a family off. A NEGATIVE is not a choice, and
+        // clamping it to zero silently landed it on that documented meaning -- turning the
+        // family-shutdown safety net off for the session while the GUI and /pathweaver status both
+        // showed a legal value. Invalid input goes to the default instead.
+        //
+        // Other fields also floor at 0 -- poolThreads, repathToleranceBlocks and
+        // workerFailureWindowTicks -- and for them 0 is the STRICT end, so landing there is safe.
+        // This was the only one where the documented meaning of 0 was "switch the safety net off".
+        if (workerFailureLimit < 0) workerFailureLimit = DEFAULT_WORKER_FAILURE_LIMIT;
         workerFailureLimit = Math.clamp(workerFailureLimit, 0, MAX_WORKER_FAILURE_LIMIT);
         workerFailureWindowTicks = Math.clamp(
             workerFailureWindowTicks, 0, MAX_WORKER_FAILURE_WINDOW_TICKS);

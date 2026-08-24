@@ -4,6 +4,7 @@ import dev.pathweaver.duck.PWNavigation;
 import net.minecraft.world.level.pathfinder.Path;
 
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -26,6 +27,8 @@ class EntityInstallSinkTest {
             aborts++; pathCleared = true; rollbacks++;
         }
         @Override public void pathweaver$rollbackOptimisticTarget() { rollbacks++; }
+        int rearms;
+        @Override public void pathweaver$rearmRecompute() { rearms++; }
 
         int installs;
         boolean stale;
@@ -35,7 +38,7 @@ class EntityInstallSinkTest {
         Object path;
         long revision;
         PWNavigation identityNavigation = this;
-        public void pathweaver$install(Path p) { installs++; }
+        public boolean pathweaver$install(Path p) { installs++; return true; }
         public boolean pathweaver$stale(double x, double y, double z) { return stale; }
         public NavigationIdentity pathweaver$identity() {
             return new NavigationIdentity(uuid, world, dimension, identityNavigation, path, revision);
@@ -60,8 +63,8 @@ class EntityInstallSinkTest {
         RequestTarget target = RequestTarget.of(java.util.Set.of("walk"), 8, false, 1, 32.0F);
         RequestKey walk = key(1L, 1L, 20);
         RequestKey swim = key(1L, 2L, 21);
-        sink.register(walk, new FakeNav(), target, true);
-        sink.register(swim, new FakeNav(), target, false);
+        sink.register(walk, new FakeNav(), target, true, RequestOrigin.MOVE_TO);
+        sink.register(swim, new FakeNav(), target, false, RequestOrigin.MOVE_TO);
         assertFalse(sink.isStale(walk, 1L, 0.0, 0.0, 0.0));
         assertFalse(sink.isStale(swim, 1L, 0.0, 0.0, 0.0));
 
@@ -80,12 +83,12 @@ class EntityInstallSinkTest {
         sink.setTick(100L);
         sink.register(key, nav);
 
-        assertFalse(sink.shouldForceSync(1, 100L));
+        assertFalse(sink.shouldForceSync(1, 100L, RequestOrigin.RECOMPUTE));
         sink.failed(key, new IllegalStateException("search failed"));
 
-        assertTrue(sink.shouldForceSync(1, 101L));
-        assertTrue(sink.shouldForceSync(1, 139L));
-        assertFalse(sink.shouldForceSync(1, 140L));
+        assertTrue(sink.shouldForceSync(1, 101L, RequestOrigin.RECOMPUTE));
+        assertTrue(sink.shouldForceSync(1, 139L, RequestOrigin.RECOMPUTE));
+        assertFalse(sink.shouldForceSync(1, 140L, RequestOrigin.RECOMPUTE));
         assertEquals(0, nav.installs);
     }
 
@@ -122,7 +125,7 @@ class EntityInstallSinkTest {
         EntityInstallSink sink = new EntityInstallSink();
         sink.setTick(30L);
         FakeNav throwing = new FakeNav() {
-            @Override public void pathweaver$install(Path path) {
+            @Override public boolean pathweaver$install(Path path) {
                 installs++;
                 this.path = new Object();      // vanilla already applied a path
                 throw new IllegalStateException("foreign injection threw after moveTo");
@@ -138,7 +141,7 @@ class EntityInstallSinkTest {
         assertTrue(throwing.pathCleared,
             "the partially applied path must be cleared, not left paired with the old target");
         assertFalse(sink.isRegistered(12));
-        assertTrue(sink.shouldForceSync(12, 31L));
+        assertTrue(sink.shouldForceSync(12, 31L, RequestOrigin.RECOMPUTE));
     }
 
     @Test void nonInstallRoutesPreserveTheExistingPath() {
@@ -166,7 +169,7 @@ class EntityInstallSinkTest {
         RequestKey oldKey = key(1L, 1L, 1);
         sink.register(oldKey, old);
         sink.failed(oldKey, new IllegalStateException("x"));
-        sink.shouldForceSync(1, 500_000L);      // advances the sweep clock to a large tick
+        sink.shouldForceSync(1, 500_000L, RequestOrigin.MOVE_TO);      // advances the sweep clock to a large tick
 
         sink.clear();
 
@@ -178,7 +181,7 @@ class EntityInstallSinkTest {
         sink.failed(freshKey, new IllegalStateException("x"));
         assertEquals(1, sink.cooldownEntryCount());
 
-        sink.shouldForceSync(9999, 10L + 40L + 21L);
+        sink.shouldForceSync(9999, 10L + 40L + 21L, RequestOrigin.MOVE_TO);
 
         assertEquals(0, sink.cooldownEntryCount(),
             "a fresh server must sweep on its own tick timeline, not the previous server's");
@@ -199,7 +202,7 @@ class EntityInstallSinkTest {
         assertEquals(50, sink.cooldownEntryCount(), "all 50 cooldowns should be live initially");
 
         // A single unrelated query well after expiry must clear the abandoned entries.
-        sink.shouldForceSync(9999, 100L + 40L + 21L);
+        sink.shouldForceSync(9999, 100L + 40L + 21L, RequestOrigin.MOVE_TO);
 
         assertEquals(0, sink.cooldownEntryCount(),
             "expired cooldowns for entities that never returned must be swept");
@@ -212,13 +215,13 @@ class EntityInstallSinkTest {
         RequestKey first = key(1L, 1L, 7);
         sink.register(first, nav1);
         sink.failed(first, new IllegalStateException("search failed"));
-        assertTrue(sink.shouldForceSync(7, 11L));
+        assertTrue(sink.shouldForceSync(7, 11L, RequestOrigin.RECOMPUTE));
 
         FakeNav nav2 = new FakeNav();
         RequestKey second = key(1L, 2L, 7);
         sink.register(second, nav2);
         sink.install(second, dummyPath());
-        assertFalse(sink.shouldForceSync(7, 12L));
+        assertFalse(sink.shouldForceSync(7, 12L, RequestOrigin.RECOMPUTE));
         assertEquals(1, nav2.installs);
     }
 
@@ -233,7 +236,7 @@ class EntityInstallSinkTest {
 
         sink.clear();
 
-        assertFalse(sink.shouldForceSync(3, 6L));
+        assertFalse(sink.shouldForceSync(3, 6L, RequestOrigin.RECOMPUTE));
         assertEquals(0, sink.inFlightCount());
     }
 
@@ -263,7 +266,7 @@ class EntityInstallSinkTest {
         EntityInstallSink sink = new EntityInstallSink();
         sink.setTick(30L);
         FakeNav throwing = new FakeNav() {
-            @Override public void pathweaver$install(Path path) {
+            @Override public boolean pathweaver$install(Path path) {
                 installs++;
                 throw new IllegalStateException("install boom");
             }
@@ -277,7 +280,7 @@ class EntityInstallSinkTest {
         assertEquals(1, throwing.rollbacks,
             "a throwing install never installed a path, so the optimistic target must be undone");
         assertFalse(sink.isRegistered(8));
-        assertTrue(sink.shouldForceSync(8, 31L));
+        assertTrue(sink.shouldForceSync(8, 31L, RequestOrigin.RECOMPUTE));
     }
 
     @Test void lateOldResultCannotInstallIntoReplacementRegistrationForSameEntityId() {
@@ -308,7 +311,7 @@ class EntityInstallSinkTest {
 
         sink.failed(oldKey, new IllegalStateException("search failed"));
 
-        assertFalse(sink.shouldForceSync(12, 21L));
+        assertFalse(sink.shouldForceSync(12, 21L, RequestOrigin.RECOMPUTE));
         assertTrue(sink.isRegistered(12));
     }
 
@@ -374,7 +377,7 @@ class EntityInstallSinkTest {
         FakeNav nav = new FakeNav();
         RequestTarget first = RequestTarget.of(java.util.Set.of("a"), 8, false, 1, 32.0F);
         RequestTarget changed = RequestTarget.of(java.util.Set.of("b"), 8, false, 1, 32.0F);
-        sink.register(key(1L, 9L, 15), nav, first, false);
+        sink.register(key(1L, 9L, 15), nav, first, false, RequestOrigin.MOVE_TO);
 
         assertEquals(EntityInstallSink.PendingDecision.PRESERVE,
             sink.pendingDecision(15, nav, first));
@@ -400,7 +403,7 @@ class EntityInstallSinkTest {
         sink.noPath(key);
 
         assertFalse(sink.isRegistered(19));
-        assertFalse(sink.shouldForceSync(19, 101L));
+        assertFalse(sink.shouldForceSync(19, 101L, RequestOrigin.RECOMPUTE));
         assertEquals(0, nav.installs);
     }
 
@@ -447,7 +450,7 @@ class EntityInstallSinkTest {
         FakeNav nav = new FakeNav();
         RequestKey key = key(1L, 3L, 17);
         RequestTarget target = RequestTarget.of(java.util.Set.of("same"), 8, false, 1, 32.0F);
-        sink.register(key, nav, target, false);
+        sink.register(key, nav, target, false, RequestOrigin.MOVE_TO);
         installer.enqueue(key, 0L, PathOutcome.success(dummyPath()), 0.0, 0.0, 0.0);
         assertEquals(1, installer.pending(), "accepted worker result must be queued before OFF");
         try {
@@ -511,5 +514,223 @@ class EntityInstallSinkTest {
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
+    }
+
+    /**
+     * A stranded recompute hands control back to vanilla; nothing else does.
+     *
+     * <p>The bug: cancelling {@code createPath} inside {@code recomputePath} makes vanilla stamp
+     * {@code timeLastRecompute} and clear {@code hasDelayedRecomputation} on a mob whose path it just
+     * nulled. If the search then yields nothing, both of vanilla's retry routes are shut for twenty
+     * ticks and the mob stands still for up to a second. Verified against the real 26.1.2 bytecode:
+     * the stamp is at offset 54-62 and the flag at 65-67, both after the createPath call at 48.
+     *
+     * <p>Three cases in one test because the controls are the point. A version that always re-armed
+     * would pass the first assertion alone, and re-arming a superseded request fights the newer one
+     * that is already in flight to install.
+     */
+    @Test
+    void aStrandedRecomputeReArmsVanillaAndTheControlsDoNot() {
+        // POSITIVE: recompute origin, search threw, nothing else coming.
+        EntityInstallSink stranded = new EntityInstallSink();
+        stranded.setTick(100L);
+        FakeNav strandedNav = new FakeNav();
+        RequestKey strandedKey = key(1L, 1L, 7);
+        stranded.register(strandedKey, strandedNav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F),
+            false, RequestOrigin.RECOMPUTE);
+        // ARRIVED_STALE, deliberately, not failed(). failed() sets the sync cooldown itself, so a
+        // test driven through it asserts a cooldown that exists whether or not this feature does --
+        // mutation M4 removed the cooldown line here and that version of this test still passed.
+        stranded.discard(strandedKey, RequestOutcome.ARRIVED_STALE);
+        assertEquals(1, strandedNav.rearms,
+            "a recompute whose search produced nothing must hand back to vanilla, or the mob stands "
+                + "still for twenty ticks while vanilla believes it already recomputed");
+        assertTrue(stranded.shouldForceSync(7, 100L, RequestOrigin.RECOMPUTE),
+            "the re-armed retry must run synchronously, or the next tick dispatches, fails the same "
+                + "way and re-arms again -- a per-tick dispatch loop instead of a stall");
+
+        // NEGATIVE 1: same terminal outcome, but the request came from moveTo, which still holds its
+        // path. Nothing was suppressed, so nothing needs undoing.
+        EntityInstallSink fromMoveTo = new EntityInstallSink();
+        fromMoveTo.setTick(100L);
+        FakeNav moveToNav = new FakeNav();
+        RequestKey moveToKey = key(1L, 1L, 8);
+        fromMoveTo.register(moveToKey, moveToNav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F),
+            false, RequestOrigin.MOVE_TO);
+        fromMoveTo.discard(moveToKey, RequestOutcome.ARRIVED_STALE);
+        assertEquals(0, moveToNav.rearms, "a moveTo caller was never suppressed; re-arming it would "
+            + "make this mod recompute where vanilla would not have");
+
+        // NEGATIVE 2: recompute origin, but superseded -- a newer request for this mob is already in
+        // flight and will install. Re-arming would race it.
+        EntityInstallSink superseded = new EntityInstallSink();
+        superseded.setTick(100L);
+        FakeNav supersededNav = new FakeNav();
+        RequestKey supersededKey = key(1L, 1L, 9);
+        superseded.register(supersededKey, supersededNav,
+            RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false, RequestOrigin.RECOMPUTE);
+        superseded.supersede(9);
+        assertEquals(0, supersededNav.rearms,
+            "a superseded request is replaced, not stranded -- the newer one installs");
+    }
+
+    /**
+     * An install that throws still hands a stranded recompute back to vanilla.
+     *
+     * <p>strandsRecompute() declared INSTALL_FAILED stranding from the start, but install()'s catch
+     * handles the outcome inline instead of calling finishDiscard, so nothing ever delivered it.
+     * The arm was dead on the one outcome where another mod is provably misbehaving: abortFailedInstall
+     * calls stop(), so the mob ends with no path AND vanilla's retry still suppressed.
+     */
+    @Test
+    void anInstallThatThrowsStillReArmsAStrandedRecompute() {
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(100L);
+        FakeNav nav = new FakeNav() {
+            @Override public boolean pathweaver$install(Path path) {
+                throw new IllegalStateException("a foreign mixin in moveTo threw");
+            }
+        };
+        RequestKey key = key(1L, 1L, 21);
+        sink.register(key, nav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false,
+            RequestOrigin.RECOMPUTE);
+        sink.install(key, null);
+        assertEquals(1, nav.rearms,
+            "INSTALL_FAILED leaves the mob with no path and vanilla's retry suppressed, which is "
+                + "exactly the state the re-arm exists to undo");
+    }
+
+    /**
+     * A setup failure must NOT re-arm, and must not cost the mob a forced-sync dispatch.
+     *
+     * <p>The dispatch catch that produces SETUP_FAILED deliberately does not cancel vanilla's call:
+     * it falls through so vanilla computes synchronously this tick. The mob therefore ends the tick
+     * holding a real path. Treating that as stranded punished a mob for a search that succeeded, and
+     * the re-arm itself was a no-op because vanilla overwrites both fields three bytecodes later.
+     */
+    @Test
+    void aSetupFailureNeitherReArmsNorForcesTheNextDispatchSync() {
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(100L);
+        FakeNav nav = new FakeNav();
+        RequestKey key = key(1L, 1L, 22);
+        sink.register(key, nav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false,
+            RequestOrigin.RECOMPUTE);
+        sink.discard(key, RequestOutcome.SETUP_FAILED);
+        assertEquals(0, nav.rearms, "vanilla computed this path synchronously; nothing is stranded");
+        assertFalse(sink.shouldForceSync(22, 100L, RequestOrigin.RECOMPUTE),
+            "a mob that just got a good path must not be forced synchronous");
+    }
+
+    /**
+     * The forced retry is ONE dispatch, not a window.
+     *
+     * <p>This used to reuse the 40-tick failure cooldown, which a synchronous search never clears
+     * because it does not go through the sink. One stranded recompute then made that mob run every
+     * search synchronously for two seconds.
+     */
+    @Test
+    void aStrandedRecomputeForcesExactlyOneSynchronousDispatch() {
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(100L);
+        FakeNav nav = new FakeNav();
+        RequestKey key = key(1L, 1L, 23);
+        sink.register(key, nav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false,
+            RequestOrigin.RECOMPUTE);
+        sink.discard(key, RequestOutcome.ARRIVED_STALE);
+        assertTrue(sink.shouldForceSync(23, 100L, RequestOrigin.RECOMPUTE), "the re-armed retry runs synchronously");
+        assertFalse(sink.shouldForceSync(23, 100L, RequestOrigin.RECOMPUTE),
+            "and only that one. The mob must be eligible for async again immediately, not after 40 "
+                + "ticks -- ARRIVED_STALE is a race, not a broken mob");
+        assertFalse(sink.shouldForceSync(23, 101L, RequestOrigin.RECOMPUTE), "still eligible on the following tick");
+    }
+
+    /**
+     * A goal's moveTo must not spend the retry a stranded recompute is owed.
+     *
+     * <p>Goals run before navigation: {@code Mob.serverAiStep} ticks the goal selector, then
+     * {@code navigation.tick()}. So on the tick after a stranding, a MeleeAttackGoal's moveTo reaches
+     * dispatch first. A token that any dispatch could claim was consumed there — the goal got its
+     * synchronous path, and the re-armed recompute that followed nulled that path and dispatched
+     * asynchronously because the token was gone, leaving the mob pathless again after briefly holding
+     * a good route. That is worse than the entity-wide cooldown it replaced, so this pins the scope.
+     */
+    @Test
+    void aGoalsMoveToDoesNotConsumeTheRetryOwedToTheRecompute() {
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(100L);
+        FakeNav nav = new FakeNav();
+        RequestKey key = key(1L, 1L, 31);
+        sink.register(key, nav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false,
+            RequestOrigin.RECOMPUTE);
+        sink.discard(key, RequestOutcome.ARRIVED_STALE);
+
+        assertFalse(sink.shouldForceSync(31, 100L, RequestOrigin.MOVE_TO),
+            "the goal that ticks first must not claim the recompute's retry");
+        assertTrue(sink.shouldForceSync(31, 100L, RequestOrigin.RECOMPUTE),
+            "and the recompute must still find it waiting");
+        assertFalse(sink.shouldForceSync(31, 100L, RequestOrigin.RECOMPUTE),
+            "consumed exactly once");
+    }
+
+    /**
+     * The retry token cannot outlive the mob that earned it.
+     *
+     * <p>A mob that strands and then dies, despawns or changes dimension never dispatches again, and
+     * entity ids are not reused within a run. A bare set leaked one id per stranding for the life of
+     * the server, which is the bug sweepExpiredCooldowns already exists to prevent for its sibling.
+     */
+    @Test
+    void anUnclaimedRetryTokenIsSweptRatherThanLeaked() {
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(100L);
+        FakeNav nav = new FakeNav();
+        RequestKey key = key(1L, 1L, 32);
+        sink.register(key, nav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false,
+            RequestOrigin.RECOMPUTE);
+        sink.discard(key, RequestOutcome.ARRIVED_STALE);
+
+        assertEquals(1, sink.retryTokenCount(), "precondition: the token is held");
+
+        // The mob dies here and never dispatches again, so nothing will ever consume its token.
+        // Another entity keeps the server ticking, which is what drives the sweep.
+        sink.setTick(100_000L);
+        sink.shouldForceSync(999, 100_000L, RequestOrigin.MOVE_TO);
+        assertEquals(0, sink.retryTokenCount(),
+            "the token must be SWEPT, not merely ignored when read. Asserting only that a stale "
+                + "token is not honoured passes whether or not the sweep exists, because the read "
+                + "removes the entry itself -- a mutation deleting the sweep survived that version "
+                + "of this test.");
+    }
+
+    /**
+     * A path vanilla declines is not an install.
+     *
+     * <p>{@code moveTo} returns false for a path already done or trimmed to zero nodes, having
+     * already assigned {@code path}. Ignoring that return credited a successful install, cleared the
+     * entity's failure cooldown and destroyed the rollback record with no route in place. It is not a
+     * failure either: nothing misbehaved, so it must not earn the 40-tick sync cooldown.
+     */
+    @Test
+    void aPathVanillaDeclinesIsNotCountedAsInstalledAndEarnsNoCooldown() {
+        EntityInstallSink sink = new EntityInstallSink();
+        sink.setTick(100L);
+        FakeNav nav = new FakeNav() {
+            @Override public boolean pathweaver$install(Path path) {
+                installs++;
+                return false;   // vanilla trimmed it to nothing
+            }
+        };
+        RequestKey key = key(1L, 1L, 41);
+        sink.register(key, nav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false,
+            RequestOrigin.RECOMPUTE);
+        sink.install(key, null);
+
+        assertEquals(1, nav.rollbacks,
+            "the optimistic target must be rolled back; there is no route to it");
+        assertEquals(1, nav.rearms,
+            "a recompute left without a route is stranded exactly as any other empty result");
+        assertFalse(sink.shouldForceSync(41, 100L, RequestOrigin.MOVE_TO),
+            "a trimmed path is ordinary, not a misbehaving mod: no failure cooldown");
     }
 }

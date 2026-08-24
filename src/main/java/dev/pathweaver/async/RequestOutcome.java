@@ -76,7 +76,17 @@ public enum RequestOutcome {
     INSTALL_FAILED("install threw"),
 
     /** Forgotten at a server boundary, where a late result can no longer match any live request. */
-    SERVER_RESET("server reset");
+    SERVER_RESET("server reset"),
+    /**
+     * Vanilla's {@code moveTo} declined the path we handed it.
+     *
+     * <p>Distinct from INSTALL_FAILED, which means something threw. This one is ordinary: moveTo
+     * returns false when the path is already done or trims to zero nodes, and it has assigned
+     * {@code path} by then. Reporting it as INSTALLED -- which is what ignoring the return value did
+     * -- credited a successful install, cleared the entity's failure cooldown and destroyed the
+     * rollback record, with no path in place.
+     */
+    INSTALL_REJECTED("vanilla declined the path");
 
     private final String description;
 
@@ -131,10 +141,53 @@ public enum RequestOutcome {
         }
     }
 
+    /**
+     * Did this outcome leave a {@code recomputePath} caller stranded — no path, and nothing else
+     * coming to give it one?
+     *
+     * <p>Only meaningful for {@link RequestOrigin#RECOMPUTE}. It is not "did we install": vanilla
+     * would have ended in the same state for some of these, and re-arming its retry then would make
+     * this mod retry where vanilla would have waited.
+     *
+     * <p>Exhaustive switch with no default, for the reason {@link #countsAgainstDispatched} states:
+     * a new constant must not silently pick a side. Here the silent side would be "not stranded",
+     * which reintroduces the twenty-tick freeze this exists to prevent.
+     */
+    public boolean strandsRecompute() {
+        return switch (this) {
+            // It has a path.
+            case INSTALLED -> false;
+            // A newer request for this mob is in flight and will install; re-arming would fight it.
+            case SUPERSEDED -> false;
+            // It stopped on purpose, or the world is going away. Nothing wants a path.
+            case NAVIGATION_STOPPED, SERVER_RESET -> false;
+            // The search proved there is no path. Vanilla's own createPath would have returned null
+            // here too and suppressed its retry identically, so this is not a divergence to correct.
+            case NO_PATH -> false;
+            // Never reached a worker, or reached it and then fell through to vanilla anyway, which
+            // computed synchronously and left a real path. Nothing was cancelled.
+            //
+            // SETUP_FAILED belongs here and an earlier version of this switch had it on the other
+            // arm. Its only producer is the catch in pathweaver$asyncCreatePath, which deliberately
+            // does NOT call cir.cancel() -- "fall through so vanilla computes the path
+            // synchronously this tick". So the mob ends the tick holding a real path. Worse, the
+            // re-arm it triggered ran from INSIDE vanilla's recomputePath, three bytecodes before
+            // vanilla unconditionally overwrites both fields it writes, so the re-arm was a
+            // guaranteed no-op and the forced-sync penalty was the only surviving effect: a mob
+            // punished for a search that succeeded.
+            case POOL_SATURATED, SETUP_FAILED_PRE_DISPATCH, SETUP_FAILED, BREAKER_OPEN -> false;
+            // Dispatched, cancelled vanilla's call, and then produced nothing. These are the cases
+            // where the mob is standing still and vanilla thinks it already handled it.
+            case ARRIVED_STALE, SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED,
+                 INSTALL_REJECTED -> true;
+        };
+    }
+
     public boolean isDiscard() {
         // BREAKER_OPEN joins the exemptions for the same reason POOL_SATURATED is one: nothing was
         // computed, so nothing was thrown away. Counting a refusal as waste would make the waste
         // ratio -- which drives an operator warning -- rise precisely when the mod stopped doing work.
+        // INSTALL_REJECTED is a discard: the search ran, produced a path, and it was thrown away.
         return this != INSTALLED && this != NO_PATH && this != POOL_SATURATED
             && this != SETUP_FAILED_PRE_DISPATCH && this != BREAKER_OPEN;
     }
@@ -157,13 +210,17 @@ public enum RequestOutcome {
             // BREAKER_OPEN is refused before anything reaches a worker, so it is not drawn from the
             // dispatched total. Printing it as a percentage of dispatches would be the six-digit
             // "41028 of 0" bug again, on the row that means the mod has switched itself off.
-            case POOL_SATURATED, SETUP_FAILED_PRE_DISPATCH, BREAKER_OPEN -> false;
+            // SERVER_RESET is drawn from the PREVIOUS session's dispatches: onServerStarting
+            // zeroes this array and then records one per leftover registration, deliberately, as the
+            // only evidence leftovers existed. Counting them against this session's total printed a
+            // percentage of a denominator they are not part of.
+            case POOL_SATURATED, SETUP_FAILED_PRE_DISPATCH, BREAKER_OPEN, SERVER_RESET -> false;
             // SETUP_FAILED is chosen only when dispatchCounted is true, i.e. strictly after
             // markDispatched() -- so it is part of the dispatched total by construction. Putting it
             // on the false arm reproduced, inside this enum, the exact symptom the split was written
             // to remove: a row printed with no percentage while being 100% of them.
             case SETUP_FAILED, INSTALLED, NO_PATH, SUPERSEDED, NAVIGATION_STOPPED, ARRIVED_STALE,
-                 SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED, SERVER_RESET -> true;
+                 SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED, INSTALL_REJECTED -> true;
         };
     }
 
@@ -180,7 +237,7 @@ public enum RequestOutcome {
             case INSTALLED, NO_PATH -> true;
             case POOL_SATURATED, SETUP_FAILED, SETUP_FAILED_PRE_DISPATCH, SUPERSEDED,
                  NAVIGATION_STOPPED, ARRIVED_STALE, SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED,
-                 SERVER_RESET, BREAKER_OPEN -> false;
+                 INSTALL_REJECTED, SERVER_RESET, BREAKER_OPEN -> false;
         };
     }
 }

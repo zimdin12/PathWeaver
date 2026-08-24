@@ -262,4 +262,33 @@ class PathWeaverConfigSerializerTest {
         Files.createDirectories(tempDir);
         return tempDir.resolve("pathweaver.json");
     }
+
+    /**
+     * trustedMods gets the same type check as every other persisted field.
+     *
+     * <p>It was the only one without one. {@code "trustedMods": null} passed every guard, Gson
+     * overwrote the initialised list with null, and the null reached the config -- the scanner
+     * null-guards it, but Cloth's list entry builder does not, so opening the settings screen threw
+     * and ModMenu bounced the user back with no message.
+     */
+    @Test
+    void aNullTrustedModsListIsRejectedLikeAnyOtherWrongType() throws Exception {
+        Path path = configPath();
+        Files.writeString(path, """
+            {"configVersion":2,"enabled":true,"trustedMods":null}
+            """);
+        PathWeaverConfigSerializer serializer = new PathWeaverConfigSerializer(path);
+        assertThrows(Exception.class, serializer::deserialize,
+            "an explicit null must fail closed, not become a null field the GUI trips over");
+    }
+
+    @Test
+    void aTrustedModsListOfNonStringsIsRejected() throws Exception {
+        Path path = configPath();
+        Files.writeString(path, """
+            {"configVersion":2,"enabled":true,"trustedMods":[1,2]}
+            """);
+        PathWeaverConfigSerializer serializer = new PathWeaverConfigSerializer(path);
+        assertThrows(Exception.class, serializer::deserialize);
+    }
 }

@@ -142,6 +142,10 @@ public final class PathWeaverRuntime {
         // starts many servers in one JVM. A trip that survived into the next world would be worse
         // than a stale counter -- a permanently inert movement family with NO log line, because the
         // one-shot report had already burned in the previous world.
+        // Close the window between the startup scan and here. Pathfinding classes are not
+        // transformed until a world starts, so a config registered after onInitialize could target
+        // WalkNodeEvaluator without the scan ever seeing it.
+        dev.pathweaver.gate.ForeignMixinScanner.rescanIfConfigsChanged();
         dev.pathweaver.gate.WorkerFailureBreaker.reset(epoch);
         entitySink.clear(false);
         installer.clear();
@@ -397,8 +401,13 @@ public final class PathWeaverRuntime {
                     + "lose a little. Nothing is switched off automatically.");
         }
         return List.of(
+            // "That is the smallest useful size" is only true of the auto-sized pool. With
+            // poolThreads set by hand the sentence asserted something false about the operator's own
+            // number, in the same startup block where a separate warning tells them 16 threads on 4
+            // processors is self-defeating.
             "This machine reports " + availableProcessors + " processor(s), giving " + workers
-                + " worker thread(s). That is the smallest useful size.",
+                + " worker thread(s)."
+                + (PathWeaverConfig.get().poolThreads > 0 ? "" : " That is the smallest useful size."),
             "Expect a small benefit at best: the worker has little room to run in parallel with the "
                 + "server thread, and PathWeaver's own main-thread work is not free.",
             "If /pathweaver status shows little of the work being used, enabled=false is a "

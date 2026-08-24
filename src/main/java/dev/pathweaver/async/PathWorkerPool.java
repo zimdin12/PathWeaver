@@ -82,8 +82,13 @@ public class PathWorkerPool {
         try {
             generation.exec.execute(() -> {
                 PathOutcome outcome;
-                PathWeaverThread.enterWorker();
+                // Inside the try. ThreadLocal.set allocates on first use per thread, so this can
+                // throw under memory pressure -- and outside the try that escapes before the finally
+                // that returns the admission slot. Enough of those and the generation runs out of
+                // slots permanently, silently reverting the server to synchronous pathfinding with
+                // POOL_SATURATED as the only symptom. exitWorker is idempotent.
                 try {
+                    PathWeaverThread.enterWorker();
                     Path result = req.search().call();
                     outcome = result == null ? PathOutcome.noPath() : PathOutcome.success(result);
                 } catch (Throwable t) {

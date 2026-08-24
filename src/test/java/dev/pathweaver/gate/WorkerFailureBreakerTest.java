@@ -120,8 +120,8 @@ class WorkerFailureBreakerTest {
     void aTripSurvivesTheUnsafeTierAndActuallyReachesTheDispatchGate() {
         CompatibilityTier savedTier = PathWeaverConfig.get().compatibilityTier;
         java.util.Set<Class<?>> savedDenials;
-        synchronized (SafetyGate.deniedBySafety) {
-            savedDenials = java.util.Set.copyOf(SafetyGate.deniedBySafety);
+        {
+            savedDenials = SafetyGate.snapshotDenials();
         }
         try {
             // Clear the scan's denials FIRST, and this is the whole point of the test rather than
@@ -264,8 +264,8 @@ class WorkerFailureBreakerTest {
     @Test
     void theMobDiagnosticNamesTheRuntimeCauseRatherThanTheScan() {
         java.util.Set<Class<?>> savedDenials;
-        synchronized (SafetyGate.deniedBySafety) {
-            savedDenials = java.util.Set.copyOf(SafetyGate.deniedBySafety);
+        {
+            savedDenials = SafetyGate.snapshotDenials();
         }
         try {
             SafetyGate.replaceDenials(java.util.Set.of());

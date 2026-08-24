@@ -40,10 +40,11 @@ class NavigationIdentityTest {
         @Override public void pathweaver$exitMovementRequest() { movementDepth--; }
         @Override public boolean pathweaver$consumeAcceptedDeferred() { return false; }
 
+        @Override public void pathweaver$rearmRecompute() { }
         @Override public void pathweaver$rollbackOptimisticTarget() { }
         @Override public void pathweaver$abortFailedInstall() { }
 
-        public void pathweaver$install(Path path) { }
+        public boolean pathweaver$install(Path path) { return true; }
         public boolean pathweaver$stale(double x, double y, double z) { return false; }
         public NavigationIdentity pathweaver$identity() { throw new UnsupportedOperationException(); }
     }

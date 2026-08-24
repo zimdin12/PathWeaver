@@ -51,6 +51,8 @@ public abstract class PathNavigationMixin implements PWNavigation {
     @Shadow protected NodeEvaluator nodeEvaluator;
     @Shadow @org.spongepowered.asm.mixin.Final private PathFinder pathFinder;
     @Shadow private BlockPos targetPos;
+    @Shadow protected long timeLastRecompute;
+    @Shadow protected boolean hasDelayedRecomputation;
     @Shadow public abstract void stop();
     @Shadow private int reachRange;
     @Shadow private float maxVisitedNodesMultiplier;
@@ -80,6 +82,14 @@ public abstract class PathNavigationMixin implements PWNavigation {
     @Unique private int pathweaver$navigationRequestDepth;
     @Unique private long pathweaver$targetRevision;
     @Unique private boolean pathweaver$recomputeInvalidated;
+    /**
+     * Which vanilla call site the in-flight request came from. MOVE_TO unless the recompute wrap is
+     * on the stack, because that wrap is the only origin with an obligation on the way out.
+     */
+    @Unique private dev.pathweaver.async.RequestOrigin pathweaver$currentOrigin =
+        dev.pathweaver.async.RequestOrigin.MOVE_TO;
+    /** {@code timeLastRecompute} as it stood before vanilla stamped it over our cancelled call. */
+    @Unique private long pathweaver$recomputeStampBeforeDispatch;
     /**
      * The navigation's target as it stood when {@code recomputePath} was entered.
      *
@@ -291,6 +301,12 @@ public abstract class PathNavigationMixin implements PWNavigation {
             this.targetPos = this.pathweaver$recomputeTargetClaim;
             target = this.pathweaver$recomputeTargetClaim;
         }
+        // Origin and the pre-dispatch stamp, captured HERE because this is the only place that
+        // knows the request came from recomputePath, and because vanilla has not stamped yet -- it
+        // does that two bytecodes after createPath returns. Read it after and we would capture our
+        // own suppression instead of the value to restore.
+        this.pathweaver$currentOrigin = dev.pathweaver.async.RequestOrigin.RECOMPUTE;
+        this.pathweaver$recomputeStampBeforeDispatch = this.timeLastRecompute;
         this.pathweaver$navigationRequestDepth++;
         this.pathweaver$recomputeInvalidated = true;
         this.pathweaver$requestSpeed = this.pathweaver$recomputeRequestSpeed;
@@ -299,6 +315,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
         } finally {
             this.pathweaver$recomputeInvalidated = false;
             this.pathweaver$navigationRequestDepth--;
+            this.pathweaver$currentOrigin = dev.pathweaver.async.RequestOrigin.MOVE_TO;
         }
     }
 
@@ -351,6 +368,52 @@ public abstract class PathNavigationMixin implements PWNavigation {
         }
     }
 
+
+    /**
+     * Answer vanilla's path-reuse check with the destination {@code path} actually routes to.
+     *
+     * <p>Dispatching advances {@code targetPos} to the destination the worker is searching for while
+     * {@code path} still holds the route to the previous one. That is deliberate — vanilla's own
+     * {@code recomputePath} reads {@code targetPos} directly, so the optimistic write is what keeps
+     * recompute and repath elision working during the in-flight tick — but it unpairs two fields
+     * vanilla treats as a pair.
+     *
+     * <p>Where it bites is the reuse short-circuit, at offsets 41-75 of the real 26.1.2 bytecode:
+     *
+     * <pre>
+     *   if (this.path != null &amp;&amp; !this.path.isDone() &amp;&amp; targets.contains(this.targetPos))
+     *       return this.path;
+     * </pre>
+     *
+     * <p>A direct query — {@code TargetGoal.canReach}, {@code MeleeAttackGoal.canUse},
+     * {@code AvoidEntityGoal.canUse} — calls {@code createPath} with a set holding the entity's
+     * current block position, which during the in-flight window IS the optimistic target. The
+     * short-circuit therefore fires and hands back the route to the destination the mob has already
+     * abandoned, and the goal measures that route's end node to answer a question about a different
+     * place. Those callers arrive at navigation depth zero, where {@code pathweaver$asyncCreatePath}
+     * returns immediately and so never reaches its own pairing reconciliation.
+     *
+     * <p>Scoped to depth zero on purpose. Above zero this is one of our own wrapped call sites, which
+     * reconciles the pair itself, and the guard keeps this redirect inert there rather than competing
+     * with it.
+     */
+    @org.spongepowered.asm.mixin.injection.Redirect(
+        method = "createPath(Ljava/util/Set;IZIF)Lnet/minecraft/world/level/pathfinder/Path;",
+        at = @At(value = "FIELD",
+            opcode = org.objectweb.asm.Opcodes.GETFIELD,
+            target = "Lnet/minecraft/world/entity/ai/navigation/PathNavigation;"
+                + "targetPos:Lnet/minecraft/core/BlockPos;"),
+        require = 1,
+        expect = 1
+    )
+    private BlockPos pathweaver$reuseCheckSeesThePathsOwnTarget(PathNavigation self) {
+        if (this.pathweaver$navigationRequestDepth == 0
+                && this.pathweaver$optimisticTargetPos != null
+                && this.pathweaver$targetPosBeforeDispatch != null) {
+            return this.pathweaver$targetPosBeforeDispatch;
+        }
+        return this.targetPos;
+    }
 
     @Inject(
         method = "createPath(Ljava/util/Set;IZIF)Lnet/minecraft/world/level/pathfinder/Path;",
@@ -465,7 +528,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
         final long tick = ((ServerLevel) this.level).getServer().getTickCount();
 
         // This entity's last async search failed and it's in cooldown -> run vanilla sync this tick.
-        if (sink.shouldForceSync(entityId, tick)) return;
+        if (sink.shouldForceSync(entityId, tick, this.pathweaver$currentOrigin)) return;
 
         // A same-target pending operation returned above; anything still registered is conservatively sync.
         if (sink.isRegistered(entityId)) {
@@ -562,7 +625,8 @@ public abstract class PathNavigationMixin implements PWNavigation {
             requestKey = rt.nextRequestKey(entityId);
             final RequestKey submittedKey = requestKey;
             if (!intentAdvanced) pathweaver$targetRevision++;
-            sink.register(requestKey, this, requestTarget, requiresEmptyLandRegistry);
+            sink.register(requestKey, this, requestTarget, requiresEmptyLandRegistry,
+                this.pathweaver$currentOrigin);
             stage = dev.pathweaver.async.RequestOutcome.DispatchStage.REGISTERED;
             boolean accepted = rt.pool().submit(new PathRequest(submittedKey, tick, search,
                 result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz),
@@ -669,10 +733,14 @@ public abstract class PathNavigationMixin implements PWNavigation {
     // ---- PWNavigation duck ----
 
     @Override
-    public void pathweaver$install(Path path) {
+    public boolean pathweaver$install(Path path) {
         // Vanilla's own install path: handles sameAs/trim/stuck bookkeeping. Use the caller's real
         // intended speed bound to this registration, including vanilla-valid non-positive/NaN values.
-        moveTo(path, this.pathweaver$pendingInstallSpeed);
+        //
+        // The return value is not decoration: moveTo answers false for a path that is already done or
+        // that trims to zero nodes, having already assigned `path`. Replaying the createPath tail on
+        // top of that wrote a targetPos with no route to it.
+        if (!moveTo(path, this.pathweaver$pendingInstallSpeed)) return false;
 
         // Replay selected createPath bookkeeping needed by genuine navigation/recompute requests.
         // Query-only createPath calls cannot reach this async install path because routing depth stays zero.
@@ -685,6 +753,26 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // A real path is now installed, so there is nothing optimistic left to undo.
         this.pathweaver$optimisticTargetPos = null;
         this.pathweaver$targetPosBeforeDispatch = null;
+        return true;
+    }
+
+    @Override
+    public void pathweaver$rearmRecompute() {
+        // Only if this is still the navigation being ticked.
+        //
+        // Vanilla 26.1.2 writes Mob.navigation exactly once, in the constructor -- verified by
+        // scanning every class in the jar for a write to that field, which found the constructor and
+        // nothing else. So for vanilla this guard never fires. A mod that swaps navigation objects
+        // is a different matter: the result would arrive stale, strand, and re-arm a navigation that
+        // Mob.tick() no longer ticks. Writing there cannot help, and the navigation now in use never
+        // had a recompute suppressed, so there is nothing to undo on it either.
+        if (this.mob.getNavigation() != (Object) this) return;
+        // Both halves, or neither works. tick() only calls recomputePath when the flag is set, and
+        // recomputePath only acts when gameTime - timeLastRecompute > 20. Restoring the stamp alone
+        // leaves nothing calling it this tick; setting the flag alone makes tick() call a method that
+        // takes its own else-branch and just sets the flag again, spinning until the stamp ages out.
+        this.timeLastRecompute = this.pathweaver$recomputeStampBeforeDispatch;
+        this.hasDelayedRecomputation = true;
     }
 
     @Override

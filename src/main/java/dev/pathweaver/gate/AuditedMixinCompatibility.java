@@ -49,7 +49,6 @@ final class AuditedMixinCompatibility {
     static final String PATH_NAVIGATION =
         "net.minecraft.world.entity.ai.navigation.PathNavigation";
 
-    private static final String MINECRAFT_VERSION = "26.1.2";
     private static final String SERVERCORE_MODULE_SHA =
         "593941ef360ba493b180c213bbb093d95223dba4a34d97e7559b914847363aa4";
     private static final String SERVERCORE_CONFIG_SHA =
@@ -119,10 +118,19 @@ final class AuditedMixinCompatibility {
             String version = module.getMetadata().getVersion().getFriendlyString();
             String minecraft = loader.getModContainer("minecraft")
                 .map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("missing");
-            if (!MINECRAFT_VERSION.equals(minecraft)) {
-                return ForeignMixinScanner.AuditedExemptionEvidence.unverified(
-                    id + " exact audit unsupported on Minecraft " + minecraft);
-            }
+            // NOT gated on the Minecraft version string any more.
+            //
+            // Every audit here pins, by SHA-256, the vanilla classes its own proof reads -- and the
+            // verification below fails on any of those hashes. So the bytes the proof was derived
+            // against are already established by evidence, and the version label was a second,
+            // coarser answer to the same question that could only ever be stricter than the bytes.
+            //
+            // Measured both directions before removing it. On 26.1.1 all ten pinned vanilla classes
+            // are byte-identical to 26.1.2, so the audits hold and the label was the only thing
+            // refusing. On 26.2 four of the ten differ -- PathNavigation, WalkNodeEvaluator,
+            // BlockStateBase and Frog$FrogNodeEvaluator -- so the hashes refuse it without needing
+            // the label at all. The running version is still reported in failure text, because
+            // "which Minecraft" is useful in a diagnostic even when it is not the deciding fact.
             if (SERVERCORE_ID.equals(id)) {
                 if (!SERVERCORE_VERSION.equals(version)) return unverified(id, "unsupported version " + version);
                 Verification result = verifyServerCore(new ServerCoreBundle(

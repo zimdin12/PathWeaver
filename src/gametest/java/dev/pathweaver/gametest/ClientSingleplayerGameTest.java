@@ -3,6 +3,7 @@ package dev.pathweaver.gametest;
 import dev.pathweaver.PathWeaverRuntime;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.gate.SafetyGate;
+import dev.pathweaver.gate.SafetyGateTestAccess;
 import java.util.ArrayList;
 import java.util.List;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
@@ -70,16 +71,14 @@ public final class ClientSingleplayerGameTest implements FabricClientGameTest {
                 // This used to read "the scan should open the gate on its own", which was true while
                 // the default was AUDITED and is not now: the gate opens because checking is off.
                 // Reported rather than asserted, so nothing here silently depends on which it was.
-                synchronized (SafetyGate.deniedBySafety) {
-                    report.add("deniedFamilies=" + SafetyGate.deniedBySafety.size());
+                {
+                    report.add("deniedFamilies=" + SafetyGate.denialCount());
                 }
 
                 PathWeaverConfig cfg = PathWeaverConfig.get();
                 cfg.enabled = true;
                 cfg.maxResultAgeTicks = 1200;
-                synchronized (SafetyGate.deniedBySafety) {
-                    SafetyGate.deniedBySafety.clear();
-                }
+                SafetyGateTestAccess.clear();
 
                 BlockPos origin = new BlockPos(0, 100, 0);
                 for (int dx = -12; dx <= 12; dx++) {

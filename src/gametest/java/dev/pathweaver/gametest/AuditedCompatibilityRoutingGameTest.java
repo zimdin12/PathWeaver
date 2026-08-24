@@ -4,6 +4,7 @@ import dev.pathweaver.PathWeaverRuntime;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.gate.ForeignMixinScanner;
 import dev.pathweaver.gate.SafetyGate;
+import dev.pathweaver.gate.SafetyGateTestAccess;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -72,8 +73,8 @@ public final class AuditedCompatibilityRoutingGameTest {
             this.oldModded = cfg.allowModdedMobAsync;
             this.oldTolerance = cfg.repathToleranceBlocks;
             this.oldMaxResultAge = cfg.maxResultAgeTicks;
-            synchronized (SafetyGate.deniedBySafety) {
-                this.oldDenials = Set.copyOf(SafetyGate.deniedBySafety);
+            {
+                this.oldDenials = SafetyGate.snapshotDenials();
             }
         }
 
@@ -223,9 +224,8 @@ public final class AuditedCompatibilityRoutingGameTest {
             cfg.allowModdedMobAsync = oldModded;
             cfg.repathToleranceBlocks = oldTolerance;
             cfg.maxResultAgeTicks = oldMaxResultAge;
-            synchronized (SafetyGate.deniedBySafety) {
-                SafetyGate.deniedBySafety.clear();
-                SafetyGate.deniedBySafety.addAll(oldDenials);
+            {
+                SafetyGateTestAccess.restore(oldDenials);
             }
         }
     }
@@ -245,9 +245,8 @@ public final class AuditedCompatibilityRoutingGameTest {
     }
 
     private static void apply(Set<Class<?>> denied) {
-        synchronized (SafetyGate.deniedBySafety) {
-            SafetyGate.deniedBySafety.clear();
-            SafetyGate.deniedBySafety.addAll(denied);
+        {
+            SafetyGateTestAccess.restore(denied);
         }
     }
 

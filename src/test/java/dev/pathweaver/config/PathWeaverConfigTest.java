@@ -170,6 +170,12 @@ class PathWeaverConfigTest {
      * <p>A hand-edited {@code workerFailureLimit: -1} reads as "off" through one code path and as
      * "trip on the first failure" through another, which is exactly what the clamp's own comment
      * describes and what nothing was checking.
+     *
+     * <p>It repairs to the DEFAULT, not to zero. Zero is a documented choice meaning "never switch a
+     * family off", so clamping a negative onto it resolved the ambiguity by silently disabling the
+     * family-shutdown safety net for the session, with the GUI showing a legal value. Every other
+     * numeric field here repairs toward less capability; this was the only one that could reach the
+     * permissive end. An explicitly stored zero still means zero.
      */
     @org.junit.jupiter.api.Test
     void theBreakerFieldsAreClampedIntoRange() {
@@ -177,8 +183,16 @@ class PathWeaverConfigTest {
         config.workerFailureLimit = -1;
         config.workerFailureWindowTicks = -5;
         config.validatePostLoad();
-        org.junit.jupiter.api.Assertions.assertEquals(0, config.workerFailureLimit);
+        org.junit.jupiter.api.Assertions.assertEquals(
+            PathWeaverConfig.DEFAULT_WORKER_FAILURE_LIMIT, config.workerFailureLimit,
+            "a negative limit must not land on the documented 'breaker off' value");
         org.junit.jupiter.api.Assertions.assertEquals(0, config.workerFailureWindowTicks);
+
+        // An explicit zero is a real choice and survives untouched.
+        config.workerFailureLimit = 0;
+        config.validatePostLoad();
+        org.junit.jupiter.api.Assertions.assertEquals(0, config.workerFailureLimit,
+            "zero is documented as 'never switch anything off' and must still mean that");
 
         config.workerFailureLimit = Integer.MAX_VALUE;
         config.workerFailureWindowTicks = Integer.MAX_VALUE;

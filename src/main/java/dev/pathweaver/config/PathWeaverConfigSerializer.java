@@ -71,6 +71,14 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
                     throw new IllegalArgumentException(
                         "legacy schema cannot also contain the v2 enabled key");
                 }
+                // Deliberately permissive, and NOT an oversight to be tidied into line with the
+                // v2 branch above. These two keys are being interpreted for FIDELITY: the migration
+                // reproduces what the operator's own installation actually did, and under 0.1.x-0.4.x
+                // a config lacking asyncEnabled ran with async ON. Cloth writes every field, so a
+                // legacy file missing it was hand-written -- by someone who was running with it on.
+                // Failing closed here would silently switch the mod off on upgrade for exactly those
+                // people. v2's "enabled" is different: the current version always writes it, so its
+                // absence is unambiguous damage.
                 boolean legacyAsync = strictBoolean(raw, "asyncEnabled", true);
                 boolean legacyPanic = strictBoolean(raw, "syncFallbackOnly", false);
                 enabled = legacyAsync && !legacyPanic;
@@ -80,7 +88,7 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
 
             migrateRenamedTier(current);
             validateCurrentFieldTypes(current);
-            migrateCompatibilityTier(current);
+            migrateCompatibilityTier(current, version);
             current.remove("asyncEnabled");
             current.remove("syncFallbackOnly");
             current.addProperty("configVersion", PathWeaverConfig.CURRENT_CONFIG_VERSION);
@@ -130,6 +138,20 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
         }
     }
 
+    /** A JSON array of strings, or absent. Explicit null is a type error, as it is everywhere else. */
+    private static void strictOptionalStringList(JsonObject raw, String key) {
+        if (!raw.has(key)) return;
+        com.google.gson.JsonElement value = raw.get(key);
+        if (!value.isJsonArray()) {
+            throw new IllegalArgumentException(key + " must be an array of strings");
+        }
+        for (com.google.gson.JsonElement element : value.getAsJsonArray()) {
+            if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+                throw new IllegalArgumentException(key + " must contain only strings");
+            }
+        }
+    }
+
     private static void validateCurrentFieldTypes(JsonObject raw) {
         strictOptionalBoolean(raw, "allowModdedMobAsync");
         strictOptionalInteger(raw, "poolThreads");
@@ -143,6 +165,11 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
         strictOptionalInteger(raw, "workerFailureLimit");
         strictOptionalInteger(raw, "workerFailureWindowTicks");
         strictOptionalEnum(raw, "compatibilityTier");
+        // The only persisted field that had no type check. `"trustedMods": null` passed every other
+        // guard, Gson overwrote the initialised list with null, and the null survived into the
+        // config -- the scanner null-guards it, but Cloth's list entry builder does not, so the
+        // settings screen threw and ModMenu bounced the user straight back with no message.
+        strictOptionalStringList(raw, "trustedMods");
     }
 
     /**
@@ -171,8 +198,35 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
      * <p>An explicit {@code compatibilityTier} always wins, so a config carrying both is not
      * re-migrated.
      */
-    private static void migrateCompatibilityTier(JsonObject raw) {
-        if (!raw.has("overrideCompatibilityScan")) return;
+    private static void migrateCompatibilityTier(JsonObject raw, int version) {
+        if (!raw.has("overrideCompatibilityScan")) {
+            // A v0/v1 config carrying NEITHER key predates both of them: the tier arrived in 0.3.0
+            // and the boolean before it. Those versions ran with the scan armed and no way to waive
+            // it, so falling through to the field initializer silently upgrades such an operator
+            // from "scan armed" to UNSAFE, which waives every denial there is. That is the exact
+            // inversion the override=false migration below refuses to perform, reached by a
+            // different route. A v2 config without the key is a different case and is left alone:
+            // UNSAFE is genuinely its shipped default.
+            // v0/v1 explicitly, NOT "anything that is not current". Written the other way, the
+            // next schema bump would sweep every v2 config on disk into AUDITED -- and a v2 config
+            // omits compatibilityTier precisely when the operator accepted the shipped default, so
+            // that would silently convert the whole installed base into a mod measured at 0 of 187
+            // eligible mob types.
+            if (version <= 1 && !raw.has("compatibilityTier")) {
+                raw.addProperty("compatibilityTier", CompatibilityTier.AUDITED.name());
+                try {
+                    dev.pathweaver.PathWeaver.LOG.warn("Your config predates the compatibility tier "
+                        + "setting entirely. The versions that wrote it ran with the compatibility "
+                        + "scan armed, so it has been migrated to compatibilityTier=AUDITED rather "
+                        + "than inheriting today's UNSAFE default. On a heavily-modded pack expect "
+                        + "PathWeaver to refuse; the world-start report names the mods responsible, "
+                        + "and compatibilityTier=UNSAFE is the shipped default if you want it.");
+                } catch (Throwable ignored) {
+                    // Migrating must not depend on a logging backend being healthy.
+                }
+            }
+            return;
+        }
         boolean override = strictBoolean(raw, "overrideCompatibilityScan", null);
         raw.remove("overrideCompatibilityScan");
         if (raw.has("compatibilityTier")) return;

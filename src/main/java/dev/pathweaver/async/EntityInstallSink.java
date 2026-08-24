@@ -21,7 +21,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
 
     private record Registration(RequestKey key, PWNavigation navigation,
                                 NavigationIdentity identity, RequestTarget target,
-                                boolean requiresEmptyLandRegistry) { }
+                                boolean requiresEmptyLandRegistry, RequestOrigin origin) { }
 
     private static final RequestTarget UNSPECIFIED_TARGET =
         RequestTarget.of(Set.of(), 0, false, 0, 0.0F);
@@ -68,8 +68,28 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     private record OwedEpilogue(net.minecraft.world.level.pathfinder.NodeEvaluator evaluator,
                                 SearchStartGate gate) {}
     private final Map<Integer, Long> failUntilTick = new ConcurrentHashMap<>();
+    /**
+     * Entities whose next RECOMPUTE dispatch must run synchronously, with a deadline.
+     *
+     * <p>Separate from {@link #failUntilTick} because the two answer different questions. That one
+     * throttles an entity after a worker failure and lasts 40 ticks; this one hands a single
+     * re-armed recompute back to vanilla and then gets out of the way.
+     *
+     * <p><b>Scoped to the recompute, and that is load-bearing.</b> A bare "next dispatch" token was
+     * claimed by whichever call arrived first, and goals run before navigation: {@code serverAiStep}
+     * ticks the goal selector before {@code navigation.tick()}. So a MeleeAttackGoal's {@code moveTo}
+     * consumed the token, got its synchronous path, and then the re-armed {@code recomputePath} nulled
+     * that path and dispatched asynchronously because the token was gone — leaving the mob pathless
+     * again after briefly holding a good route. Worse than the 40-tick cooldown it replaced.
+     *
+     * <p>The deadline exists for the reason {@code sweepExpiredCooldowns} exists: a mob that strands
+     * and then dies, despawns or changes dimension never dispatches again, and entity ids are not
+     * reused within a run, so a bare set leaked an id per stranding for the life of the server.
+     */
+    private final Map<Integer, Long> syncNextRecompute = new ConcurrentHashMap<>();
     private final AtomicBoolean callbackFailureLogged = new AtomicBoolean();
     private final AtomicBoolean rollbackFailureLogged = new AtomicBoolean();
+    private final AtomicBoolean rearmFailureLogged = new AtomicBoolean();
     private final BooleanSupplier landRegistryAllowsInstall;
     /** Tick at which expired cooldown entries were last swept, so the map cannot grow forever. */
     private long lastCooldownSweepTick;
@@ -92,9 +112,9 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
 
     /** Capture whether this exact request depends on Fabric's land-provider registry staying empty. */
     public void register(RequestKey key, PWNavigation navigation, RequestTarget target,
-                         boolean requiresEmptyLandRegistry) {
-        Registration next = new Registration(
-            key, navigation, navigation.pathweaver$identity(), target, requiresEmptyLandRegistry);
+                         boolean requiresEmptyLandRegistry, RequestOrigin origin) {
+        Registration next = new Registration(key, navigation, navigation.pathweaver$identity(),
+            target, requiresEmptyLandRegistry, origin);
         Registration existing = inFlight.putIfAbsent(key.entityId(), next);
         if (existing != null) {
             throw new IllegalStateException("Entity " + key.entityId()
@@ -107,7 +127,9 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         // Explicit false, not a defaulted one. The 3-arg overload this used to call defaulted the
         // land-registry flag to fail-open and had no production caller, so a future call site that
         // forgot the argument would have silently disarmed the install-time re-check.
-        register(key, navigation, UNSPECIFIED_TARGET, false);
+        // MOVE_TO explicitly, for the reason the land-registry flag is explicit: RECOMPUTE is the
+        // origin with the extra obligation, so a defaulted origin would silently skip it.
+        register(key, navigation, UNSPECIFIED_TARGET, false, RequestOrigin.MOVE_TO);
     }
 
     public boolean isRegistered(int entityId) {
@@ -168,7 +190,46 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
      */
     private void finishDiscard(Registration registration, RequestOutcome reason) {
         rollbackOptimisticTarget(registration);
+        rearmRecomputeIfStranded(registration, reason);
         dev.pathweaver.PathWeaverRuntime.get().markOutcome(reason);
+    }
+
+    /**
+     * Hand a stranded {@code recomputePath} caller back to vanilla instead of leaving it frozen.
+     *
+     * <p>Cancelling {@code createPath} on the recompute path makes vanilla stamp
+     * {@code timeLastRecompute} and clear {@code hasDelayedRecomputation} on a mob whose path it
+     * just nulled. If the search then produces nothing, both of vanilla's retry routes stay shut for
+     * twenty ticks and the mob stands still for up to a second.
+     *
+     * <p>The retry is also forced synchronous. Re-arming alone would let the next tick dispatch
+     * again, fail the same way, and re-arm again — a per-tick dispatch loop in place of a stall.
+     * One vanilla search is what the mob would have had if this mod were not installed, which is the
+     * direction every other fallback here takes.
+     */
+    private void rearmRecomputeIfStranded(Registration registration, RequestOutcome reason) {
+        if (registration.origin() != RequestOrigin.RECOMPUTE || !reason.strandsRecompute()) return;
+        // ONE dispatch, not a window. This used to reuse failUntilTick, the 40-tick entity-wide
+        // failure cooldown, which is cleared by a successful async install or by expiry -- and a synchronous
+        // search never goes through this sink. So one stranded recompute made that mob run EVERY
+        // path search synchronously for two seconds, not the single retry the javadoc claims.
+        // ARRIVED_STALE is a race and the commonest non-install outcome, so a one-tick miss became a
+        // two-second opt-out from the mod for that mob.
+        syncNextRecompute.put(registration.key().entityId(), currentTick + FAIL_COOLDOWN_TICKS);
+        try {
+            registration.navigation().pathweaver$rearmRecompute();
+        } catch (Throwable rearmFailure) {
+            // Vanilla is left in the state it was already in -- suppressed for twenty ticks -- which
+            // is the pre-existing behaviour, not a new one. Never let this break the discard.
+            if (rearmFailureLogged.compareAndSet(false, true)) {
+                try {
+                    PathWeaver.LOG.warn("Re-arming vanilla's path recompute threw; the mob may pause "
+                        + "briefly before it paths again.", rearmFailure);
+                } catch (Throwable ignored) {
+                    // Discard stays terminal even if the logging backend is compromised.
+                }
+            }
+        }
     }
 
     /** Install threw: clear any partially-applied path AND restore the pre-dispatch target. */
@@ -278,7 +339,16 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     /** Test seam: number of live sync-cooldown entries. */
     int cooldownEntryCount() { return failUntilTick.size(); }
 
-    public boolean shouldForceSync(int entityId, long tick) {
+    /** Test seam: number of unclaimed recompute retry tokens still held. */
+    int retryTokenCount() { return syncNextRecompute.size(); }
+
+    public boolean shouldForceSync(int entityId, long tick, RequestOrigin origin) {
+        // Consumed, not peeked, and only by the origin it was issued for: this is the single retry a
+        // stranded recompute is owed, and a goal's moveTo arriving first must not spend it.
+        if (origin == RequestOrigin.RECOMPUTE) {
+            Long owed = syncNextRecompute.remove(entityId);
+            if (owed != null && tick < owed) return true;
+        }
         sweepExpiredCooldowns(tick);
         Long until = failUntilTick.get(entityId);
         if (until == null) return false;
@@ -298,11 +368,16 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
      * because the map is normally empty and is only walked once per second of server time.
      */
     private void sweepExpiredCooldowns(long tick) {
-        if (failUntilTick.isEmpty() || tick - lastCooldownSweepTick < COOLDOWN_SWEEP_INTERVAL_TICKS) {
+        // BOTH maps, or the early-out defeats half the sweep. Keyed on failUntilTick alone, the
+        // retry tokens were never swept in the ordinary case -- failUntilTick is empty unless a
+        // worker actually threw, which on a healthy pack is never.
+        if ((failUntilTick.isEmpty() && syncNextRecompute.isEmpty())
+                || tick - lastCooldownSweepTick < COOLDOWN_SWEEP_INTERVAL_TICKS) {
             return;
         }
         lastCooldownSweepTick = tick;
         failUntilTick.entrySet().removeIf(entry -> tick >= entry.getValue());
+        syncNextRecompute.entrySet().removeIf(entry -> tick >= entry.getValue());
     }
 
     private Registration matching(RequestKey key) {
@@ -333,7 +408,16 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         Registration registration = matching(key);
         if (registration != null && inFlight.remove(key.entityId(), registration)) {
             try {
-                registration.navigation().pathweaver$install(path);
+                if (!registration.navigation().pathweaver$install(path)) {
+                    // Vanilla declined it. Ordinary, not a failure: no cooldown, because nothing
+                    // misbehaved and throttling this mob would punish it for a trimmed path. The
+                    // rollback still runs, and a recompute is still stranded -- it has no route.
+                    rollbackOptimisticTarget(registration);
+                    rearmRecomputeIfStranded(registration, RequestOutcome.INSTALL_REJECTED);
+                    dev.pathweaver.PathWeaverRuntime.get()
+                        .markOutcome(RequestOutcome.INSTALL_REJECTED);
+                    return;
+                }
                 failUntilTick.remove(key.entityId());
                 dev.pathweaver.PathWeaverRuntime.get().markOutcome(RequestOutcome.INSTALLED);
             } catch (Throwable installFailure) {
@@ -343,6 +427,12 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
                 // Abort clears the path and restores the target together.
                 abortFailedInstall(registration);
                 failUntilTick.put(key.entityId(), currentTick + FAIL_COOLDOWN_TICKS);
+                // A recompute that got this far had vanilla's retry suppressed and now has no path
+                // at all, because abortFailedInstall calls stop(). strandsRecompute() has always
+                // declared INSTALL_FAILED stranding; nothing delivered it here, because this catch
+                // handles the outcome inline instead of going through finishDiscard. That made the
+                // classification dead on the one outcome where another mod is provably misbehaving.
+                rearmRecomputeIfStranded(registration, RequestOutcome.INSTALL_FAILED);
                 dev.pathweaver.PathWeaverRuntime.get().markOutcome(RequestOutcome.INSTALL_FAILED);
                 if (installFailureLogged.compareAndSet(false, true)) {
                     try {
@@ -444,12 +534,18 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         // without this a failure logged once in world A silenced the FIRST failure of every later
         // world in the same JVM -- leaving an operator with a non-zero failure counter and no stack
         // trace anywhere to identify the cause. PathWeaverRuntime already re-arms its waste report
-        // per world; these four were the inconsistency.
+        // per world; these were the inconsistency.
+        //
+        // Count them rather than trusting the sentence: a fifth flag was added later and not added
+        // here, so on a singleplayer client the first re-arm failure of every world after the first
+        // logged nothing. Any new one-shot log flag on this class belongs in this block.
         callbackFailureLogged.set(false);
         rollbackFailureLogged.set(false);
         installFailureLogged.set(false);
         epilogueDropLogged.set(false);
+        rearmFailureLogged.set(false);
         failUntilTick.clear();
+        syncNextRecompute.clear();
         // Reset the sweep clock too. A new server starts its tick count near zero, so a
         // timestamp left from a long previous run would suppress sweeping until the new
         // server had been up as long as the old one.

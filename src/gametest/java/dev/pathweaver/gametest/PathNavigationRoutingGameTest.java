@@ -9,6 +9,7 @@ import dev.pathweaver.async.RequestKey;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.gate.ForeignMixinScanner;
 import dev.pathweaver.gate.SafetyGate;
+import dev.pathweaver.gate.SafetyGateTestAccess;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -52,8 +53,8 @@ public final class PathNavigationRoutingGameTest {
         int oldTolerance = cfg.repathToleranceBlocks;
         int oldMaxResultAge = cfg.maxResultAgeTicks;
         Set<Class<?>> oldDenials;
-        synchronized (SafetyGate.deniedBySafety) {
-            oldDenials = Set.copyOf(SafetyGate.deniedBySafety);
+        {
+            oldDenials = SafetyGate.snapshotDenials();
         }
         // The shipped 40-tick result age is two seconds, and this suite kept failing about one clean
         // build in five because a cold JVM's first worker round trip does not always beat it. When it
@@ -66,10 +67,7 @@ public final class PathNavigationRoutingGameTest {
         Runnable teardown = () -> {
             cfg.maxResultAgeTicks = oldMaxResultAge;
             restore(cfg, oldEnabled, oldModdedMobOverride, oldTolerance);
-            synchronized (SafetyGate.deniedBySafety) {
-                SafetyGate.deniedBySafety.clear();
-                SafetyGate.deniedBySafety.addAll(oldDenials);
-            }
+            SafetyGateTestAccess.restore(oldDenials);
         };
 
         try {
@@ -119,7 +117,7 @@ public final class PathNavigationRoutingGameTest {
             check(helper, oldDenials.equals(SafetyGate.allowlisted()),
                 "stock full Fabric API must fail closed for every family until its separate "
                     + "interaction BlockStateBase mixin is independently audited");
-            SafetyGate.deniedBySafety.clear();
+            SafetyGateTestAccess.clear();
             cfg.enabled = true;
             cfg.allowModdedMobAsync = false;
             cfg.repathToleranceBlocks = 0;
@@ -408,10 +406,7 @@ public final class PathNavigationRoutingGameTest {
                         seamMob.discard();
                         // ---- end recompute seam arm ----
 
-                        synchronized (SafetyGate.deniedBySafety) {
-                            SafetyGate.deniedBySafety.clear();
-                            SafetyGate.deniedBySafety.addAll(oldDenials);
-                        }
+                        SafetyGateTestAccess.restore(oldDenials);
 
                         double oldX = coordinateMob.getX();
                         double oldY = coordinateMob.getY();
@@ -447,15 +442,15 @@ public final class PathNavigationRoutingGameTest {
 
     private static void startExactSwimProof(GameTestHelper helper, PathWeaverConfig cfg,
                                             Runnable teardown) {
-        check(helper, SafetyGate.deniedBySafety.contains(WalkNodeEvaluator.class),
+        check(helper, SafetyGate.snapshotDenials().contains(WalkNodeEvaluator.class),
             "normal full-FAPI must retain the independent Walk denial");
-        check(helper, SafetyGate.deniedBySafety.contains(SwimNodeEvaluator.class),
+        check(helper, SafetyGate.snapshotDenials().contains(SwimNodeEvaluator.class),
             "normal full-FAPI must deny Swim through its separately unaudited interaction mixin");
         // The content-registry tuple itself is audited, but aggregate Fabric API also ships an
         // independent BlockStateBase interaction mixin. Keep production fail-closed; clear only
         // that Swim denial here to retain a live routing/cache-isolation witness for the prototype.
-        synchronized (SafetyGate.deniedBySafety) {
-            SafetyGate.deniedBySafety.remove(SwimNodeEvaluator.class);
+        {
+            SafetyGateTestAccess.undeny(SwimNodeEvaluator.class);
         }
         cfg.enabled = true;
         cfg.allowModdedMobAsync = false;
@@ -500,7 +495,7 @@ public final class PathNavigationRoutingGameTest {
                 // here rather than guessed at afterwards.
                 check(helper, swimAccepted, "test-cleared exact Swim movement must be accepted"
                     + " [allowedSwim=" + SafetyGate.isAllowed(SwimNodeEvaluator.class)
-                    + ", deniedNow=" + SafetyGate.deniedBySafety.size()
+                    + ", deniedNow=" + SafetyGate.denialCount()
                     + ", alive=" + swimmer.isAlive()
                     + ", inWater=" + swimmer.isInWater()
                     + ", removed=" + swimmer.isRemoved()

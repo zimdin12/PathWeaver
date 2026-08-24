@@ -88,7 +88,7 @@ public final class SafetyGate {
      * {@link ForeignMixinScanner}). A mixin keeps the class identity {@code WalkNodeEvaluator},
      * so the allowlist alone cannot see it — this set is the second line of defence.
      */
-    public static final Set<Class<?>> deniedBySafety =
+    static final Set<Class<?>> deniedBySafety =
         Collections.synchronizedSet(new HashSet<>(ALLOWED));
 
     /**
@@ -132,6 +132,77 @@ public final class SafetyGate {
     /** Families currently switched off by a runtime failure, for the diagnostics. */
     public static Set<Class<?>> runtimeFailureDenials() {
         return deniedByRuntimeFailure;
+    }
+
+    /**
+     * A copy of the scan denials, for a harness that has to put them back afterwards.
+     *
+     * <p>The set itself is no longer public: it was {@code public static final} and mutable, so any
+     * class on the classpath could call {@code clear()} on it and waive every scan denial, including
+     * ones a FAILED scan installed, which no tier is permitted to waive.
+     *
+     * <p>The mutating seams below are package-private, so nothing outside {@code dev.pathweaver.gate}
+     * can reach them at all. Tests in other packages go through {@code SafetyGateTestAccess}, which
+     * exists once per non-shipping source set and therefore never reaches a user's classpath —
+     * verified by {@code noPublicMutatorSurvivesOnTheShippedGate}. Read accessors stay public because
+     * reporting sites in other packages legitimately need them and reading cannot waive anything.
+     */
+    public static Set<Class<?>> snapshotDenials() {
+        synchronized (deniedBySafety) {
+            return Set.copyOf(deniedBySafety);
+        }
+    }
+
+    /**
+     * How many allowlisted families the scan denials actually refuse.
+     *
+     * <p>Denial is by {@code isAssignableFrom}, so denying {@code WalkNodeEvaluator} also denies
+     * Fly, Amphibious, Frog and Creaking. Reporting the raw set size prints "enforced=1" while five
+     * of six families are refused on every tick. This file already carries that correction on the
+     * family list and on the runtime-trip report; the scan counts had been left on the raw size.
+     */
+    public static int scanEnforcedFamilyCount() {
+        Set<Class<?>> denials = snapshotDenials();
+        if (denials.isEmpty()) return 0;
+        int refused = 0;
+        for (Class<?> family : allowlisted()) {
+            for (Class<?> denied : denials) {
+                if (denied.isAssignableFrom(family)) {
+                    refused++;
+                    break;
+                }
+            }
+        }
+        return refused;
+    }
+
+    /** How many families the scan denied. Reporting sites want the closure, not this. */
+    public static int denialCount() {
+        synchronized (deniedBySafety) {
+            return deniedBySafety.size();
+        }
+    }
+
+    /** Test seam: deny one family. Not called from production code. */
+    static void denyForTesting(Class<?> family) {
+        synchronized (deniedBySafety) {
+            deniedBySafety.add(family);
+        }
+    }
+
+    /** Test seam: lift one family's denial. Not called from production code. */
+    static void undenyForTesting(Class<?> family) {
+        synchronized (deniedBySafety) {
+            deniedBySafety.remove(family);
+        }
+    }
+
+    /** Test seam: replace the scan denials wholesale. Not called from production code. */
+    static void restoreDenialsForTesting(Set<Class<?>> denials) {
+        synchronized (deniedBySafety) {
+            deniedBySafety.clear();
+            deniedBySafety.addAll(denials);
+        }
     }
 
     /**
