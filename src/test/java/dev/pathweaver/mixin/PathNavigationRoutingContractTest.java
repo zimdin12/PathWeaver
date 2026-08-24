@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Locks the exact 26.1.2 virtual-call seams that are allowed to arm async path creation. */
@@ -412,4 +413,50 @@ class PathNavigationRoutingContractTest {
         @Override public boolean moveTo(Path path, double speed) { return false; }
     }
 
+
+    /**
+     * The reuse-check redirect exists, and it is gated on navigation depth.
+     *
+     * <p>What it prevents: during an in-flight dispatch {@code targetPos} names the destination being
+     * searched for while {@code path} still routes to the previous one. Vanilla's short-circuit
+     * (offsets 41-75 of the real 26.1.2 {@code createPath}) treats those two as a pair and returns
+     * {@code path} when the caller's target set contains {@code targetPos}. A depth-zero query —
+     * {@code TargetGoal.canReach} and friends — therefore received a route to the destination the mob
+     * had already abandoned, and measured its end node to answer a question about a different place.
+     *
+     * <p>Bytecode, because the property is about a mixin's shape and no unit test can build a real
+     * {@code PathNavigation}. It asserts two things a deletion would break: that the redirect method
+     * survives compilation at all, and that it reads the depth field — without that read the redirect
+     * would also rewrite our OWN wrapped call sites, which reconcile the pair themselves.
+     */
+    @Test
+    void theReuseCheckRedirectExistsAndIsScopedToDepthZero() throws Exception {
+        java.util.Set<String> fieldsRead = new java.util.LinkedHashSet<>();
+        boolean[] found = {false};
+        try (InputStream in = PathNavigationRoutingContractTest.class
+                .getResourceAsStream("/dev/pathweaver/mixin/PathNavigationMixin.class")) {
+            assertNotNull(in, "PathNavigationMixin.class not readable");
+            new ClassReader(in.readAllBytes()).accept(new ClassVisitor(Opcodes.ASM9) {
+                @Override public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                                           String signature, String[] exceptions) {
+                    if (!name.contains("reuseCheckSeesThePathsOwnTarget")) return null;
+                    found[0] = true;
+                    return new MethodVisitor(Opcodes.ASM9) {
+                        @Override public void visitFieldInsn(int opcode, String owner, String field,
+                                                             String desc) {
+                            fieldsRead.add(field);
+                        }
+                    };
+                }
+            }, ClassReader.SKIP_FRAMES);
+        }
+        assertTrue(found[0],
+            "the reuse-check redirect is gone, so vanilla's short-circuit can hand a depth-zero "
+                + "query the route to a destination the mob abandoned");
+        assertTrue(fieldsRead.stream().anyMatch(f -> f.contains("navigationRequestDepth")),
+            "the redirect must consult navigation depth, or it also rewrites our own wrapped call "
+                + "sites, which already reconcile the pair: " + fieldsRead);
+        assertTrue(fieldsRead.stream().anyMatch(f -> f.contains("targetPosBeforeDispatch")),
+            "it must answer with the target the CURRENT path routes to: " + fieldsRead);
+    }
 }

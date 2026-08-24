@@ -369,6 +369,52 @@ public abstract class PathNavigationMixin implements PWNavigation {
     }
 
 
+    /**
+     * Answer vanilla's path-reuse check with the destination {@code path} actually routes to.
+     *
+     * <p>Dispatching advances {@code targetPos} to the destination the worker is searching for while
+     * {@code path} still holds the route to the previous one. That is deliberate — vanilla's own
+     * {@code recomputePath} reads {@code targetPos} directly, so the optimistic write is what keeps
+     * recompute and repath elision working during the in-flight tick — but it unpairs two fields
+     * vanilla treats as a pair.
+     *
+     * <p>Where it bites is the reuse short-circuit, at offsets 41-75 of the real 26.1.2 bytecode:
+     *
+     * <pre>
+     *   if (this.path != null &amp;&amp; !this.path.isDone() &amp;&amp; targets.contains(this.targetPos))
+     *       return this.path;
+     * </pre>
+     *
+     * <p>A direct query — {@code TargetGoal.canReach}, {@code MeleeAttackGoal.canUse},
+     * {@code AvoidEntityGoal.canUse} — calls {@code createPath} with a set holding the entity's
+     * current block position, which during the in-flight window IS the optimistic target. The
+     * short-circuit therefore fires and hands back the route to the destination the mob has already
+     * abandoned, and the goal measures that route's end node to answer a question about a different
+     * place. Those callers arrive at navigation depth zero, where {@code pathweaver$asyncCreatePath}
+     * returns immediately and so never reaches its own pairing reconciliation.
+     *
+     * <p>Scoped to depth zero on purpose. Above zero this is one of our own wrapped call sites, which
+     * reconciles the pair itself, and the guard keeps this redirect inert there rather than competing
+     * with it.
+     */
+    @org.spongepowered.asm.mixin.injection.Redirect(
+        method = "createPath(Ljava/util/Set;IZIF)Lnet/minecraft/world/level/pathfinder/Path;",
+        at = @At(value = "FIELD",
+            opcode = org.objectweb.asm.Opcodes.GETFIELD,
+            target = "Lnet/minecraft/world/entity/ai/navigation/PathNavigation;"
+                + "targetPos:Lnet/minecraft/core/BlockPos;"),
+        require = 1,
+        expect = 1
+    )
+    private BlockPos pathweaver$reuseCheckSeesThePathsOwnTarget(PathNavigation self) {
+        if (this.pathweaver$navigationRequestDepth == 0
+                && this.pathweaver$optimisticTargetPos != null
+                && this.pathweaver$targetPosBeforeDispatch != null) {
+            return this.pathweaver$targetPosBeforeDispatch;
+        }
+        return this.targetPos;
+    }
+
     @Inject(
         method = "createPath(Ljava/util/Set;IZIF)Lnet/minecraft/world/level/pathfinder/Path;",
         at = @At("HEAD"),
