@@ -558,6 +558,34 @@ public abstract class PathNavigationMixin implements PWNavigation {
             return;
         }
 
+        // Everything below can fail on unusual mods/data; degrade to sync rather than escape
+        // into the entity tick. If we have already registered in the sink, unwind that.
+        pathweaver$dispatchSearch(targets, regionOffset, offsetUpward, reachRange, followRange,
+            requestTarget, tick, requiresEmptyLandRegistry, intentAdvanced, cir);
+    }
+
+    /**
+     * Build the request, register it, hand it to a worker and replay vanilla's tail.
+     *
+     * <p>Everything here can fail on unusual mods or data, so the whole step degrades to
+     * synchronous pathfinding rather than escaping into the entity tick. It deliberately does
+     * NOT cancel the callback on the failure path: falling through lets vanilla compute the path
+     * itself this tick.
+     *
+     * <p>Extracted verbatim. The four locals it used from the caller that are pure accessors are
+     * re-derived here rather than threaded through the signature, which keeps the body identical
+     * to the one that was inline and the parameter list to the values the caller actually decided.
+     */
+    @Unique
+    private void pathweaver$dispatchSearch(
+            Set<BlockPos> targets, int regionOffset, boolean offsetUpward, int reachRange,
+            float followRange, RequestTarget requestTarget, long tick,
+            boolean requiresEmptyLandRegistry, boolean intentAdvanced,
+            CallbackInfoReturnable<Path> cir) {
+        final PathWeaverRuntime rt = PathWeaverRuntime.get();
+        final EntityInstallSink sink = rt.entitySink();
+        final Mob theMob = this.mob;
+        final int entityId = theMob.getId();
         // Everything below can fail on unusual mods/data; degrade to sync rather than escape into the
         // entity tick. If we've already registered in the sink, unwind that registration.
         dev.pathweaver.async.RequestOutcome.DispatchStage stage =

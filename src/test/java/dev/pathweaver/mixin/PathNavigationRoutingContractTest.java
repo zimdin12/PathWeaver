@@ -101,6 +101,9 @@ class PathNavigationRoutingContractTest {
         int[] safetyGate = {-1};
         int[] mobOriginGate = {-1};
         int[] regionConstruction = {-1};
+        // Comfortably past any orchestrator instruction count, so the two methods order correctly.
+        final int STEP_BASE = 1_000_000;
+        int[] regionInOrchestrator = {-1};
         // The land-registry gate. Six mutations at this call site survived the whole suite,
         // including deleting the gate outright -- because every test asserted the PREDICATE and
         // nothing asserted that dispatch calls it. This walks the shipped bytecode of the dispatch
@@ -121,7 +124,12 @@ class PathNavigationRoutingContractTest {
         new ClassReader(classBytes(PathNavigationMixin.class)).accept(new ClassVisitor(Opcodes.ASM9) {
             @Override public MethodVisitor visitMethod(int access, String name, String descriptor,
                                                        String signature, String[] exceptions) {
-                if (!name.equals("pathweaver$asyncCreatePath")) return null;
+                // Both halves of the routing decision. The gates live in the orchestrator and the
+                // registration in the step it calls, so ordering has to be asserted across the pair.
+                // The step's instructions are numbered after the orchestrator's because the
+                // orchestrator provably calls it -- asserted below by requiring that call to exist.
+                if (name.equals("pathweaver$dispatchSearch")) instruction[0] = STEP_BASE;
+                else if (!name.equals("pathweaver$asyncCreatePath")) return null;
                 return new MethodVisitor(Opcodes.ASM9) {
                     private void next() { instruction[0]++; }
                     @Override public void visitFieldInsn(int opcode, String owner, String field,
@@ -146,6 +154,13 @@ class PathNavigationRoutingContractTest {
                         if (owner.equals("dev/pathweaver/gate/MobOriginGate")
                                 && method.equals("isAllowed")) {
                             mobOriginGate[0] = instruction[0];
+                        }
+                        // Region capture moved into the dispatch step, so the CALL to it is the
+                        // earliest point at which a region can be built. Ordering is asserted
+                        // against that, and the two assertions below stop this being weaker: the
+                        // orchestrator must build no region itself, and the step must build one.
+                        if (method.equals("pathweaver$dispatchSearch")) {
+                            regionConstruction[0] = instruction[0];
                         }
                         if (owner.equals("dev/pathweaver/gate/SafetyGate")
                                 && method.equals("requiresEmptyLandRegistry")) {
@@ -172,7 +187,10 @@ class PathNavigationRoutingContractTest {
                     @Override public void visitTypeInsn(int opcode, String type) {
                         if (opcode == Opcodes.NEW
                                 && type.equals("net/minecraft/world/level/PathNavigationRegion")) {
-                            regionConstruction[0] = instruction[0];
+                            // Would mean the ORCHESTRATOR captures a region itself. It must not:
+                            // region capture belongs behind the dispatch step, after every gate.
+                            // Below STEP_BASE means we are in the orchestrator, not the step.
+                            if (instruction[0] < STEP_BASE) regionInOrchestrator[0] = instruction[0];
                         }
                         next();
                     }
@@ -195,6 +213,13 @@ class PathNavigationRoutingContractTest {
         assertTrue(safetyGate[0] > configRead[0], "evaluator family safety must run before mob origin");
         assertTrue(mobOriginGate[0] > safetyGate[0], "missing concrete-mob origin gate");
         assertTrue(regionConstruction[0] > mobOriginGate[0], "mob origin must fail closed before region capture");
+        assertEquals(-1, regionInOrchestrator[0],
+            "the routing injection must not capture a PathNavigationRegion itself -- every gate "
+                + "above exists to refuse before that cost is paid, and building one here would "
+                + "bypass them all");
+        assertTrue(dispatchStepCapturesTheRegion(),
+            "the dispatch step must be where the region is captured; if it moved again, the "
+                + "ordering asserted here is measuring the wrong instruction");
         assertTrue(landGate[0] >= 0,
             "dispatch must consult SafetyGate.requiresEmptyLandRegistry -- without this assertion, "
                 + "deleting the land-registry gate outright leaves the whole unit suite green");
@@ -210,6 +235,9 @@ class PathNavigationRoutingContractTest {
                 + "origin gate");
         assertTrue(landGate[0] < regionConstruction[0],
             "a land-registry refusal must cost no region capture");
+        assertTrue(registerCall[0] >= STEP_BASE,
+            "registration must happen inside the dispatch step, not in the orchestrator, or the "
+                + "ordering asserted here is measuring the wrong instruction");
         assertTrue(registerCall[0] > landGate[0],
             "the land-registry decision must be made before the request registers");
         assertTrue(registerGetsTheDecision[0],
@@ -458,5 +486,25 @@ class PathNavigationRoutingContractTest {
                 + "sites, which already reconcile the pair: " + fieldsRead);
         assertTrue(fieldsRead.stream().anyMatch(f -> f.contains("targetPosBeforeDispatch")),
             "it must answer with the target the CURRENT path routes to: " + fieldsRead);
+    }
+
+    /** Does the extracted dispatch step actually build the region this contract orders against? */
+    private static boolean dispatchStepCapturesTheRegion() throws Exception {
+        boolean[] found = {false};
+        new ClassReader(classBytes(PathNavigationMixin.class)).accept(new ClassVisitor(Opcodes.ASM9) {
+            @Override public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                                       String signature, String[] exceptions) {
+                if (!name.equals("pathweaver$dispatchSearch")) return null;
+                return new MethodVisitor(Opcodes.ASM9) {
+                    @Override public void visitTypeInsn(int opcode, String type) {
+                        if (opcode == Opcodes.NEW
+                                && type.equals("net/minecraft/world/level/PathNavigationRegion")) {
+                            found[0] = true;
+                        }
+                    }
+                };
+            }
+        }, ClassReader.SKIP_FRAMES);
+        return found[0];
     }
 }
