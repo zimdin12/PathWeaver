@@ -193,6 +193,28 @@ public abstract class PathNavigationMixin implements PWNavigation {
         pathweaver$navigationRequestDepth--;
     }
 
+    /**
+     * Saved enclosing origin for the brain-sink window. Not a boolean: the window must restore what
+     * was there, and a literal reassignment to MOVE_TO on exit would silently reclassify a request
+     * that a foreign injection had started from inside {@code recomputePath}.
+     */
+    @Unique private dev.pathweaver.async.RequestOrigin pathweaver$brainSinkSavedOrigin;
+
+    @Override
+    public void pathweaver$enterBrainSinkRequest(double speed) {
+        pathweaver$brainSinkSavedOrigin = pathweaver$currentOrigin;
+        pathweaver$currentOrigin = dev.pathweaver.async.RequestOrigin.BRAIN_SINK;
+        pathweaver$beginMovement(speed);
+        pathweaver$navigationRequestDepth++;
+    }
+
+    @Override
+    public void pathweaver$exitBrainSinkRequest() {
+        pathweaver$navigationRequestDepth--;
+        pathweaver$currentOrigin = pathweaver$brainSinkSavedOrigin;
+        pathweaver$brainSinkSavedOrigin = null;
+    }
+
     @Unique
     private void pathweaver$beginMovement(double speed) {
         pathweaver$requestSpeed = speed;

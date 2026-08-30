@@ -117,6 +117,25 @@ public class PathWeaverConfig implements ConfigData {
     public int maxInFlight = 256;
 
 
+    /**
+     * Offload the villager-brain movement sink, at the cost of one tick before the mob sets off.
+     *
+     * <p>Brain mobs — villagers, piglins, axolotls, frogs, allays — never call {@code moveTo(x,y,z)}.
+     * All their movement pathing goes through {@code MoveToTargetSink.tryComputePath}, which calls
+     * {@code createPath} and reads the answer immediately, so the four ordinary dispatch sites never
+     * see them. On a profile of the reference pack this was the single largest slice of A* left on
+     * the server thread that could be moved at all.
+     *
+     * <p>The cost is real and is why this is a setting rather than unconditional behaviour: on the
+     * tick a search is dispatched the sink reports "no path yet", so the behaviour does not start
+     * until the following tick. Nothing else changes — the landed path is handed to vanilla's own
+     * reachability and memory logic untouched.
+     */
+    @ConfigEntry.Gui.Tooltip(count = 3)
+    @ConfigEntry.Gui.RequiresRestart
+    @ConfigEntry.Category("performance")
+    public boolean brainSinkAsync = true;
+
     @ConfigEntry.Gui.Tooltip(count = 3)
     @ConfigEntry.Category("repath")
     public int repathToleranceBlocks = 0;

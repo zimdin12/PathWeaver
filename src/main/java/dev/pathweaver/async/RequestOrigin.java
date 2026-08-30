@@ -16,5 +16,13 @@ public enum RequestOrigin {
     /** A {@code moveTo} overload. The caller's existing path is untouched by the dispatch. */
     MOVE_TO,
     /** {@code recomputePath}. The path is already null and vanilla's retry is already suppressed. */
-    RECOMPUTE
+    RECOMPUTE,
+    /**
+     * {@code MoveToTargetSink.tryComputePath}, the villager-brain movement sink.
+     *
+     * <p>Unlike the other two this one must NOT install. The behaviour installs the path itself in
+     * {@code start()} via {@code moveTo(Path, double)}, so the result parks until the sink next asks
+     * and is handed to vanilla's own reachability and memory logic unchanged.
+     */
+    BRAIN_SINK
 }

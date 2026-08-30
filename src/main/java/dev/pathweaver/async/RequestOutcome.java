@@ -93,7 +93,23 @@ public enum RequestOutcome {
      * <p>Not a discard: no search was performed, so no work was thrown away. The point of the check
      * is that this row should GROW as the other discard rows shrink.
      */
-    CANCELLED_BEFORE_START("nobody wanted it by the time a worker was free");
+    CANCELLED_BEFORE_START("nobody wanted it by the time a worker was free"),
+
+    /**
+     * A brain-sink search finished and was parked for the behaviour that asked, rather than installed.
+     *
+     * <p>A success, and the only one that does not install. {@code MoveToTargetSink} computes a path
+     * and then installs it itself in {@code start()} via {@code moveTo(Path, double)}; installing it
+     * here as well would start the mob walking a tick before its own behaviour knows it is running,
+     * at whatever speed dispatch happened to capture rather than the {@code WalkTarget}'s. So the
+     * result waits for the next {@code tryComputePath}, which hands it to vanilla's own reachability
+     * and memory logic unchanged.
+     *
+     * <p>Distinct from {@link #INSTALLED} because an operator reading a green {@code installed} row
+     * is entitled to conclude a mob is walking a path we produced. For this row that is not yet true:
+     * it becomes true when the behaviour next asks, and never, if the walk target moved first.
+     */
+    PARKED_FOR_BRAIN("parked for a villager brain");
 
     private final String description;
 
@@ -190,6 +206,10 @@ public enum RequestOutcome {
             // Cancelled because nobody wanted it -- typically the mob stopped, which is
             // not a mob left standing with vanilla's retry suppressed.
             case CANCELLED_BEFORE_START -> false;
+            // A brain-sink request can never have come from recomputePath: the origin is set by the
+            // MoveToTargetSink hook and recomputePath sets its own. Nothing is suppressed, so
+            // nothing is stranded.
+            case PARKED_FOR_BRAIN -> false;
         };
     }
 
@@ -198,9 +218,12 @@ public enum RequestOutcome {
         // computed, so nothing was thrown away. Counting a refusal as waste would make the waste
         // ratio -- which drives an operator warning -- rise precisely when the mod stopped doing work.
         // INSTALL_REJECTED is a discard: the search ran, produced a path, and it was thrown away.
+        // PARKED_FOR_BRAIN is NOT a discard. The search ran and its path is being held for the
+        // behaviour that asked; nothing was thrown away. Letting the chain default it to `true`
+        // would have put a successful outcome in the waste ratio that drives the operator warning.
         return this != INSTALLED && this != NO_PATH && this != POOL_SATURATED
             && this != SETUP_FAILED_PRE_DISPATCH && this != BREAKER_OPEN
-            && this != CANCELLED_BEFORE_START;
+            && this != CANCELLED_BEFORE_START && this != PARKED_FOR_BRAIN;
     }
 
     /**
@@ -232,7 +255,7 @@ public enum RequestOutcome {
             // to remove: a row printed with no percentage while being 100% of them.
             case SETUP_FAILED, INSTALLED, NO_PATH, SUPERSEDED, NAVIGATION_STOPPED, ARRIVED_STALE,
                  SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED, INSTALL_REJECTED,
-                 CANCELLED_BEFORE_START -> true;
+                 CANCELLED_BEFORE_START, PARKED_FOR_BRAIN -> true;
         };
     }
 
@@ -246,7 +269,7 @@ public enum RequestOutcome {
      */
     public boolean isGoodNews() {
         return switch (this) {
-            case INSTALLED, NO_PATH -> true;
+            case INSTALLED, NO_PATH, PARKED_FOR_BRAIN -> true;
             case POOL_SATURATED, SETUP_FAILED, SETUP_FAILED_PRE_DISPATCH, SUPERSEDED,
                  NAVIGATION_STOPPED, ARRIVED_STALE, SEARCH_FAILED, HANDOFF_FAILED, INSTALL_FAILED,
                  INSTALL_REJECTED, CANCELLED_BEFORE_START, SERVER_RESET,

@@ -34,6 +34,24 @@ public interface PWNavigation {
     void pathweaver$exitMovementRequest();
 
     /**
+     * Main thread: open the window in which an inner {@code createPath} is a villager-brain movement
+     * request, so its result parks for the behaviour instead of being installed here.
+     *
+     * <p>Separate from {@link #pathweaver$enterMovementRequest()} because the origin decides the
+     * completion route, not just whether dispatch is allowed. {@code MoveToTargetSink} installs the
+     * path itself in {@code start()}; installing it from the sink as well would start the mob walking
+     * a tick before its own behaviour is running, at the speed dispatch captured rather than the
+     * {@code WalkTarget}'s.
+     *
+     * <p>The previous origin is saved and restored rather than assumed, for the same reason the
+     * recompute wrap saves it: a foreign injection can call into navigation from inside a behaviour.
+     */
+    void pathweaver$enterBrainSinkRequest(double speed);
+
+    /** Main thread: close the brain-sink window and restore the enclosing origin. */
+    void pathweaver$exitBrainSinkRequest();
+
+    /**
      * Main thread: take the "this dispatch was accepted" flag, so an overriding movement method can
      * report success the way the base one does.
      *
