@@ -77,8 +77,8 @@ final class FabricInteractionCompatibility {
     private static final String BLOCK_STATE_BASE_SHA = "91a6b29e9ec0bd3ca18c05cd677b3a8e689c7849a3793c27373e531f9a1834fb";
     private static final String PATH_FINDER_SHA = "095d620eaac37aa71af017858682e89689039a3b999cf2a5fcfce3f1c3973b2c";
     private static final String NODE_EVALUATOR_SHA = "8ac7d5eef6bad45b148a051ee8d5d3d890281c66672d761e785361c506f421e1";
-    private static final String WALK_SHA = "dd94893c06c47e3bb386cf3e521ffa2c8c71d31e547b162a138c02ac9312568f";
-    private static final String PATH_CONTEXT_SHA = "30aae3ceae3c27e7f3071d8d9b8232035ad8b15ae8d7999da3fbbaa49add6a9b";
+    static final String WALK_SHA = "dd94893c06c47e3bb386cf3e521ffa2c8c71d31e547b162a138c02ac9312568f";
+    static final String PATH_CONTEXT_SHA = "30aae3ceae3c27e7f3071d8d9b8232035ad8b15ae8d7999da3fbbaa49add6a9b";
     private static final String PATH_TYPE_CACHE_SHA = "1073ec12b68b267a928316c2ddab85cd7af2220c8b8eeca482a84fdff164a7d3";
     private static final String PATH_REGION_SHA = "96b574637c3782d38ea2af0534ee644bd899fdf19f803bfd6bebe922ab016d8d";
 
@@ -143,22 +143,22 @@ final class FabricInteractionCompatibility {
         if (!MODULE_SHAS.contains(moduleSha)) {
             diagnostics.add("module jar hash mismatch: " + moduleSha);
         }
-        checkHash("mixin config", b.config(), CONFIG_SHA, diagnostics);
-        checkHash("interaction mixin", b.mixin(), MIXIN_SHA, diagnostics);
-        checkHash("vanilla BlockStateBase", b.blockStateBase(), BLOCK_STATE_BASE_SHA, diagnostics);
-        checkHash("vanilla PathFinder", b.pathFinder(), PATH_FINDER_SHA, diagnostics);
-        checkHash("vanilla NodeEvaluator", b.nodeEvaluator(), NODE_EVALUATOR_SHA, diagnostics);
-        checkHash("vanilla WalkNodeEvaluator", b.walkNodeEvaluator(), WALK_SHA, diagnostics);
-        checkHash("vanilla PathfindingContext", b.pathContext(), PATH_CONTEXT_SHA, diagnostics);
-        checkHash("vanilla PathTypeCache", b.pathTypeCache(), PATH_TYPE_CACHE_SHA, diagnostics);
-        checkHash("vanilla PathNavigationRegion", b.pathRegion(), PATH_REGION_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("mixin config", b.config(), CONFIG_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("interaction mixin", b.mixin(), MIXIN_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla BlockStateBase", b.blockStateBase(), BLOCK_STATE_BASE_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla PathFinder", b.pathFinder(), PATH_FINDER_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla NodeEvaluator", b.nodeEvaluator(), NODE_EVALUATOR_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla WalkNodeEvaluator", b.walkNodeEvaluator(), WALK_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla PathfindingContext", b.pathContext(), PATH_CONTEXT_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla PathTypeCache", b.pathTypeCache(), PATH_TYPE_CACHE_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla PathNavigationRegion", b.pathRegion(), PATH_REGION_SHA, diagnostics);
         for (Map.Entry<String, String> pinned : WORKER_EVALUATOR_SHAS.entrySet()) {
             byte[] bytes = b.workerEvaluators().get(pinned.getKey());
             if (bytes == null) {
                 diagnostics.add("worker-reachable evaluator unavailable: " + pinned.getKey());
                 continue;
             }
-            checkHash("vanilla " + pinned.getKey(), bytes, pinned.getValue(), diagnostics);
+            AuditedMixinCompatibility.checkHash("vanilla " + pinned.getKey(), bytes, pinned.getValue(), diagnostics);
         }
         Set<String> targets = new HashSet<>();
         Set<String> workerCalls = new HashSet<>();
@@ -377,19 +377,7 @@ final class FabricInteractionCompatibility {
         return value instanceof List<?> list && list.size() == 1 && expected.equals(list.get(0));
     }
 
-    private static void checkHash(String label, byte[] bytes, String expected,
-                                  List<String> diagnostics) {
-        String actual = sha256(bytes);
-        if (!expected.equals(actual)) diagnostics.add(label + " hash mismatch: " + actual);
-    }
 
-    private static String sha256(byte[] bytes) {
-        try {
-            return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-    }
 
     private static byte[] readModuleArtifact(ModContainer module) throws IOException {
         ModOrigin origin = module.getOrigin();

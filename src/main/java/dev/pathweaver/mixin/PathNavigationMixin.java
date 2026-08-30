@@ -305,6 +305,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // knows the request came from recomputePath, and because vanilla has not stamped yet -- it
         // does that two bytecodes after createPath returns. Read it after and we would capture our
         // own suppression instead of the value to restore.
+        final dev.pathweaver.async.RequestOrigin enclosingOrigin = this.pathweaver$currentOrigin;
         this.pathweaver$currentOrigin = dev.pathweaver.async.RequestOrigin.RECOMPUTE;
         this.pathweaver$recomputeStampBeforeDispatch = this.timeLastRecompute;
         this.pathweaver$navigationRequestDepth++;
@@ -315,7 +316,12 @@ public abstract class PathNavigationMixin implements PWNavigation {
         } finally {
             this.pathweaver$recomputeInvalidated = false;
             this.pathweaver$navigationRequestDepth--;
-            this.pathweaver$currentOrigin = dev.pathweaver.async.RequestOrigin.MOVE_TO;
+            // Restored, not assigned a literal -- the depth counter beside it uses ++/-- for the
+            // same reason. A foreign injection that calls moveTo from inside recomputePath would
+            // otherwise register as RECOMPUTE and, if it stranded, re-arm from a stamp captured by
+            // the ENCLOSING recompute for a caller that was never suppressed. Vanilla 26.1.2 has no
+            // such nesting; a mod can create it.
+            this.pathweaver$currentOrigin = enclosingOrigin;
         }
     }
 
@@ -415,6 +421,38 @@ public abstract class PathNavigationMixin implements PWNavigation {
         return this.targetPos;
     }
 
+    /**
+     * Feature B: answer with the path already in hand when the target only drifted.
+     *
+     * <p>Opt-in, and off by default. Recompute -- including changed-block invalidation -- always
+     * bypasses tolerance reuse; ordinary target drift must still satisfy endpoint, reach and
+     * navigation validity before the existing route is handed back.
+     *
+     * @return true when the caller has been answered and dispatch must not run
+     */
+    @Unique
+    private boolean pathweaver$reuseExistingPathWithinTolerance(
+            Set<BlockPos> targets, int reachRange, PathWeaverConfig cfg,
+            CallbackInfoReturnable<Path> cir) {
+        if (cfg.repathToleranceBlocks <= 0 || this.path == null) return false;
+        Path currentPath = this.path;
+        net.minecraft.world.level.pathfinder.Node endpoint = currentPath.getEndNode();
+        var current = new dev.pathweaver.elision.RepathTolerance.CurrentPath(
+            currentPath.getTarget(),
+            endpoint == null ? null : new BlockPos(endpoint.x, endpoint.y, endpoint.z),
+            currentPath.canReach(), currentPath.isDone(), true,
+            this.pathweaver$recomputeInvalidated, this.reachRange);
+        BlockPos reusableTarget = dev.pathweaver.elision.RepathTolerance.reusableTarget(
+            targets, current, reachRange, cfg.repathToleranceBlocks);
+        if (reusableTarget == null) return false;
+        if (!reusableTarget.equals(this.targetPos)) {
+            this.targetPos = reusableTarget;
+            this.pathweaver$targetRevision++;
+        }
+        cir.setReturnValue(currentPath);
+        return true;
+    }
+
     @Inject(
         method = "createPath(Ljava/util/Set;IZIF)Lnet/minecraft/world/level/pathfinder/Path;",
         at = @At("HEAD"),
@@ -465,27 +503,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // returned above and drains through its existing registration; changed intent was balanced above.
         if (!cfg.enabled) return;
 
-        // Feature B remains opt-in. Recompute (including changed-block invalidation) always bypasses
-        // tolerance reuse; ordinary target drift must satisfy endpoint, reach and navigation validity.
-        if (cfg.repathToleranceBlocks > 0 && this.path != null) {
-            Path currentPath = this.path;
-            net.minecraft.world.level.pathfinder.Node endpoint = currentPath.getEndNode();
-            var current = new dev.pathweaver.elision.RepathTolerance.CurrentPath(
-                currentPath.getTarget(),
-                endpoint == null ? null : new BlockPos(endpoint.x, endpoint.y, endpoint.z),
-                currentPath.canReach(), currentPath.isDone(), true,
-                this.pathweaver$recomputeInvalidated, this.reachRange);
-            BlockPos reusableTarget = dev.pathweaver.elision.RepathTolerance.reusableTarget(
-                targets, current, reachRange, cfg.repathToleranceBlocks);
-            if (reusableTarget != null) {
-                if (!reusableTarget.equals(this.targetPos)) {
-                    this.targetPos = reusableTarget;
-                    this.pathweaver$targetRevision++;
-                }
-                cir.setReturnValue(currentPath);
-                return;
-            }
-        }
+        if (pathweaver$reuseExistingPathWithinTolerance(targets, reachRange, cfg, cir)) return;
 
         // Feature A: async dispatch.
         if (!rt.isRunning()) return;
@@ -546,6 +564,34 @@ public abstract class PathNavigationMixin implements PWNavigation {
             return;
         }
 
+        // Everything below can fail on unusual mods/data; degrade to sync rather than escape
+        // into the entity tick. If we have already registered in the sink, unwind that.
+        pathweaver$dispatchSearch(targets, regionOffset, offsetUpward, reachRange, followRange,
+            requestTarget, tick, requiresEmptyLandRegistry, intentAdvanced, cir);
+    }
+
+    /**
+     * Build the request, register it, hand it to a worker and replay vanilla's tail.
+     *
+     * <p>Everything here can fail on unusual mods or data, so the whole step degrades to
+     * synchronous pathfinding rather than escaping into the entity tick. It deliberately does
+     * NOT cancel the callback on the failure path: falling through lets vanilla compute the path
+     * itself this tick.
+     *
+     * <p>Extracted verbatim. The four locals it used from the caller that are pure accessors are
+     * re-derived here rather than threaded through the signature, which keeps the body identical
+     * to the one that was inline and the parameter list to the values the caller actually decided.
+     */
+    @Unique
+    private void pathweaver$dispatchSearch(
+            Set<BlockPos> targets, int regionOffset, boolean offsetUpward, int reachRange,
+            float followRange, RequestTarget requestTarget, long tick,
+            boolean requiresEmptyLandRegistry, boolean intentAdvanced,
+            CallbackInfoReturnable<Path> cir) {
+        final PathWeaverRuntime rt = PathWeaverRuntime.get();
+        final EntityInstallSink sink = rt.entitySink();
+        final Mob theMob = this.mob;
+        final int entityId = theMob.getId();
         // Everything below can fail on unusual mods/data; degrade to sync rather than escape into the
         // entity tick. If we've already registered in the sink, unwind that registration.
         dev.pathweaver.async.RequestOutcome.DispatchStage stage =
@@ -631,6 +677,15 @@ public abstract class PathNavigationMixin implements PWNavigation {
             boolean accepted = rt.pool().submit(new PathRequest(submittedKey, tick, search,
                 result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz),
                 rt.installer()::enqueueDiscard,
+                // Asked on the worker just before the search, and scoped to THIS key. Registration
+                // is removed by stop(), supersede() and every terminal path, so "still registered
+                // under this exact key" is precisely "somebody still wants this answer". The
+                // entity-and-navigation form this used to ask answered true for a request already
+                // superseded by a newer one on the same navigation, so the old worker computed a
+                // search whose result was then thrown away -- the case the check exists for.
+                // Reading the sink from a worker is safe: a ConcurrentHashMap lookup, and the
+                // registration happens-before the start gate the worker waited on.
+                () -> sink.isRegisteredUnder(submittedKey),
                 this.nodeEvaluator.getClass()));
 
             if (!accepted) {

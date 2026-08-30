@@ -173,17 +173,31 @@ class PathNavigationStalenessContractTest {
                 // Path reuse is controlled solely by the tolerance now; the separate boolean was
                 // removed because it defaulted to on while the tolerance defaulted to 0, so the
                 // feature advertised itself as enabled and was inert.
-                if (field.name.equals("repathToleranceBlocks")) elision = i;
             } else if (insns[i] instanceof MethodInsnNode call
                     && call.owner.equals("dev/pathweaver/gate/SafetyGate")
                     && call.name.equals("isAllowed")) {
                 safety = i;
+            } else if (insns[i] instanceof MethodInsnNode call
+                    && call.name.equals("pathweaver$reuseExistingPathWithinTolerance")) {
+                // The CALL, not the config field it reads. Repath elision moved into a named step,
+                // so the field read is no longer in this method -- but the property being asserted
+                // is about where elision happens relative to the master switch, and the call site is
+                // exactly that. Matching by name also survives edits inside the step, which tracking
+                // an operand never did.
+                elision = i;
             }
         }
         assertTrue(enabled >= 0, "master Enabled must be read in the routing injection");
         assertEquals(1, enabledReads,
             "routing injection must have one unambiguous master Enabled decision");
         assertTrue(elision >= 0, "path reuse must remain reachable while Enabled is ON");
+        // The compensating check for moving elision behind a named call. Ordering survived the
+        // extraction; the operand property did not, and without this, deleting the
+        // `repathToleranceBlocks <= 0` guard from the step leaves this contract and the whole unit
+        // suite green while turning a documented opt-in, off-by-default feature on for everyone.
+        assertTrue(elisionStepReadsItsOwnSetting(),
+            "the elision step must consult repathToleranceBlocks; if it stops, the feature is no "
+                + "longer opt-in and nothing else here would notice");
         assertTrue(elision > enabled,
             "master Enabled must be decided before path reuse, or OFF would still reuse paths");
         assertTrue(safety >= 0, "async eligibility must remain reachable while Enabled is ON");
@@ -306,5 +320,53 @@ class PathNavigationStalenessContractTest {
             if (in == null) throw new IOException("missing class resource " + resource);
             return in.readAllBytes();
         }
+    }
+
+    /**
+     * Does the elision step BRANCH on the setting, rather than merely pass it along?
+     *
+     * <p>Checking only that the field is read is not enough, and a mutation proved it: the step
+     * hands {@code repathToleranceBlocks} to {@code RepathTolerance.reusableTarget} as an argument,
+     * so deleting the opt-in guard leaves a read behind and a presence check stays green. What makes
+     * the feature opt-in is a conditional branch on that value BEFORE the reuse attempt, so that is
+     * what this looks for.
+     */
+    private static boolean elisionStepReadsItsOwnSetting() throws Exception {
+        int[] firstRead = {-1};
+        int[] reuseCall = {-1};
+        int[] branchAfterRead = {-1};
+        int[] at = {0};
+        new ClassReader(classBytes(PathNavigationMixin.class)).accept(new ClassVisitor(Opcodes.ASM9) {
+            @Override public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                                       String signature, String[] exceptions) {
+                if (!name.equals("pathweaver$reuseExistingPathWithinTolerance")) return null;
+                return new MethodVisitor(Opcodes.ASM9) {
+                    @Override public void visitFieldInsn(int opcode, String owner, String field,
+                                                         String desc) {
+                        if (firstRead[0] < 0 && owner.equals("dev/pathweaver/config/PathWeaverConfig")
+                                && field.equals("repathToleranceBlocks")) {
+                            firstRead[0] = at[0];
+                        }
+                        at[0]++;
+                    }
+                    @Override public void visitJumpInsn(int opcode, org.objectweb.asm.Label label) {
+                        if (firstRead[0] >= 0 && branchAfterRead[0] < 0) branchAfterRead[0] = at[0];
+                        at[0]++;
+                    }
+                    @Override public void visitMethodInsn(int opcode, String owner, String method,
+                                                          String desc, boolean isInterface) {
+                        if (reuseCall[0] < 0 && method.equals("reusableTarget")) reuseCall[0] = at[0];
+                        at[0]++;
+                    }
+                    @Override public void visitInsn(int opcode) { at[0]++; }
+                    @Override public void visitVarInsn(int opcode, int var) { at[0]++; }
+                    @Override public void visitTypeInsn(int opcode, String type) { at[0]++; }
+                    @Override public void visitLdcInsn(Object value) { at[0]++; }
+                    @Override public void visitIntInsn(int opcode, int operand) { at[0]++; }
+                };
+            }
+        }, ClassReader.SKIP_FRAMES);
+        return firstRead[0] >= 0 && branchAfterRead[0] > firstRead[0]
+            && (reuseCall[0] < 0 || branchAfterRead[0] < reuseCall[0]);
     }
 }

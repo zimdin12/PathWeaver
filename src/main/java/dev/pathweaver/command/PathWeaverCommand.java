@@ -310,8 +310,14 @@ public final class PathWeaverCommand {
                     + String.join(", ", stoppedByBreaker) + " — switched off after their searches "
                     + "threw. No tier waives that.");
             }
-            lines.add("  §7That is what Unsafe means: uninspected mod code is running on worker "
-                + "threads. Keep backups.");
+            // Only when something actually is running. With every scan-denied family also tripped
+            // by the breaker, nothing is on a worker, and this sentence asserted a risk the
+            // operator is not taking -- the same "the line an operator pastes into a bug report is
+            // the wrong one" error as the count above it, in the opposite direction.
+            if (!stillRunning.isEmpty()) {
+                lines.add("  §7That is what Unsafe means: uninspected mod code is running on worker "
+                    + "threads. Keep backups.");
+            }
             return withExtra(List.copyOf(lines), extra);
         }
         List<String> inherited = familiesRefusedByInheritance(deniedFamilies);

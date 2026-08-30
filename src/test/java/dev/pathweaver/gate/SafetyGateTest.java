@@ -101,11 +101,19 @@ class SafetyGateTest {
             .filter(m -> m.getDeclaringClass() == SafetyGate.class)
             .filter(m -> {
                 String n = m.getName().toLowerCase(java.util.Locale.ROOT);
-                return n.contains("deny") || n.contains("restore") || n.contains("undeny");
+                // "denials" does not contain "deny". resetRuntimeFailureDenials sailed through the
+                // first version of this filter -- a public, void, no-argument method that wipes
+                // every breaker trip, which is the mechanism COMPATIBILITY.md calls the thing that
+                // replaced the scan as the safety net.
+                return n.contains("deny") || n.contains("denial") || n.contains("restore")
+                    || n.contains("undeny") || n.contains("reset") || n.contains("clear");
             })
             .filter(m -> m.getReturnType() == void.class)
             .map(java.lang.reflect.Method::getName)
-            .filter(n -> !n.equals("denyAllEligible") && !n.equals("replaceDenials"))
+            // No exclusions. Both names this used to exempt are package-private now, so
+            // getMethods() never returns them, and an exclusion list that excludes nothing is a
+            // place for a future public mutator to hide.
+
             .toList();
         org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of(), reachable,
             "these mutate the denial set and are reachable from any class on the classpath. Tests "

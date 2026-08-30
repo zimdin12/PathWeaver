@@ -65,7 +65,19 @@ final class DiagonalBlocksCompatibility {
 
     private DiagonalBlocksCompatibility() {}
 
-    record Bundle(byte[] moduleJar, byte[] config, byte[] walkMixin) {}
+    /**
+     * The mod's own artifacts AND the two vanilla classes this proof reasons about.
+     *
+     * <p>The vanilla halves were absent, and that was a real gap once the Minecraft version label
+     * stopped gating this audit. The mechanical checks below inspect only Diagonal Blocks' own
+     * bytes; the ARGUMENT they support is about vanilla — that the override runs inside the worker's
+     * search and reads block state only through the {@code PathfindingContext} the search already
+     * owns. With nothing pinning those two classes, this exemption would still be granted on a
+     * future 26.1.x where they changed, and it un-denies Walk, which by inheritance closure is five
+     * of the six movement families.
+     */
+    record Bundle(byte[] moduleJar, byte[] config, byte[] walkMixin,
+                  byte[] vanillaWalk, byte[] vanillaContext) {}
 
     /** Tier-gated exactly as Lithium is: below AUDITED no evidence is produced, so denial stands. */
     static ForeignMixinScanner.AuditedExemptionEvidence inspectRuntime(
@@ -86,10 +98,11 @@ final class DiagonalBlocksCompatibility {
                 .map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("missing");
             // NOT gated on the Minecraft version string any more.
             //
-            // Every audit here pins, by SHA-256, the vanilla classes its own proof reads -- and the
-            // verification below fails on any of those hashes. So the bytes the proof was derived
-            // against are already established by evidence, and the version label was a second,
-            // coarser answer to the same question that could only ever be stricter than the bytes.
+            // NOT gated on the Minecraft version string. This audit reads NO vanilla bytes at
+            // all -- its bundle is the module jar, the mixin config and Diagonal Blocks' own
+            // WalkNodeEvaluatorMixin, all three hash-pinned -- and its proof is about that mixin
+            // never reaching a mutable shared cache. With no vanilla dependency there is nothing
+            // for a version label to protect that the pins do not already cover.
             //
             // Measured both directions before removing it. On 26.1.1 all ten pinned vanilla classes
             // are byte-identical to 26.1.2, so the audits hold and the label was the only thing
@@ -113,7 +126,11 @@ final class DiagonalBlocksCompatibility {
             AuditedMixinCompatibility.readModuleArtifact(module),
             AuditedMixinCompatibility.readModResource(module, CONFIG),
             AuditedMixinCompatibility.readModResource(module,
-                AuditedMixinCompatibility.classResource(WALK_MIXIN)));
+                AuditedMixinCompatibility.classResource(WALK_MIXIN)),
+            AuditedMixinCompatibility.readClassBytes(
+                net.minecraft.world.level.pathfinder.WalkNodeEvaluator.class),
+            AuditedMixinCompatibility.readClassBytes(
+                net.minecraft.world.level.pathfinder.PathfindingContext.class));
     }
 
     static ForeignMixinScanner.AuditedExemptionEvidence exactEvidence() {
@@ -131,6 +148,11 @@ final class DiagonalBlocksCompatibility {
             CONFIG_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("Diagonal Blocks WalkNodeEvaluatorMixin",
             bundle.walkMixin(), WALK_MIXIN_SHA, diagnostics);
+        // The two vanilla classes the argument rests on, pinned to the bytes it was derived against.
+        AuditedMixinCompatibility.checkHash("vanilla WalkNodeEvaluator", bundle.vanillaWalk(),
+            FabricInteractionCompatibility.WALK_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla PathfindingContext", bundle.vanillaContext(),
+            FabricInteractionCompatibility.PATH_CONTEXT_SHA, diagnostics);
         try {
             AuditedMixinCompatibility.verifyConfig(bundle.config(), PACKAGE, null,
                 "WalkNodeEvaluatorMixin", diagnostics);

@@ -143,10 +143,15 @@ final class LithiumPathfindingCompatibility {
                 .map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("missing");
             // NOT gated on the Minecraft version string any more.
             //
-            // Every audit here pins, by SHA-256, the vanilla classes its own proof reads -- and the
-            // verification below fails on any of those hashes. So the bytes the proof was derived
-            // against are already established by evidence, and the version label was a second,
-            // coarser answer to the same question that could only ever be stricter than the bytes.
+            // NOT gated on the Minecraft version string, and this audit's reason differs from
+            // its neighbours' -- worth stating, because the shared wording was wrong here.
+            //
+            // The others pin the vanilla classes their proofs read by SHA-256. This one does not
+            // pin vanilla PathFinder at all. It RE-DERIVES the non-reachability proof from the
+            // bytes actually loaded, every time, at the bottom of verify(). That is a stronger
+            // position than a hash, not a weaker one: a changed PathFinder is re-analysed and
+            // either still has no call edge into PathNavigation or is rejected on its own merits.
+            // Lithium's own artifacts are hash-pinned as usual.
             //
             // Measured both directions before removing it. On 26.1.1 all ten pinned vanilla classes
             // are byte-identical to 26.1.2, so the audits hold and the label was the only thing

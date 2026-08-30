@@ -22,16 +22,34 @@ import java.util.function.Consumer;
 public record PathRequest(RequestKey key, long dispatchTick, Callable<Path> search,
                           Consumer<PathOutcome> onDone,
                           Consumer<RequestKey> onDeliveryFailure,
+                          java.util.function.BooleanSupplier stillWanted,
+                          // LAST, deliberately. A bytecode contract asserts that the value handed to
+                          // this constructor immediately before it runs is this.nodeEvaluator's own
+                          // class -- swapping that receiver silently disables failure attribution and
+                          // the breaker while every other test stays green. Adding an argument after
+                          // it made the contract watch the wrong operand, and relaxing the contract to
+                          // compensate let the real mutation survive, because an earlier
+                          // nodeEvaluator.getClass() in the same method satisfied the weaker rule.
                           Class<?> evaluatorClass) {
+
+    /**
+     * Asked on the worker, immediately before the search runs.
+     *
+     * <p>A request can sit in the queue for several ticks. By the time a worker reaches it the mob
+     * may have stopped, or a newer request may have replaced it, and computing an A* nobody will
+     * install is CPU spent for nothing -- which on a machine without a spare core comes out of the
+     * budget this mod exists to protect. Every discard measured on the reference pack was of exactly
+     * this shape: 88 of 88 were "mob stopped".
+     */
     /** Convenience for tests/callers that do not own a main-thread terminal queue. */
     public PathRequest(RequestKey key, long dispatchTick, Callable<Path> search,
                        Consumer<PathOutcome> onDone) {
-        this(key, dispatchTick, search, onDone, ignored -> { }, null);
+        this(key, dispatchTick, search, onDone, ignored -> { }, () -> true, null);
     }
 
     /** Convenience for callers that own a terminal queue but have no evaluator to attribute. */
     public PathRequest(RequestKey key, long dispatchTick, Callable<Path> search,
                        Consumer<PathOutcome> onDone, Consumer<RequestKey> onDeliveryFailure) {
-        this(key, dispatchTick, search, onDone, onDeliveryFailure, null);
+        this(key, dispatchTick, search, onDone, onDeliveryFailure, () -> true, null);
     }
 }

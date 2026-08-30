@@ -101,6 +101,25 @@ one file (every pathfinding and navigation class is byte-identical between them)
 the `mc-26.2` branch and needs no code change, only a retarget plus two test-source workarounds for
 vanilla churn (`EntityType` lost ~170 constants; `Minecraft.screen` moved to a private `Gui.screen`).
 
+### Rejected: splitting `PathNavigationMixin`
+
+The file is 866 lines, over the 400-line signal, and the obvious response is to split it. Measured,
+that would make the code worse, so it is written down rather than done.
+
+A mixin cannot share `@Unique` state with another mixin. The evidence is in this repo:
+`WallClimberNavigationMixin` targets a subclass of the same vanilla type and still cannot touch a
+single `pathweaver$` field directly — it casts `this` to the `PWNavigation` duck interface and goes
+through accessors. That is the only mechanism available.
+
+`PathNavigationMixin` holds 13 `@Unique` fields, and **19 of its 25 methods read or write them**. Any
+split therefore crosses that state heavily, and paying for it means adding accessor pairs to a duck
+interface for each field that crosses — putting interface dispatch in front of the hot path's own
+fields, to relocate at most six methods while the remaining file stays around 750 lines.
+
+The size is real and worth watching. The 306-line dispatch method inside it was the part that
+actually hurt, and that is now 109 with the body behind a named step. Splitting the file buys
+nothing further.
+
 ### Candidate: make `AUDITED` version-portable
 
 Every audit gates on `MINECRAFT_VERSION.equals("26.1.2")`, so the checked tier refuses on 26.1.1 and

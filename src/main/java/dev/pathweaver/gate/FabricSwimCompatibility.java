@@ -188,18 +188,18 @@ final class FabricSwimCompatibility {
         List<String> diagnostics = new ArrayList<>();
         Set<String> injected = new HashSet<>();
         Set<String> swimCalls = new HashSet<>();
-        checkHash("module jar", bundle.moduleJar(), MODULE_SHA, diagnostics);
-        checkHash("mixin config", bundle.config(), CONFIG_SHA, diagnostics);
-        checkHash("Fabric PathfindingContextMixin", bundle.contextMixin(), CONTEXT_MIXIN_SHA, diagnostics);
-        checkHash("Fabric WalkNodeEvaluatorMixin", bundle.walkMixin(), WALK_MIXIN_SHA, diagnostics);
-        checkHash("Fabric BlockBehaviourBlockStateBaseMixin", bundle.blockStateBaseMixin(),
+        AuditedMixinCompatibility.checkHash("module jar", bundle.moduleJar(), MODULE_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("mixin config", bundle.config(), CONFIG_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("Fabric PathfindingContextMixin", bundle.contextMixin(), CONTEXT_MIXIN_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("Fabric WalkNodeEvaluatorMixin", bundle.walkMixin(), WALK_MIXIN_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("Fabric BlockBehaviourBlockStateBaseMixin", bundle.blockStateBaseMixin(),
             BLOCK_STATE_BASE_MIXIN_SHA, diagnostics);
-        checkHash("Fabric LandPathTypeRegistry", bundle.landRegistry(), LAND_REGISTRY_SHA, diagnostics);
-        checkHash("vanilla SwimNodeEvaluator", bundle.swim(), SWIM_SHA, diagnostics);
-        checkHash("vanilla NodeEvaluator", bundle.nodeEvaluator(), NODE_EVALUATOR_SHA, diagnostics);
-        checkHash("vanilla PathFinder", bundle.pathFinder(), PATH_FINDER_SHA, diagnostics);
-        checkHash("vanilla PathfindingContext", bundle.pathContext(), PATH_CONTEXT_SHA, diagnostics);
-        checkHash("vanilla BlockBehaviour.BlockStateBase", bundle.blockStateBase(),
+        AuditedMixinCompatibility.checkHash("Fabric LandPathTypeRegistry", bundle.landRegistry(), LAND_REGISTRY_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla SwimNodeEvaluator", bundle.swim(), SWIM_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla NodeEvaluator", bundle.nodeEvaluator(), NODE_EVALUATOR_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla PathFinder", bundle.pathFinder(), PATH_FINDER_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla PathfindingContext", bundle.pathContext(), PATH_CONTEXT_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla BlockBehaviour.BlockStateBase", bundle.blockStateBase(),
             BLOCK_STATE_BASE_SHA, diagnostics);
         boolean landRegistryVerified = false;
         try {
@@ -480,11 +480,6 @@ final class FabricSwimCompatibility {
         return false;
     }
 
-    private static void checkHash(String label, byte[] bytes, String expected,
-                                  List<String> diagnostics) {
-        String actual = sha256(bytes);
-        if (!expected.equals(actual)) diagnostics.add(label + " hash mismatch: " + actual);
-    }
 
     private static byte[] readModuleArtifact(ModContainer module) throws IOException {
         ModOrigin origin = module.getOrigin();
@@ -525,11 +520,4 @@ final class FabricSwimCompatibility {
         return ForeignMixinScanner.SwimExemptionEvidence.unverified(reason);
     }
 
-    private static String sha256(byte[] bytes) {
-        try {
-            return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException(impossible);
-        }
-    }
 }

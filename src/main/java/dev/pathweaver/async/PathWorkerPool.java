@@ -89,8 +89,19 @@ public class PathWorkerPool {
                 // POOL_SATURATED as the only symptom. exitWorker is idempotent.
                 try {
                     PathWeaverThread.enterWorker();
-                    Path result = req.search().call();
-                    outcome = result == null ? PathOutcome.noPath() : PathOutcome.success(result);
+                    // Ask before computing, not after. A request can wait several ticks for a
+                    // worker, and by then the mob may have stopped or a newer request may have
+                    // replaced it. Its own outcome, not null: returning null here would be reported
+                    // as "no path exists", which is a different and load-bearing claim -- among
+                    // other things strandsRecompute() treats NO_PATH as not stranded on the grounds
+                    // that vanilla would have reached the same state, which is untrue of a
+                    // cancellation.
+                    if (!req.stillWanted().getAsBoolean()) {
+                        outcome = PathOutcome.cancelled();
+                    } else {
+                        Path result = req.search().call();
+                        outcome = result == null ? PathOutcome.noPath() : PathOutcome.success(result);
+                    }
                 } catch (Throwable t) {
                     outcome = PathOutcome.failed(t);
                     logFailure(generation, t);

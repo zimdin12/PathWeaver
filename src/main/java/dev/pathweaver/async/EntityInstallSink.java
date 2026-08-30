@@ -141,6 +141,19 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         return registration != null && registration.navigation() == navigation;
     }
 
+    /**
+     * Is THIS exact request still the one registered for its entity?
+     *
+     * <p>Key-scoped on purpose. Asking "is this entity registered to this navigation" answers true
+     * for a request that has already been superseded by a newer one on the same navigation, so the
+     * old worker still computes a search whose result {@code matching(key)} then throws away. The
+     * key is what identifies the request.
+     */
+    public boolean isRegisteredUnder(RequestKey key) {
+        Registration registration = inFlight.get(key.entityId());
+        return registration != null && registration.key().equals(key);
+    }
+
     public PendingDecision pendingDecision(int entityId, PWNavigation navigation, RequestTarget target) {
         return pendingDecision(entityId, navigation, target, false);
     }
@@ -213,8 +226,14 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         // failure cooldown, which is cleared by a successful async install or by expiry -- and a synchronous
         // search never goes through this sink. So one stranded recompute made that mob run EVERY
         // path search synchronously for two seconds, not the single retry the javadoc claims.
-        // ARRIVED_STALE is a race and the commonest non-install outcome, so a one-tick miss became a
-        // two-second opt-out from the mod for that mob.
+        // ARRIVED_STALE is a race, so a one-tick miss became a two-second opt-out for that mob.
+        //
+        // An earlier version of this comment called it "the commonest non-install outcome".
+        // That was repeated from a review and contradicts the only measurement taken: on the
+        // live 317-mod pack, 88 of 88 discards were NAVIGATION_STOPPED and ARRIVED_STALE was
+        // ZERO. The forced-sync retry below is therefore rare in practice, not the common
+        // path. What is still missing is a counter for it, so an operator cannot see how
+        // often a re-arm pushed a search back onto the server thread.
         syncNextRecompute.put(registration.key().entityId(), currentTick + FAIL_COOLDOWN_TICKS);
         try {
             registration.navigation().pathweaver$rearmRecompute();

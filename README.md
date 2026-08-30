@@ -2,7 +2,7 @@
 
 **Experimental server-side mod for Minecraft 26.1.1, 26.1.2 and 26.2 (Fabric). Moves vanilla mob path searches off the server thread.**
 
-26.1.1 and 26.1.2 are served by one file — every pathfinding and navigation class is byte-identical between them. 26.2 is built separately from the `mc-26.2` branch; the mod needs no code change there, only a retarget. **`AUDITED` is 26.1.2-only** on all three: every audit is pinned to the exact bytecode it was derived against, and it fails closed elsewhere.
+26.1.1 and 26.1.2 are served by one file — every pathfinding and navigation class is byte-identical between them. 26.2 is built separately from the `mc-26.2` branch; the mod needs no code change there, only a retarget. **`AUDITED` works on 26.1.1 and 26.1.2, and refuses on 26.2.** Each audit is pinned to the exact bytecode it was derived against: 26.1.1's pinned vanilla classes are byte-identical to 26.1.2's, so the proofs hold, while four of them changed in 26.2 and the pins fail closed.
 
 **Read this first: PathWeaver ships with its compatibility checking turned off, so out of the box it runs other mods' uninspected pathfinding code on worker threads. Back up worlds you care about.**
 

@@ -61,9 +61,14 @@ class DiagonalBlocksCompatibilityTest {
     void hashPinsAreEnforcedIndependentlyOfTheShapeProof() {
         List<String> diagnostics = DiagonalBlocksCompatibility.verify(
             new DiagonalBlocksCompatibility.Bundle(new byte[0], new byte[0],
-                overrideReadingStatic(STAR, "PROPERTY_BY_DIRECTION")));
-        assertEquals(3, diagnostics.stream().filter(d -> d.contains("hash mismatch")).count(),
-            diagnostics.toString());
+                overrideReadingStatic(STAR, "PROPERTY_BY_DIRECTION"),
+                new byte[0], new byte[0]));
+        assertEquals(5, diagnostics.stream().filter(d -> d.contains("hash mismatch")).count(),
+            "five pins now, not three: the module jar, the mixin config, this mod's own "
+                + "WalkNodeEvaluatorMixin, and the two VANILLA classes the argument rests on. The "
+                + "vanilla pair was absent, which mattered once the Minecraft version label stopped "
+                + "gating this audit -- the mechanical checks read only this mod's bytes, while the "
+                + "claim they support is about vanilla. " + diagnostics);
     }
 
     private static byte[] overrideCalling(String owner, String method) {
