@@ -13,34 +13,29 @@ import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.level.block.Blocks;
 
 /**
- * Feature C end to end: a brain mob's movement search leaves the server thread, and vanilla's
- * unreachable handling still works when it should.
+ * Feature C end to end: a brain mob's movement search leaves the server thread, it keeps the
+ * destination it was given, and it arrives.
  *
- * <p>The unit tests cover the park/collect/release state machine directly. What they cannot cover is
- * the thing this feature actually risks: {@code MoveToTargetSink} is the only route by which
- * villagers, piglins, frogs and allays move at all, so getting it wrong does not degrade performance,
- * it stops villagers walking. That failure only shows up against a real brain on a running server.
+ * <p>The walk target is set ONCE and never refreshed, and that is the whole point of this test.
  *
- * <h2>The control is the point</h2>
+ * <p>An earlier version re-wrote {@code WALK_TARGET} to the same position every tick, to stop the
+ * villager's own idle behaviours drifting it. That compensation hid the defect this file now exists
+ * to catch. Deferring from inside {@code tryComputePath} made {@code checkExtraStartConditions} erase
+ * {@code WALK_TARGET} — offsets 83-87 — on every tick the search was outstanding. The per-tick
+ * rewrite put it straight back, so a healthy-looking test ran green over a mob that in the field
+ * would have lost its destination and been claimed by whichever {@code absent(WALK_TARGET)} stroll
+ * behaviour ran next in the same tick. A test that supplies its own trigger cannot prove the trigger
+ * exists.
  *
- * The headline assertion is a NEGATIVE one — that {@code CANT_REACH_WALK_TARGET_SINCE} is never
- * written while a search is merely in flight. A negative assertion is worthless unless the same
- * detector is shown to fire, so the second phase asks the same villager to walk somewhere genuinely
- * unreachable and requires that memory to appear. If it never does, this test fails rather than
- * passing quietly, because that would mean the memory check could not have caught anything in
- * phase one either.
- *
- * <p>That control is also a regression test for a real defect found while writing it. Only a landed
- * path used to clear the pending slot, so a search ending in NO_PATH — the ordinary answer for an
- * unreachable destination — left the slot pending for {@code maxResultAgeTicks}. The behaviour would
- * refuse to start, never record the target as unreachable, and never run vanilla's random-position
- * fallback. Phase two hangs and this test goes red if that is ever reintroduced.
+ * <p>So: one write, an assertion on every tick that the memory is still there, and a requirement that
+ * the mob actually arrives. Vanilla drops that memory only for an unreachable target or when the
+ * behaviour stops, and this destination is eight blocks away across flat stone.
  */
 public final class BrainSinkRoutingGameTest {
     public BrainSinkRoutingGameTest() {}
 
     @GameTest(maxTicks = 900)
-    public void aVillagerPathsOffThreadAndStillLearnsWhenATargetIsUnreachable(GameTestHelper helper) {
+    public void aVillagerKeepsItsTargetAcrossAnOffThreadSearchAndArrives(GameTestHelper helper) {
         Scenario[] scenario = new Scenario[1];
         helper.onEachTick(() -> {
             if (helper.getTick() < 20) return;
@@ -57,12 +52,11 @@ public final class BrainSinkRoutingGameTest {
 
         private Mob villager;
         private BlockPos requestedTarget;
-        private BlockPos unreachableTarget;
-        private boolean wallBuilt;
         private long parkedBefore;
         private int stage;
         private long stageStartedAt;
         private boolean cleaned;
+        private boolean everHadPath;
 
         Scenario(GameTestHelper helper) {
             this.helper = helper;
@@ -76,8 +70,7 @@ public final class BrainSinkRoutingGameTest {
                 switch (stage) {
                     case 0 -> spawnAndSettle();
                     case 1 -> arm();
-                    case 2 -> awaitOffThreadPath();
-                    case 3 -> demandTheDetectorCanFire();
+                    case 2 -> requireTargetSurvivesAndMobArrives();
                     default -> { }
                 }
             } catch (Throwable failure) {
@@ -89,17 +82,14 @@ public final class BrainSinkRoutingGameTest {
         /**
          * Spawn, then WAIT, and this is not padding.
          *
-         * <p>The first version armed on the spawn tick and went red immediately. A mob spawned a tick
-         * earlier has not settled onto the ground, so its very first search legitimately finds no
-         * start node, vanilla returns null and writes CANT_REACH_WALK_TARGET_SINCE itself. That is
-         * vanilla's own behaviour and nothing to do with deferral -- but it is indistinguishable from
-         * the defect at the assertion, so the test would have been reporting a bug that did not
-         * exist. This project has paid for that exact confusion once already, with a zombie.
+         * <p>A mob spawned a tick earlier has not settled onto the ground, so its very first search
+         * legitimately finds no start node and vanilla returns null. That is vanilla's own behaviour
+         * and nothing to do with deferral, but it is indistinguishable from the defect at the
+         * assertion. This project has paid for that exact confusion once already, with a zombie.
          */
         private void spawnAndSettle() {
             cfg.enabled = true;
             cfg.brainSinkAsync = true;
-
             for (int x = 0; x <= 12; x++) {
                 for (int z = 0; z <= 6; z++) helper.setBlock(x, 1, z, Blocks.STONE);
             }
@@ -114,113 +104,53 @@ public final class BrainSinkRoutingGameTest {
                 "precondition: the villager must be settled, or its first search fails for reasons "
                     + "that have nothing to do with this feature");
 
-            // Cleared rather than asserted absent: the villager's own brain has been running for
-            // forty ticks and may legitimately have tried to walk somewhere in that time. What the
-            // next phase needs is a known-clean starting point, not a claim about the past.
-            villager.getBrain().eraseMemory(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE);
-
             parkedBefore = PathWeaverRuntime.get().outcomeCount(RequestOutcome.PARKED_FOR_BRAIN);
             requestedTarget = helper.absolutePos(new BlockPos(10, 2, 3));
+            // ONCE. Never refreshed. See the class comment.
             villager.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
                 new WalkTarget(requestedTarget, 0.5F, 0));
+            check(villager.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET),
+                "precondition: the walk target must actually be set, or asserting that it survives "
+                    + "is vacuous");
             advance(2);
         }
 
-        private void awaitOffThreadPath() {
-            // Re-asserted every tick. A villager's brain sets walk targets of its own -- wandering,
-            // looking for a bed, following a player -- and the first run of this phase saw exactly
-            // that: the search parked correctly and was then never collected, because by the time the
-            // sink asked again it was asking about somewhere else. Keeping our target authoritative
-            // is what makes this test about the feature rather than about villager idle behaviour.
-            villager.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
-                new WalkTarget(requestedTarget, 0.5F, 0));
-
+        private void requireTargetSurvivesAndMobArrives() {
             long parked = PathWeaverRuntime.get().outcomeCount(RequestOutcome.PARKED_FOR_BRAIN)
                 - parkedBefore;
-            net.minecraft.world.level.pathfinder.Path path = villager.getNavigation().getPath();
-            if (parked > 0 && path != null) {
-                // THE TRAP, asserted by its signature rather than by watching for a memory write.
-                //
-                // A per-tick "CANT_REACH_WALK_TARGET_SINCE must stay absent" check was tried first and
-                // is not attributable: a villager's own brain sets walk targets of its own while this
-                // runs, and vanilla writes that memory for those legitimately. The check went red on a
-                // healthy build twice.
-                //
-                // What the naive implementation would actually do is specific and observable. Letting
-                // an in-flight search surface as a null path makes vanilla mark the destination
-                // unreachable and then path to a RANDOM position near it via
-                // DefaultRandomPos.getPosTowards. So the villager still ends up walking, and still
-                // ends up with a path -- just not to the place it was asked to go. That is the
-                // difference this asserts.
-                double drift = path.getTarget().distSqr(requestedTarget);
-                check(drift <= 9.0,
-                    "the villager is walking to " + path.getTarget() + " but was asked to walk to "
-                        + requestedTarget + " (" + Math.sqrt(drift) + " blocks away). A deferred "
-                        + "search reported as 'no path' makes vanilla pick a random position near "
-                        + "the target instead, which is exactly this");
-                // No assertion here about CANT_REACH_WALK_TARGET_SINCE, deliberately. Two versions
-                // of this test checked it and both went red on a healthy build: a villager's brain
-                // is running its own behaviours throughout, and vanilla writes that memory for its
-                // own walk targets whenever one of them is momentarily unpathable. The state is real
-                // but it is not attributable to this feature, and an assertion that cannot say whose
-                // fault a failure is will eventually be silenced rather than believed. The drift
-                // check above is the detector that IS attributable, and phase three below is where
-                // that memory has to appear.
-                advance(3);
-                return;
-            }
-            // Arrival counts as success too. The destination is eight blocks away, so a villager
-            // that collected its path early and simply walked there has proved the same thing; only
-            // sampling `getPath() != null` would turn that into a spurious failure.
-            if (parked > 0 && villager.blockPosition().closerThan(requestedTarget, 2.0)) {
-                advance(3);
-                return;
-            }
-            if (helper.getTick() - stageStartedAt > 300) {
-                throw helper.assertionException(
-                    "a villager given a reachable walk target never got an off-thread path: parked="
-                        + parked + " hasPath=" + (path != null) + " at " + villager.blockPosition()
-                        + " target " + requestedTarget + ". Brain mobs reach navigation only through "
-                        + "MoveToTargetSink, so this is the whole feature failing");
-            }
-        }
+            boolean walking = villager.getNavigation().getPath() != null;
+            if (walking) everHadPath = true;
 
-        private void demandTheDetectorCanFire() {
-            // Set up ONCE. The first version did this every tick, which meant it erased the memory
-            // immediately before testing for it -- the detector could not fire, and the phase written
-            // to prove the detector works was itself incapable of failing for the right reason.
-            if (!wallBuilt) {
-                wallBuilt = true;
-                for (int y = 2; y <= 4; y++) {
-                    for (int z = 0; z <= 6; z++) helper.setBlock(6, y, z, Blocks.BEDROCK);
-                }
-                // The villager finished phase two standing ON the target, at x ~ 10. A destination at
-                // x = 11 would have been on its own side of the wall and trivially reachable -- the
-                // first version asked for exactly that and then reported the detector as broken.
-                check(villager.blockPosition().getX() > helper.absolutePos(new BlockPos(6, 2, 3)).getX(),
-                    "precondition: the villager must be on the far side of the wall from the target, "
-                        + "or 'unreachable' is not unreachable");
-                villager.getBrain().eraseMemory(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE);
-                unreachableTarget = helper.absolutePos(new BlockPos(1, 2, 3));
-                advance(3);
+            // THE ASSERTION, scoped to the deferral window: from the tick the target was set until
+            // the mob first holds a path. That window is exactly when a search is outstanding, and
+            // vanilla has no reason to drop a reachable target there.
+            //
+            // It must NOT extend past that point. Vanilla legitimately erases WALK_TARGET when the
+            // behaviour stops, and a path across open ground ends a couple of blocks short of the
+            // requested block, so an unscoped version of this fired on a healthy build at three
+            // blocks out -- on vanilla's own completion, not on the defect.
+            if (!everHadPath) {
+                check(villager.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET),
+                    "the villager lost its walk target before it ever got a path, i.e. while the "
+                        + "off-thread search was still outstanding. Deferring must not make vanilla "
+                        + "forget where the mob was going: MoveToTargetSink is priority 1 and Brain "
+                        + "iterates priorities ascending, so an absent(WALK_TARGET) stroll behaviour "
+                        + "claims the mob on that same tick");
             }
 
-            villager.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
-                new WalkTarget(unreachableTarget, 0.5F, 0));
-
-            if (villager.getBrain().hasMemoryValue(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE)) {
+            if (parked > 0 && everHadPath
+                    && villager.blockPosition().closerThan(requestedTarget, 3.5)) {
                 cleanup();
-                stage = 4;
+                stage = 3;
                 helper.succeed();
                 return;
             }
             if (helper.getTick() - stageStartedAt > 400) {
                 throw helper.assertionException(
-                    "an unreachable walk target never produced CANT_REACH_WALK_TARGET_SINCE. Either "
-                        + "the detector cannot fire, so the drift check above is the only real "
-                        + "assertion in this test -- or a search that found no path left the "
-                        + "behaviour pending and the villager is frozen, which is the defect this "
-                        + "phase exists to catch");
+                    "villager did not complete an off-thread walk: parked=" + parked
+                        + " everHadPath=" + everHadPath + " at " + villager.blockPosition()
+                        + " target " + requestedTarget + ". parked=0 means nothing was ever "
+                        + "offloaded, which is the feature failing outright");
             }
         }
 

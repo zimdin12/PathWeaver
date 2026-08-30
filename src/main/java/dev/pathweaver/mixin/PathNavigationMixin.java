@@ -200,10 +200,23 @@ public abstract class PathNavigationMixin implements PWNavigation {
      */
     @Unique private dev.pathweaver.async.RequestOrigin pathweaver$brainSinkSavedOrigin;
 
+    /**
+     * The destination the brain behaviour asked about, carried so DISPATCH can record the slot.
+     *
+     * <p>The hook used to infer "did dispatch happen" by comparing {@code sink.isRegistered} before
+     * and after the call. That inference is wrong on the supersede path: a materially different
+     * target removes the old registration and adds a new one, so the predicate is true both times,
+     * the hook concluded dispatch had been REFUSED, and it handed vanilla the mob's currently
+     * installed path as the answer for a different destination. Recording the slot at the one place
+     * that knows a registration was actually created removes the inference entirely.
+     */
+    @Unique private BlockPos pathweaver$brainSinkAsked;
+
     @Override
-    public void pathweaver$enterBrainSinkRequest(double speed) {
+    public void pathweaver$enterBrainSinkRequest(double speed, BlockPos asked) {
         pathweaver$brainSinkSavedOrigin = pathweaver$currentOrigin;
         pathweaver$currentOrigin = dev.pathweaver.async.RequestOrigin.BRAIN_SINK;
+        pathweaver$brainSinkAsked = asked;
         pathweaver$beginMovement(speed);
         pathweaver$navigationRequestDepth++;
     }
@@ -213,6 +226,19 @@ public abstract class PathNavigationMixin implements PWNavigation {
         pathweaver$navigationRequestDepth--;
         pathweaver$currentOrigin = pathweaver$brainSinkSavedOrigin;
         pathweaver$brainSinkSavedOrigin = null;
+        pathweaver$brainSinkAsked = null;
+    }
+
+    @Override
+    public void pathweaver$replayCreatePathTail(Path path, int reachRange) {
+        // Exactly vanilla's tail, offsets 193-222 of createPath(Set,IZIF): guarded on a non-null
+        // path AND a non-null target, then targetPos, reachRange and the stuck timeout together.
+        if (path == null) return;
+        BlockPos target = path.getTarget();
+        if (target == null) return;
+        this.targetPos = target;
+        this.reachRange = reachRange;
+        resetStuckTimeout();
     }
 
     @Unique
@@ -695,6 +721,14 @@ public abstract class PathNavigationMixin implements PWNavigation {
             if (!intentAdvanced) pathweaver$targetRevision++;
             sink.register(requestKey, this, requestTarget, requiresEmptyLandRegistry,
                 this.pathweaver$currentOrigin);
+            // Immediately after the registration exists, and only here. This is the single place
+            // that knows a brain-sink request was really admitted, which is what the hook needs and
+            // what it previously tried to infer from a predicate that cannot tell a supersede from a
+            // refusal.
+            if (this.pathweaver$currentOrigin == dev.pathweaver.async.RequestOrigin.BRAIN_SINK
+                    && this.pathweaver$brainSinkAsked != null) {
+                sink.noteBrainSinkDispatch(entityId, this.pathweaver$brainSinkAsked);
+            }
             stage = dev.pathweaver.async.RequestOutcome.DispatchStage.REGISTERED;
             boolean accepted = rt.pool().submit(new PathRequest(submittedKey, tick, search,
                 result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz),

@@ -46,10 +46,27 @@ public interface PWNavigation {
      * <p>The previous origin is saved and restored rather than assumed, for the same reason the
      * recompute wrap saves it: a foreign injection can call into navigation from inside a behaviour.
      */
-    void pathweaver$enterBrainSinkRequest(double speed);
+    void pathweaver$enterBrainSinkRequest(double speed, net.minecraft.core.BlockPos asked);
 
     /** Main thread: close the brain-sink window and restore the enclosing origin. */
     void pathweaver$exitBrainSinkRequest();
+
+    /**
+     * Main thread: replay vanilla {@code createPath}'s tail for a path this navigation did not build.
+     *
+     * <p>Only {@code createPath} writes {@code targetPos} and {@code reachRange}; {@code moveTo(Path,
+     * double)} writes neither. A brain behaviour installs its path through {@code moveTo}, and when
+     * that path came from the park the real {@code createPath} never ran, so without this the
+     * navigation ends up holding a route to one destination while {@code targetPos} still names
+     * another. That is the mismatched pairing {@link #pathweaver$rollbackOptimisticTarget()} exists
+     * to prevent, and it is worse here than there: the next {@code recomputePath()} reads
+     * {@code targetPos} and walks the mob back to the previous destination.
+     *
+     * <p>Timing matches vanilla exactly. Vanilla assigns these inside {@code createPath}, before the
+     * behaviour has called {@code moveTo}, so the window in which {@code targetPos} leads
+     * {@code path} is one vanilla produces too.
+     */
+    void pathweaver$replayCreatePathTail(Path path, int reachRange);
 
     /**
      * Main thread: take the "this dispatch was accepted" flag, so an overriding movement method can
