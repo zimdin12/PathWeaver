@@ -506,6 +506,16 @@ public final class PathWeaverRuntime {
      * because nothing was late.
      */
     private long lastWasteNoPath;
+    /**
+     * Brain-sink results parked in the previous window.
+     *
+     * <p>Counted as produced work, because it is. A brain-sink search completes as
+     * PARKED_FOR_BRAIN and never as INSTALLED -- its behaviour installs the path itself -- so
+     * judging this window on installs alone measures villagers as pure waste. On a villager-heavy
+     * pack, which is exactly the pack this feature exists for, that warns the operator to lower
+     * maxInFlight and raise poolThreads while the mod is working correctly.
+     */
+    private long lastWasteParked;
     private boolean wasteReported;
 
     /**
@@ -530,13 +540,15 @@ public final class PathWeaverRuntime {
         long dispatchedNow = dispatched.get();
         long installedNow = installedCount();
         long noPathNow = outcomeCount(dev.pathweaver.async.RequestOutcome.NO_PATH);
-        long windowInstalled = installedNow - lastWasteInstalled;
+        long parkedNow = outcomeCount(dev.pathweaver.async.RequestOutcome.PARKED_FOR_BRAIN);
+        long windowInstalled = (installedNow - lastWasteInstalled) + (parkedNow - lastWasteParked);
         long windowNoPath = noPathNow - lastWasteNoPath;
         // Judge installs against searches that could have produced a path, not against every search.
         long windowDispatched = Math.max(0L, (dispatchedNow - lastWasteDispatched) - windowNoPath);
         lastWasteDispatched = dispatchedNow;
         lastWasteInstalled = installedNow;
         lastWasteNoPath = noPathNow;
+        lastWasteParked = parkedNow;
         // Any window that is not itself bad breaks the run, including one too quiet to judge.
         // Otherwise a burst, a quiet window that absorbs its late installs, and an unrelated burst
         // much later would count as two consecutive bad windows and warn on windows that were not
@@ -573,6 +585,7 @@ public final class PathWeaverRuntime {
         lastWasteInstalled = installedCount();
         wasteReported = false;
         lastWasteNoPath = outcomeCount(dev.pathweaver.async.RequestOutcome.NO_PATH);
+        lastWasteParked = outcomeCount(dev.pathweaver.async.RequestOutcome.PARKED_FOR_BRAIN);
     }
 
     /** Test seam. */

@@ -49,6 +49,38 @@ class PathWeaverRuntimeTest {
         }
     }
 
+    /**
+     * A villager-heavy pack must not be told its pool is misconfigured.
+     *
+     * <p>Brain-sink searches complete as PARKED_FOR_BRAIN and never as INSTALLED, because the
+     * behaviour installs the path itself. Judging the window on installs alone therefore counts every
+     * villager as pure waste, and the pack this feature exists for is precisely the one where
+     * villagers dominate: the operator gets a warning telling them to lower maxInFlight and raise
+     * poolThreads while the mod is doing exactly what it should.
+     */
+    @Test void parkedBrainResultsAreProducedWorkNotWaste() {
+        PathWeaverRuntime runtime = PathWeaverRuntime.get();
+        runtime.resetWasteReportingForTests();
+        try {
+            int interval = PathWeaverRuntime.WASTE_SAMPLE_INTERVAL_TICKS;
+            long searches = PathWeaverRuntime.WASTE_MIN_SAMPLE * 2L;
+
+            for (int window = 1; window <= 3; window++) {
+                for (long i = 0; i < searches; i++) {
+                    runtime.markDispatched();
+                    runtime.markOutcome(dev.pathweaver.async.RequestOutcome.PARKED_FOR_BRAIN);
+                }
+                runtime.reportIfMostResultsAreWasted(interval * (long) window);
+            }
+
+            assertFalse(runtime.wasteReported(),
+                "every search produced a path and parked it for the behaviour that asked; nothing "
+                    + "was wasted, and three consecutive windows of it must not warn");
+        } finally {
+            runtime.resetWasteReportingForTests();
+        }
+    }
+
     @Test void staysQuietWhenResultsAreBeingUsedOrTheSampleIsTooSmall() {
         PathWeaverRuntime runtime = PathWeaverRuntime.get();
         runtime.resetWasteReportingForTests();
