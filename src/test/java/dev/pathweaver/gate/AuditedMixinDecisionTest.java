@@ -62,7 +62,8 @@ class AuditedMixinDecisionTest {
                 decide(nearMiss, serverEvidence).denied(), nearMiss.toString());
         }
         for (var nearMiss : List.of(
-            rabbitConfig("1.4.0", "rabbit-pathfinding-fix.mixins.json",
+            rabbitConfig(AuditedMixinCompatibility.RABBIT_VERSION + "-unaudited",
+                "rabbit-pathfinding-fix.mixins.json",
                 "net.litetex.rpf.mixin.EntityNavigationMixin", false),
             rabbitConfig(AuditedMixinCompatibility.RABBIT_VERSION, "renamed.mixins.json",
                 "net.litetex.rpf.mixin.EntityNavigationMixin", false),
