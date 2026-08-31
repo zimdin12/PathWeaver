@@ -28,11 +28,30 @@ class AuditedMixinCompatibilityTest {
     private static final String RABBIT_MIXIN =
         "net/litetex/rpf/mixin/EntityNavigationMixin.class";
 
-    @Test void exactServerCoreBundlePassesHashAndAsmShapeProof() throws Exception {
+    /**
+     * The audit's verdict must match the artifact this build actually resolved -- in BOTH directions.
+     *
+     * <p>It used to assert only that the bundle passes, which is true on 26.1.2 and false on 26.2,
+     * where the dependency resolves a newer ServerCore the audit has never inspected. That made this
+     * fail on the port branch from the day it existed, and 0.6.1+26.2 was published with it red.
+     * Pinning both arms is stronger than the original and true on either branch: the pinned artifact
+     * certifies with its exact shape proof, and anything else REFUSES for the stated reason.
+     */
+    @Test void theAuditCertifiesExactlyThePinnedServerCoreAndRefusesAnythingElse() throws Exception {
+        var jar = jarContaining(SERVERCORE_MIXIN);
         var result = AuditedMixinCompatibility.verifyServerCore(serverCoreBundle());
-        assertTrue(result.valid(), () -> String.join("\n", result.diagnostics()));
-        assertEquals(3, result.modifiedMethods().size());
-        assertTrue(result.modifiedMethods().stream().allMatch(s -> s.startsWith("findPath(")));
+        if (AuditedMixinCompatibility.SERVERCORE_VERSION.equals(ResolvedArtifact.version(jar))) {
+            assertTrue(result.valid(), () -> String.join("\n", result.diagnostics()));
+            assertEquals(3, result.modifiedMethods().size());
+            assertTrue(result.modifiedMethods().stream().allMatch(s -> s.startsWith("findPath(")));
+        } else {
+            assertFalse(result.valid(),
+                "an unpinned ServerCore must not be certified; this build resolved "
+                    + ResolvedArtifact.version(jar));
+            assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("hash mismatch")),
+                () -> "the refusal must name which pinned artifact drifted, not just fail: "
+                    + result.diagnostics());
+        }
     }
 
     @Test void everyServerCoreFingerprintPartFailsClosedOnDrift() throws Exception {
@@ -51,14 +70,30 @@ class AuditedMixinCompatibilityTest {
         }
     }
 
-    @Test void exactRabbitBundlePassesMethodNonReachabilityShapeProof() throws Exception {
+    @Test void theAuditCertifiesExactlyThePinnedRabbitAndRefusesAnythingElse() throws Exception {
+        var jar = jarContaining(RABBIT_MIXIN);
         var result = AuditedMixinCompatibility.verifyRabbit(rabbitBundle());
-        assertTrue(result.valid(), () -> String.join("\n", result.diagnostics()));
-        assertEquals(java.util.Set.of(
-            "doStuckDetection(Lnet/minecraft/world/phys/Vec3;)V",
-            "resetStuckTimeout()V"), result.modifiedMethods());
+        if (AuditedMixinCompatibility.RABBIT_VERSION.equals(ResolvedArtifact.version(jar))) {
+            assertTrue(result.valid(), () -> String.join("\n", result.diagnostics()));
+            assertEquals(java.util.Set.of(
+                "doStuckDetection(Lnet/minecraft/world/phys/Vec3;)V",
+                "resetStuckTimeout()V"), result.modifiedMethods());
+        } else {
+            assertFalse(result.valid(),
+                "an unpinned rabbit-pathfinding-fix must not be certified; this build resolved "
+                    + ResolvedArtifact.version(jar));
+            assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("hash mismatch")),
+                () -> "the refusal must name which pinned artifact drifted, not just fail: "
+                    + result.diagnostics());
+        }
     }
 
+    /**
+     * The version of the artifact this build actually resolved.
+     *
+     * <p>These tests read whatever jar is on the classpath, and the branches resolve different ones:
+     * 26.1.2 gets the pinned artifact, 26.2 gets a newer one the audit has never seen.
+     */
     @Test void pathWeaverWorkerCallableReachesOnlyThePinnedSearchClosure() throws Exception {
         ClassNode pool = new ClassNode();
         new ClassReader(classBytes(PathWorkerPool.class)).accept(pool, 0);
