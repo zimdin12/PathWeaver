@@ -227,6 +227,42 @@ class AuditedMixinCompatibilityTest {
                 + result.diagnostics());
     }
 
+    /**
+     * {@code @Overwrite} must be reported, and it very nearly was not.
+     *
+     * <p>The first version of this check matched annotations under
+     * {@code org/spongepowered/asm/mixin/injection/}, which reads as though it covers the dangerous
+     * cases. {@code @Overwrite} is at {@code org/spongepowered/asm/mixin/Overwrite}, outside that
+     * subpackage, so it was silently ignored -- and it replaces an entire method body, which is the
+     * most invasive thing a mixin can do. The changelog claimed it was covered before it was.
+     *
+     * <p>The detector lists the benign annotations and reports everything else, so an annotation
+     * nobody has thought about yet is reported rather than skipped.
+     */
+    @Test void anOverwriteIsReportedEvenThoughItIsNotAnInjectionAnnotation() throws Exception {
+        var exact = rabbitBundle();
+        ClassNode node = new ClassNode();
+        new ClassReader(exact.mixin()).accept(node, 0);
+
+        MethodNode replaced = new MethodNode(Opcodes.ACC_PRIVATE, "pathweaverTestOverwrite",
+            "()V", null, null);
+        replaced.invisibleAnnotations =
+            List.of(new AnnotationNode("Lorg/spongepowered/asm/mixin/Overwrite;"));
+        node.methods.add(replaced);
+        ClassWriter writer = new ClassWriter(0);
+        node.accept(writer);
+
+        var result = AuditedMixinCompatibility.verifyRabbit(
+            new AuditedMixinCompatibility.RabbitBundle(exact.moduleJar(), exact.config(),
+                writer.toByteArray(), exact.vanillaTarget(), exact.workerEntry()));
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream()
+                .anyMatch(d -> d.contains("does not enumerate") && d.contains("Overwrite")),
+            () -> "an @Overwrite replaces a whole method body and must never be skipped: "
+                + result.diagnostics());
+    }
+
     @Test void everyRabbitFingerprintPartFailsClosedOnDrift() throws Exception {
         var exact = rabbitBundle();
         byte[][] parts = {exact.moduleJar(), exact.config(), exact.mixin(), exact.vanillaTarget(),
