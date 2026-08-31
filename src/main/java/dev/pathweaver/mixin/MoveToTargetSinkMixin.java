@@ -3,10 +3,10 @@ package dev.pathweaver.mixin;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.pathweaver.PathWeaverRuntime;
-import dev.pathweaver.async.EntityInstallSink;
+import dev.pathweaver.brain.BrainSinkCandidate;
 import dev.pathweaver.brain.BrainSinkDiagnostics;
 import dev.pathweaver.brain.BrainSinkPolicy;
-import dev.pathweaver.config.PathWeaverConfig;
+import dev.pathweaver.brain.BrainSinkPort;
 import dev.pathweaver.duck.PWNavigation;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -24,7 +24,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.util.Optional;
 
 /**
  * Feature C: offload the villager-brain movement sink.
@@ -151,29 +150,11 @@ public abstract class MoveToTargetSinkMixin {
         pathweaver$hasSuppliedPath = false;
         pathweaver$suppliedFromPark = false;
 
-        PathWeaverConfig cfg = PathWeaverConfig.get();
-        if (!cfg.enabled || !cfg.brainSinkAsync) {
-            BrainSinkDiagnostics.recordStartCheck(mob.getId(), "off");
+        BrainSinkCandidate candidate = BrainSinkCandidate.fromBrain(mob);
+        if (!candidate.eligible()) {
+            BrainSinkDiagnostics.recordStartCheck(mob.getId(), candidate.declineReason());
             return;
         }
-        PathWeaverRuntime runtime = PathWeaverRuntime.get();
-        if (!runtime.isRunning()) {
-            BrainSinkDiagnostics.recordStartCheck(mob.getId(), "notRunning");
-            return;
-        }
-
-        PathNavigation navigation = mob.getNavigation();
-        if (!(navigation instanceof PWNavigation duck)) {
-            BrainSinkDiagnostics.recordStartCheck(mob.getId(), "noDuck");
-            return;
-        }
-
-        Optional<WalkTarget> walkTarget = mob.getBrain().getMemory(MemoryModuleType.WALK_TARGET);
-        if (walkTarget.isEmpty()) {
-            BrainSinkDiagnostics.recordStartCheck(mob.getId(), "noWalkTarget");
-            return;
-        }
-        BlockPos asked = walkTarget.get().getTarget().currentBlockPosition();
 
         // VANILLA'S OWN TWO GUARDS, REPRODUCED, because this inject sits above both of them and
         // skipping them is not free.
@@ -181,52 +162,59 @@ public abstract class MoveToTargetSinkMixin {
         //   0-18  remainingCooldown > 0  -> decrement and refuse
         //  39-50  reachedTarget(...)     -> erase WALK_TARGET and refuse, no path computed
         //
-        // Jumping the first one made the mod dispatch a search every other tick for a mob vanilla
-        // had deliberately stopped pathing, and -- because the cancel returns before the decrement
-        // at offsets 7-14 -- held the throttle open for roughly twice as long. The feature inverted
-        // the exact guard that exists to stop a stuck mob pathfinding.
+        // Jumping the first made the mod dispatch a search every other tick for a mob vanilla had
+        // deliberately stopped pathing, and, because the cancel returns before the decrement at
+        // offsets 7-14, held the throttle open for roughly twice as long. The feature inverted the
+        // exact guard that exists to stop a stuck mob pathfinding. Jumping the second dispatched a
+        // full A* to a block the mob was already standing on and withheld the arrival erase.
         //
-        // Jumping the second dispatched a full A* to a block the mob was already standing on, and
-        // withheld the arrival erase for a tick.
-        //
-        // Both must be checked BEFORE takeBrainSinkPath, not after: taking removes the slot, and if
-        // vanilla then returns at either guard the wrap never runs and the answer is destroyed --
-        // which is what turns a single wasted search into a loop.
+        // Both must run BEFORE the sink is consulted, never after: taking removes the parked slot,
+        // and if vanilla then returns at either guard the wrap never runs and the answer is
+        // destroyed, which is what turns a single wasted search into a loop.
         if (remainingCooldown > 0) {
             BrainSinkDiagnostics.recordStartCheck(mob.getId(), "cooldown");
             return;
         }
-        if (reachedTarget(mob, walkTarget.get())) {
+        if (reachedTarget(mob, candidate.walkTarget())) {
             BrainSinkDiagnostics.recordStartCheck(mob.getId(), "reached");
             return;
         }
 
-        pathweaver$startCheckClaimTick = level.getGameTime();
+        if (pathweaver$claimAndDecide(mob, candidate, level.getGameTime())) {
+            cir.setReturnValue(false);
+            // Released HERE, because @At("RETURN") does not fire for an @Inject cancellation:
+            // CallbackInjector.injectReturnCode constructs a NEW return for it, and injection points
+            // were resolved against pre-injection bytecode, so that node is not in the handler list.
+            // Leaving it set was harmless only by accident of control flow, and it had been written
+            // down as a guarantee.
+            pathweaver$startCheckClaimTick = Long.MIN_VALUE;
+        }
+        // Not deferring: vanilla's body now runs tryComputePath, and the claim must still be held
+        // across it so the tick hook stands down. try/finally here was tried and is WRONG for
+        // exactly that reason: it releases when THIS handler returns, which is before vanilla's body
+        // runs, so the tick hook re-ran the decision and reintroduced the bug a31ad01 fixed. Three
+        // game tests caught it. The RETURN handler covers this path.
+    }
+
+    /**
+     * Hold the decision claim across one decision, and report whether it deferred.
+     *
+     * <p>The claim is a tick rather than a boolean so a stale one cannot outlive its tick. It is
+     * cleared on the throw path because a throw is not a RETURN either, so the release handler that
+     * covers the non-cancelled path will not run for it.
+     */
+    @Unique
+    private boolean pathweaver$claimAndDecide(Mob mob, BrainSinkCandidate candidate, long gameTime) {
+        pathweaver$startCheckClaimTick = gameTime;
         boolean defer;
         try {
-            defer = pathweaver$decideDefers(mob, navigation, duck, walkTarget.get(), asked,
-                level.getGameTime());
+            defer = pathweaver$decideDefers(candidate, mob.getId(), gameTime);
         } catch (Throwable failure) {
-            // A throw is not a RETURN either, so the handler below will not run.
             pathweaver$startCheckClaimTick = Long.MIN_VALUE;
             throw failure;
         }
         BrainSinkDiagnostics.recordStartCheck(mob.getId(), defer ? "DEFER" : "ranVanillaOrSupplied");
-        if (defer) {
-            cir.setReturnValue(false);
-            // Released HERE, because @At("RETURN") does not fire for an @Inject cancellation:
-            // CallbackInjector.injectReturnCode constructs a NEW return for it, and injection points
-            // were resolved against pre-injection bytecode, so that node is not in the handler's
-            // list. Leaving it set was harmless only by accident of control flow -- a cancelled start
-            // check leaves the behaviour STOPPED so tick() cannot run -- and it was written down as a
-            // guarantee.
-            pathweaver$startCheckClaimTick = Long.MIN_VALUE;
-        }
-        // Not deferring: vanilla's body now runs tryComputePath, and the claim must still be held
-        // across it so the second hook stands down. try/finally here was tried and is WRONG for
-        // exactly that reason -- it releases when THIS handler returns, which is before vanilla's
-        // body runs, so the tick hook re-ran the decision and reintroduced the bug a31ad01 fixed.
-        // Three game tests caught it. The RETURN handler is what covers this path.
+        return defer;
     }
 
     /** Release the claim after vanilla's body has run. Covers the non-cancelled path only. */
@@ -249,42 +237,12 @@ public abstract class MoveToTargetSinkMixin {
      * {@code tryComputePath} without them.
      */
     @Unique
-    private boolean pathweaver$decideDefers(Mob mob, PathNavigation navigation, PWNavigation duck,
-                                            WalkTarget walkTarget, BlockPos asked, long gameTime) {
-        EntityInstallSink sink = PathWeaverRuntime.get().entitySink();
-        int entityId = mob.getId();
-
+    private boolean pathweaver$decideDefers(BrainSinkCandidate candidate, int entityId,
+                                            long gameTime) {
         BrainSinkPolicy.Decision decision = pathweaver$policy.decide(
-            entityId, asked, walkTarget.getSpeedModifier(), gameTime,
-            new BrainSinkPolicy.SearchPort() {
-                @Override public Path takeParked(int id, BlockPos at) {
-                    return sink.takeBrainSinkPath(id, at);
-                }
-                @Override public boolean hasPending(int id, BlockPos at) {
-                    return sink.hasPendingBrainSink(id, at);
-                }
-                @Override public boolean isRegistered(int id) {
-                    return sink.isRegistered(id);
-                }
-                @Override public boolean acceptableToVanilla(Path path) {
-                    // The two conditions moveTo(Path, double) refuses on: an already-finished path,
-                    // and one that trims to no nodes.
-                    return path != null && !path.isDone() && path.getNodeCount() > 0;
-                }
-                @Override public BrainSinkPolicy.Probe probe(double speed, BlockPos at) {
-                    // A window already open on this navigation means something re-entered; the
-                    // navigation refuses and the policy leaves the call to vanilla.
-                    if (!duck.pathweaver$enterBrainSinkRequest(speed, at)) {
-                        return BrainSinkPolicy.Probe.refused();
-                    }
-                    try {
-                        return BrainSinkPolicy.Probe.ran(
-                            navigation.createPath(at, PATHWEAVER$VANILLA_REACH_RANGE));
-                    } finally {
-                        duck.pathweaver$exitBrainSinkRequest();
-                    }
-                }
-            });
+            entityId, candidate.asked(), candidate.walkTarget().getSpeedModifier(), gameTime,
+            new BrainSinkPort(PathWeaverRuntime.get().entitySink(), candidate.navigation(),
+                candidate.duck()));
 
         switch (decision.action()) {
             case DEFER -> {
@@ -321,7 +279,7 @@ public abstract class MoveToTargetSinkMixin {
     )
     private void pathweaver$deferRepath(Mob mob, WalkTarget walkTarget, long gameTime,
                                         CallbackInfoReturnable<Boolean> cir) {
-        // The start check has already decided for this call -- either it supplied a path the wrap is
+        // The start check has already decided for this call: either it supplied a path the wrap is
         // about to consume, or it deliberately fell through so vanilla could search. Deciding again
         // here would override that, and did.
         if (pathweaver$startCheckClaimTick == gameTime) {
@@ -329,16 +287,13 @@ public abstract class MoveToTargetSinkMixin {
             return;
         }
 
-        PathWeaverConfig cfg = PathWeaverConfig.get();
-        if (!cfg.enabled || !cfg.brainSinkAsync) return;
-        PathWeaverRuntime runtime = PathWeaverRuntime.get();
-        if (!runtime.isRunning()) return;
+        BrainSinkCandidate candidate = BrainSinkCandidate.forTarget(mob, walkTarget);
+        if (!candidate.eligible()) {
+            BrainSinkDiagnostics.recordTickHook(mob.getId(), candidate.declineReason());
+            return;
+        }
 
-        PathNavigation navigation = mob.getNavigation();
-        if (!(navigation instanceof PWNavigation duck)) return;
-
-        BlockPos asked = walkTarget.getTarget().currentBlockPosition();
-        boolean tickDefer = pathweaver$decideDefers(mob, navigation, duck, walkTarget, asked, gameTime);
+        boolean tickDefer = pathweaver$decideDefers(candidate, mob.getId(), gameTime);
         BrainSinkDiagnostics.recordTickHook(mob.getId(), tickDefer ? "DEFER" : "ranVanillaOrSupplied");
         if (tickDefer) {
             cir.setReturnValue(false);

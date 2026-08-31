@@ -136,7 +136,15 @@ class MoveToTargetSinkContractTest {
                         @Override public void visitMethodInsn(int op, String owner, String mName,
                                                               String mDesc, boolean itf) {
                             if (mName.equals("reachedTarget")) order.add("reachedTarget");
-                            if (mName.equals("pathweaver$decideDefers")) order.add("decide");
+                            // Either name counts. The handler used to call the decision
+                            // directly; it now enters through claimAndDecide, which holds the
+                            // claim across it. What this test pins is the BOUNDARY -- vanilla's
+                            // guards run before anything touches the parked slot -- not which
+                            // method the boundary happens to be spelled as today.
+                            if (mName.equals("pathweaver$decideDefers")
+                                    || mName.equals("pathweaver$claimAndDecide")) {
+                                order.add("decide");
+                            }
                         }
                     };
                 }
