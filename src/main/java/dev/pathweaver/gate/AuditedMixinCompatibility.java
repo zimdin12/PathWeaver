@@ -74,6 +74,8 @@ final class AuditedMixinCompatibility {
     private static final String REDIRECT_DESC =
         "Lorg/spongepowered/asm/mixin/injection/Redirect;";
     private static final String INJECT_DESC = "Lorg/spongepowered/asm/mixin/injection/Inject;";
+    private static final String MODIFY_CONSTANT_DESC =
+        "Lorg/spongepowered/asm/mixin/injection/ModifyConstant;";
     private static final String FIND_PATH_DESC =
         "(Lnet/minecraft/world/level/PathNavigationRegion;Lnet/minecraft/world/entity/Mob;"
             + "Ljava/util/Set;FIF)Lnet/minecraft/world/level/pathfinder/Path;";
@@ -324,9 +326,28 @@ final class AuditedMixinCompatibility {
         requireMixinTarget(node, "net/minecraft/world/entity/ai/navigation/PathNavigation", diagnostics);
         int injections = 0;
         for (MethodNode method : node.methods) {
+            // A constant modification is a modification. rabbit-pathfinding-fix 1.4.0 moved
+            // resetStuckTimeout from an @Inject at TAIL to a @ModifyConstant on the 0.0 it compares
+            // against, so an audit that only reads @Inject sees one modified method where there are
+            // two. The safety argument is unchanged and is checked the same way either mechanism is
+            // used: whatever this mixin modifies must not be reachable from the worker's search
+            // closure, which verifyRabbitTargetsNotReachableFromPathFinder proves against the bytes.
+            AnnotationNode modifyConstant = findAnnotation(method, MODIFY_CONSTANT_DESC);
+            if (modifyConstant != null) {
+                injections++;
+                if (annotationContains(annotationValue(modifyConstant, "method"),
+                        "resetStuckTimeout") && method.desc.equals("(D)D")) {
+                    modified.add("resetStuckTimeout()V");
+                } else {
+                    diagnostics.add("unexpected rabbit constant modification: " + method.name
+                        + method.desc + " on " + annotationValue(modifyConstant, "method"));
+                }
+                continue;
+            }
+
             AnnotationNode inject = findAnnotation(method, INJECT_DESC);
             if (inject == null) {
-                for (String other : foreignInjections(method, INJECT_DESC)) {
+                for (String other : foreignInjections(method, INJECT_DESC, MODIFY_CONSTANT_DESC)) {
                     diagnostics.add("rabbit mixin carries an injection this audit does not "
                         + "enumerate, so its modification surface is unknown: " + method.name
                         + method.desc + " " + other);
@@ -455,13 +476,13 @@ final class AuditedMixinCompatibility {
      * FabricInteractionCompatibility both diagnose unexpected injection annotations rather than
      * skipping them; this was the only one of the four that did not.
      */
-    private static List<String> foreignInjections(MethodNode method, String enumerated) {
+    private static List<String> foreignInjections(MethodNode method, String... enumerated) {
         List<String> found = new ArrayList<>();
         for (List<AnnotationNode> set : java.util.Arrays.asList(
                 method.visibleAnnotations, method.invisibleAnnotations)) {
             if (set == null) continue;
             for (AnnotationNode node : set) {
-                if (node.desc.equals(enumerated)) continue;
+                if (java.util.Arrays.asList(enumerated).contains(node.desc)) continue;
                 if (node.desc.startsWith("Lorg/spongepowered/asm/mixin/injection/")
                         || node.desc.startsWith("Lcom/llamalad7/mixinextras/injector/")) {
                     found.add(node.desc);

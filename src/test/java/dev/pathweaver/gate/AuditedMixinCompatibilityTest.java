@@ -189,11 +189,15 @@ class AuditedMixinCompatibilityTest {
      * A handler using an annotation the enumerator does not read must be REPORTED, not skipped.
      *
      * <p>The enumerator looked up one annotation descriptor and {@code continue}d past every method
-     * that did not carry it. So an artifact with exactly the two pinned {@code @Inject} handlers
-     * plus an extra {@code @ModifyConstant} passed the "must modify exactly two audited methods"
-     * count -- the extra modification never entered the count meant to notice it. This is not
-     * hypothetical: rabbit-pathfinding-fix 1.4.0 moved {@code resetStuckTimeout} from an
-     * {@code @Inject} at TAIL to exactly such a {@code @ModifyConstant}.
+     * that did not carry it. So an artifact with exactly the pinned handlers plus an extra one under
+     * any other annotation passed the "must modify exactly two audited methods" count: the extra
+     * modification never entered the count meant to notice it. That was not hypothetical.
+     * rabbit-pathfinding-fix 1.4.0 moved {@code resetStuckTimeout} from an {@code @Inject} at TAIL
+     * to a {@code @ModifyConstant}, and the audit saw one modified method where there were two.
+     *
+     * <p>{@code @ModifyConstant} is enumerated now, so this uses {@code @ModifyVariable}: the point
+     * is the handling of an annotation the audit does NOT know, and the example has to be one that
+     * is still unknown or the test stops proving anything.
      *
      * <p>The class hash contains this for the artifact pinned today, which is why the whole suite
      * stayed green with the hole open. It bites when someone re-pins: a green shape proof that
@@ -207,7 +211,7 @@ class AuditedMixinCompatibilityTest {
         MethodNode extra = new MethodNode(Opcodes.ACC_PRIVATE, "pathweaverTestExtraHandler",
             "(D)D", null, null);
         extra.invisibleAnnotations = List.of(
-            new AnnotationNode("Lorg/spongepowered/asm/mixin/injection/ModifyConstant;"));
+            new AnnotationNode("Lorg/spongepowered/asm/mixin/injection/ModifyVariable;"));
         node.methods.add(extra);
         ClassWriter writer = new ClassWriter(0);
         node.accept(writer);
@@ -218,7 +222,7 @@ class AuditedMixinCompatibilityTest {
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("does not "
-                + "enumerate") && d.contains("ModifyConstant")),
+                + "enumerate") && d.contains("ModifyVariable")),
             () -> "an injection the audit cannot read must be named, not silently skipped: "
                 + result.diagnostics());
     }
