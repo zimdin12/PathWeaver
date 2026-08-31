@@ -225,7 +225,11 @@ public final class BrainSinkRoutingGameTest {
 
         private Mob villager;
         private BlockPos requestedTarget;
-        private long parkedBefore;
+        // No global PARKED_FOR_BRAIN delta. This harness runs its tests concurrently and three of
+        // them park, so a global counter cannot say THIS mob's search was offloaded -- a probe that
+        // cannot return ABSENT cannot return PRESENT. hasPendingBrainSink is per entity AND per
+        // destination, so watching our own slot appear is attributable.
+        private boolean sawOurOwnSearchInFlight;
         private int stage;
         private long stageStartedAt;
         private boolean cleaned;
@@ -302,7 +306,6 @@ public final class BrainSinkRoutingGameTest {
                 "precondition: the navigation must be idle, or everHadPath latches on a stroll path "
                     + "the villager already had and the survival assertion never runs");
 
-            parkedBefore = PathWeaverRuntime.get().outcomeCount(RequestOutcome.PARKED_FOR_BRAIN);
             requestedTarget = helper.absolutePos(new BlockPos(10, 2, 3));
             // ONCE. Never refreshed. See the class comment.
             villager.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
@@ -314,8 +317,10 @@ public final class BrainSinkRoutingGameTest {
         }
 
         private void requireTargetSurvivesAndMobArrives() {
-            long parked = PathWeaverRuntime.get().outcomeCount(RequestOutcome.PARKED_FOR_BRAIN)
-                - parkedBefore;
+            if (PathWeaverRuntime.get().entitySink()
+                    .hasPendingBrainSink(villager.getId(), requestedTarget)) {
+                sawOurOwnSearchInFlight = true;
+            }
             boolean walking = villager.getNavigation().getPath() != null;
             if (walking) everHadPath = true;
 
@@ -336,8 +341,9 @@ public final class BrainSinkRoutingGameTest {
             // deferred window keeps the assertion pointed at the thing this mod does, and it still
             // kills the mutation that erases on the defer branch, because that erase happens with the
             // slot pending.
-            boolean deferredRightNow = PathWeaverRuntime.get().entitySink()
-                .hasPendingBrainSink(villager.getId(), requestedTarget);
+            boolean deferredRightNow = sawOurOwnSearchInFlight
+                && PathWeaverRuntime.get().entitySink()
+                    .hasPendingBrainSink(villager.getId(), requestedTarget);
             if (!everHadPath && deferredRightNow) {
                 check(villager.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET),
                     "the villager lost its walk target while an off-thread search for that exact "
@@ -367,7 +373,7 @@ public final class BrainSinkRoutingGameTest {
                     new WalkTarget(requestedTarget, 0.5F, 0));
             }
 
-            if (parked > 0 && everHadPath
+            if (sawOurOwnSearchInFlight && everHadPath
                     && villager.blockPosition().closerThan(requestedTarget, 3.5)) {
                 cleanup();
                 stage = 3;
@@ -376,10 +382,11 @@ public final class BrainSinkRoutingGameTest {
             }
             if (helper.getTick() - stageStartedAt > 400) {
                 throw helper.assertionException(
-                    "villager did not complete an off-thread walk: parked=" + parked
+                    "villager did not complete an off-thread walk: ourSearchSeen="
+                        + sawOurOwnSearchInFlight
                         + " everHadPath=" + everHadPath + " at " + villager.blockPosition()
-                        + " target " + requestedTarget + ". parked=0 means nothing was ever "
-                        + "offloaded, which is the feature failing outright");
+                        + " target " + requestedTarget + ". ourSearchSeen=false means nothing was "
+                        + "ever offloaded for THIS mob, which is the feature failing outright");
             }
         }
 

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "id": "pathweaver_gametest",
+  "id": "pathweaver_gametest_audited_routing",
   "version": "1.0.0",
-  "name": "PathWeaver Game Tests",
+  "name": "PathWeaver Audited Compatibility Routing Game Test",
   "environment": "*",
   "mixins": [
     "pathweaver-gametest.mixins.json"
@@ -12,10 +12,7 @@
       "dev.pathweaver.gametest.StartupConfigMigrationProbe"
     ],
     "fabric-gametest": [
-      "dev.pathweaver.gametest.PathNavigationRoutingGameTest"
-    ],
-    "fabric-client-gametest": [
-      "dev.pathweaver.gametest.ClientSingleplayerGameTest"
+      "dev.pathweaver.gametest.AuditedCompatibilityRoutingGameTest"
     ]
   },
   "depends": {

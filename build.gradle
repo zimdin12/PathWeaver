@@ -353,6 +353,31 @@ if (providers.gradleProperty("unsafeTierHarness").isPresent()) {
     }
 }
 
+// AuditedCompatibilityRoutingGameTest ran in the DEFAULT harness beside
+// PathNavigationRoutingGameTest, which asserts EXACT deltas on the process-global dispatch counter
+// at seven points. Its harness-mate spawns a mob and dispatches, and the counter is shared -- so a
+// concurrent dispatch corrupts the delta directly, not merely by perturbing timing.
+//
+// The two had a deconfliction: the audited test waits until tick 170 because "the baseline test has
+// a hard maxTicks of 160". The baseline declares maxTicks = 1400. The offset protected nothing
+// whenever the baseline was still alive at 170, which is exactly the slow-machine case both budgets
+// exist for. Separate harnesses instead of a comment that has to stay true.
+if (providers.gradleProperty("auditedRoutingHarness").isPresent()) {
+    tasks.register("prepareAuditedRoutingGameTestHarness") {
+        dependsOn tasks.named("processGametestResources")
+        outputs.upToDateWhen { false }
+        doLast {
+            copy {
+                from file("src/gametest/auditedRoutingResources/fabric.mod.json")
+                into layout.buildDirectory.dir("resources/gametest")
+            }
+        }
+    }
+    tasks.named("runGameTest") {
+        dependsOn tasks.named("prepareAuditedRoutingGameTestHarness")
+    }
+}
+
 // The refused-dispatch brain-sink witness runs alone for the same reason the breaker does, and it
 // learned it the same way. It spawns a villager, and it shared a harness with
 // PathNavigationRoutingGameTest, which asserts an EXACT global dispatch delta on a named tick. An
