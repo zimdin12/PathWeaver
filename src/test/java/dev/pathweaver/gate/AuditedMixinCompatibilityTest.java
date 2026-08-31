@@ -158,10 +158,25 @@ class AuditedMixinCompatibilityTest {
         }
     }
 
+    /**
+     * The published table must quote the hashes the CODE pins.
+     *
+     * <p>It used to hash whichever jar this build resolved, which asserts something about Gradle's
+     * dependency resolution rather than about the document, and is unsatisfiable on any branch that
+     * resolves a different artifact. What the document can actually get wrong is drifting from the
+     * constants, so that is what is checked.
+     *
+     * <p>The other half of the chain is {@link
+     * #theAuditCertifiesExactlyThePinnedServerCoreAndRefusesAnythingElse}: on a branch that resolves
+     * the pinned artifact, the bundle verifies, and verifying includes hashing the jar against these
+     * same constants. Document equals constant here, constant equals jar there.
+     */
     @Test void publishedTableCarriesExactArtifactHashesAndDriftBoundary() throws Exception {
         String table = Files.readString(Path.of("COMPATIBILITY.md"));
-        assertTrue(table.contains(sha256(serverCoreBundle().moduleJar())));
-        assertTrue(table.contains(sha256(rabbitBundle().moduleJar())));
+        assertTrue(table.contains(AuditedMixinCompatibility.SERVERCORE_MODULE_SHA),
+            "COMPATIBILITY.md no longer quotes the pinned ServerCore jar hash the audit enforces");
+        assertTrue(table.contains(AuditedMixinCompatibility.RABBIT_MODULE_SHA),
+            "COMPATIBILITY.md no longer quotes the pinned rabbit jar hash the audit enforces");
         assertTrue(table.contains("changed version, byte, mixin selector, target descriptor"));
         assertTrue(table.contains("fails closed"));
     }
