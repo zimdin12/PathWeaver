@@ -6,6 +6,10 @@ import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.level.pathfinder.PathFinder;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.AnnotationNode;
+import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 
@@ -179,6 +183,44 @@ class AuditedMixinCompatibilityTest {
             "COMPATIBILITY.md no longer quotes the pinned rabbit jar hash the audit enforces");
         assertTrue(table.contains("changed version, byte, mixin selector, target descriptor"));
         assertTrue(table.contains("fails closed"));
+    }
+
+    /**
+     * A handler using an annotation the enumerator does not read must be REPORTED, not skipped.
+     *
+     * <p>The enumerator looked up one annotation descriptor and {@code continue}d past every method
+     * that did not carry it. So an artifact with exactly the two pinned {@code @Inject} handlers
+     * plus an extra {@code @ModifyConstant} passed the "must modify exactly two audited methods"
+     * count -- the extra modification never entered the count meant to notice it. This is not
+     * hypothetical: rabbit-pathfinding-fix 1.4.0 moved {@code resetStuckTimeout} from an
+     * {@code @Inject} at TAIL to exactly such a {@code @ModifyConstant}.
+     *
+     * <p>The class hash contains this for the artifact pinned today, which is why the whole suite
+     * stayed green with the hole open. It bites when someone re-pins: a green shape proof that
+     * under-reports what the mod modifies makes the audit's claim false while leaving it green.
+     */
+    @Test void aHandlerTheEnumeratorCannotReadIsReportedRatherThanSkipped() throws Exception {
+        var exact = rabbitBundle();
+        ClassNode node = new ClassNode();
+        new ClassReader(exact.mixin()).accept(node, 0);
+
+        MethodNode extra = new MethodNode(Opcodes.ACC_PRIVATE, "pathweaverTestExtraHandler",
+            "(D)D", null, null);
+        extra.invisibleAnnotations = List.of(
+            new AnnotationNode("Lorg/spongepowered/asm/mixin/injection/ModifyConstant;"));
+        node.methods.add(extra);
+        ClassWriter writer = new ClassWriter(0);
+        node.accept(writer);
+
+        var result = AuditedMixinCompatibility.verifyRabbit(
+            new AuditedMixinCompatibility.RabbitBundle(exact.moduleJar(), exact.config(),
+                writer.toByteArray(), exact.vanillaTarget(), exact.workerEntry()));
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("does not "
+                + "enumerate") && d.contains("ModifyConstant")),
+            () -> "an injection the audit cannot read must be named, not silently skipped: "
+                + result.diagnostics());
     }
 
     @Test void everyRabbitFingerprintPartFailsClosedOnDrift() throws Exception {

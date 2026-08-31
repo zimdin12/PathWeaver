@@ -224,7 +224,14 @@ final class AuditedMixinCompatibility {
         int redirectCount = 0;
         for (MethodNode method : node.methods) {
             AnnotationNode redirect = findAnnotation(method, REDIRECT_DESC);
-            if (redirect == null) continue;
+            if (redirect == null) {
+                for (String other : foreignInjections(method, REDIRECT_DESC)) {
+                    diagnostics.add("ServerCore mixin carries an injection this audit does not "
+                        + "enumerate, so its modification surface is unknown: " + method.name
+                        + method.desc + " " + other);
+                }
+                continue;
+            }
             redirectCount++;
             if (!annotationContains(annotationValue(redirect, "method"), FIND_PATH_SELECTOR)) {
                 diagnostics.add("ServerCore redirect selector drift: " + method.name + method.desc);
@@ -318,7 +325,14 @@ final class AuditedMixinCompatibility {
         int injections = 0;
         for (MethodNode method : node.methods) {
             AnnotationNode inject = findAnnotation(method, INJECT_DESC);
-            if (inject == null) continue;
+            if (inject == null) {
+                for (String other : foreignInjections(method, INJECT_DESC)) {
+                    diagnostics.add("rabbit mixin carries an injection this audit does not "
+                        + "enumerate, so its modification surface is unknown: " + method.name
+                        + method.desc + " " + other);
+                }
+                continue;
+            }
             injections++;
             AnnotationNode at = singleAnnotation(annotationValue(inject, "at"));
             Object selector = annotationValue(inject, "method");
@@ -420,6 +434,41 @@ final class AuditedMixinCompatibility {
             if (insn.getOpcode() >= 0) result.add(insn.getOpcode());
         }
         return result;
+    }
+
+    /**
+     * Any mixin handler on this method that is NOT the one annotation this audit enumerates.
+     *
+     * <p>Both enumerators here looked up a single annotation descriptor and {@code continue}d past
+     * every method that did not carry it. A handler using any other injection annotation was
+     * therefore not counted, not diagnosed and not reported, so an artifact carrying exactly the
+     * pinned handlers PLUS an extra {@code @ModifyConstant}, {@code @ModifyVariable},
+     * {@code @Overwrite} or MixinExtras injector satisfied the pinned count: the extra modification
+     * never entered the count that was supposed to notice it.
+     *
+     * <p>The SHA-256 pin on the mixin class contains this for the artifacts pinned today, since
+     * those bytes cannot change without the hash failing. It bites at RE-AUDIT time, which is the
+     * worst moment for it: whoever updates a pin gets a green shape proof that under-reports the
+     * modification surface, making the audit's claim false while leaving it green.
+     *
+     * <p>The sibling audits already do this. FabricSwimCompatibility and
+     * FabricInteractionCompatibility both diagnose unexpected injection annotations rather than
+     * skipping them; this was the only one of the four that did not.
+     */
+    private static List<String> foreignInjections(MethodNode method, String enumerated) {
+        List<String> found = new ArrayList<>();
+        for (List<AnnotationNode> set : java.util.Arrays.asList(
+                method.visibleAnnotations, method.invisibleAnnotations)) {
+            if (set == null) continue;
+            for (AnnotationNode node : set) {
+                if (node.desc.equals(enumerated)) continue;
+                if (node.desc.startsWith("Lorg/spongepowered/asm/mixin/injection/")
+                        || node.desc.startsWith("Lcom/llamalad7/mixinextras/injector/")) {
+                    found.add(node.desc);
+                }
+            }
+        }
+        return found;
     }
 
     private static AnnotationNode findAnnotation(MethodNode method, String descriptor) {
