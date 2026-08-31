@@ -85,6 +85,20 @@ public final class BrainSinkRefusedDispatchGameTest {
             for (int x = 0; x <= 12; x++) {
                 for (int z = 0; z <= 6; z++) helper.setBlock(x, 1, z, Blocks.STONE);
             }
+            // A RIM. Without it the villager wanders off the platform during the settle,
+            // falls, and can never reach anything -- observed as roughly one failure in six,
+            // with the mob two blocks below the floor. A test that fails at random gets
+            // believed when it is green and ignored when it is red.
+            for (int y = 2; y <= 3; y++) {
+                for (int x = 0; x <= 12; x++) {
+                    helper.setBlock(x, y, 0, Blocks.BEDROCK);
+                    helper.setBlock(x, y, 6, Blocks.BEDROCK);
+                }
+                for (int z = 0; z <= 6; z++) {
+                    helper.setBlock(0, y, z, Blocks.BEDROCK);
+                    helper.setBlock(12, y, z, Blocks.BEDROCK);
+                }
+            }
             villager = helper.spawn(EntityType.VILLAGER, 2, 2, 3);
             villager.setOnGround(true);
             advance(1);

@@ -68,6 +68,20 @@ public final class BrainSinkRoutingGameTest {
                 for (int x = 0; x <= 8; x++) {
                     for (int z = 0; z <= 6; z++) helper.setBlock(x, 1, z, Blocks.STONE);
                 }
+                // A RIM. Without it the villager wanders off the platform during the settle,
+                // falls, and can never reach anything -- observed as roughly one failure in six,
+                // with the mob two blocks below the floor. A test that fails at random gets
+                // believed when it is green and ignored when it is red.
+                for (int y = 2; y <= 3; y++) {
+                    for (int x = 0; x <= 8; x++) {
+                        helper.setBlock(x, y, 0, Blocks.BEDROCK);
+                        helper.setBlock(x, y, 6, Blocks.BEDROCK);
+                    }
+                    for (int z = 0; z <= 6; z++) {
+                        helper.setBlock(0, y, z, Blocks.BEDROCK);
+                        helper.setBlock(8, y, z, Blocks.BEDROCK);
+                    }
+                }
                 mob[0] = helper.spawn(EntityType.VILLAGER, 3, 2, 3);
                 mob[0].setOnGround(true);
                 return;
@@ -137,6 +151,20 @@ public final class BrainSinkRoutingGameTest {
                 for (int x = 0; x <= 12; x++) {
                     for (int z = 0; z <= 6; z++) helper.setBlock(x, 1, z, Blocks.STONE);
                 }
+                // A RIM. Without it the villager wanders off the platform during the settle,
+                // falls, and can never reach anything -- observed as roughly one failure in six,
+                // with the mob two blocks below the floor. A test that fails at random gets
+                // believed when it is green and ignored when it is red.
+                for (int y = 2; y <= 3; y++) {
+                    for (int x = 0; x <= 12; x++) {
+                        helper.setBlock(x, y, 0, Blocks.BEDROCK);
+                        helper.setBlock(x, y, 6, Blocks.BEDROCK);
+                    }
+                    for (int z = 0; z <= 6; z++) {
+                        helper.setBlock(0, y, z, Blocks.BEDROCK);
+                        helper.setBlock(12, y, z, Blocks.BEDROCK);
+                    }
+                }
                 mob[0] = helper.spawn(EntityType.VILLAGER, 2, 2, 3);
                 mob[0].setOnGround(true);
                 return;
@@ -150,7 +178,7 @@ public final class BrainSinkRoutingGameTest {
             // A DIFFERENT destination every tick, exactly as AnimalPanic does.
             int step = (int) ((tick - armedAt[0]) % 5);
             mob[0].getBrain().setMemory(MemoryModuleType.WALK_TARGET,
-                new WalkTarget(helper.absolutePos(new BlockPos(8 + step, 2, 2 + (step % 4))),
+                new WalkTarget(helper.absolutePos(new BlockPos(8 + (step % 4), 2, 2 + (step % 4))),
                     1.0F, 0));
 
             if (!mob[0].blockPosition().closerThan(start[0], 2.5)) {
@@ -189,6 +217,7 @@ public final class BrainSinkRoutingGameTest {
         private long stageStartedAt;
         private boolean cleaned;
         private boolean everHadPath;
+        private int rearms;
 
         Scenario(GameTestHelper helper) {
             this.helper = helper;
@@ -224,6 +253,20 @@ public final class BrainSinkRoutingGameTest {
             cfg.brainSinkAsync = true;
             for (int x = 0; x <= 12; x++) {
                 for (int z = 0; z <= 6; z++) helper.setBlock(x, 1, z, Blocks.STONE);
+            }
+            // A RIM. Without it the villager wanders off the platform during the settle,
+            // falls, and can never reach anything -- observed as roughly one failure in six,
+            // with the mob two blocks below the floor. A test that fails at random gets
+            // believed when it is green and ignored when it is red.
+            for (int y = 2; y <= 3; y++) {
+                for (int x = 0; x <= 12; x++) {
+                    helper.setBlock(x, y, 0, Blocks.BEDROCK);
+                    helper.setBlock(x, y, 6, Blocks.BEDROCK);
+                }
+                for (int z = 0; z <= 6; z++) {
+                    helper.setBlock(0, y, z, Blocks.BEDROCK);
+                    helper.setBlock(12, y, z, Blocks.BEDROCK);
+                }
             }
             villager = helper.spawn(EntityType.VILLAGER, 2, 2, 3);
             villager.setOnGround(true);
@@ -261,15 +304,44 @@ public final class BrainSinkRoutingGameTest {
             // behaviour stops, and a path across open ground ends a couple of blocks short of the
             // requested block, so an unscoped version of this fired on a healthy build at three
             // blocks out -- on vanilla's own completion, not on the defect.
-            if (!everHadPath) {
+            // Scoped to ticks where a search for THIS destination is actually outstanding.
+            //
+            // "must survive until the mob first holds a path" was too strong and failed about one run
+            // in six on a healthy build: after a deferral the synchronous fallback can hit a
+            // transient no-path -- a villager momentarily off the ground -- and vanilla then erases
+            // the target itself, which is its own behaviour and not ours. Asking only about the
+            // deferred window keeps the assertion pointed at the thing this mod does, and it still
+            // kills the mutation that erases on the defer branch, because that erase happens with the
+            // slot pending.
+            boolean deferredRightNow = PathWeaverRuntime.get().entitySink()
+                .hasPendingBrainSink(villager.getId(), requestedTarget);
+            if (!everHadPath && deferredRightNow) {
                 check(villager.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET),
-                    "the villager lost its walk target before it ever got a path, i.e. while the "
-                        + "off-thread search was still outstanding. Deferring must not make vanilla "
+                    "the villager lost its walk target while an off-thread search for that exact "
+                        + "destination was outstanding. Deferring must not make vanilla "
                         + "forget where the mob was going: MoveToTargetSink is priority 1 and Brain "
                         + "iterates priorities ascending, so an absent(WALK_TARGET) stroll behaviour "
                         + "claims the mob on that same tick. at="
                         + villager.blockPosition() + " target=" + requestedTarget
                         + " navPath=" + (villager.getNavigation().getPath() != null));
+            }
+
+            // If vanilla dropped the target for its own reason -- a transient no-path while the mob
+            // was momentarily off the ground -- re-arm and carry on. This is NOT the compensation
+            // that hid the original defect: that one rewrote the target every tick unconditionally,
+            // which is what made the erase invisible. This re-arms only when no search is pending,
+            // so the strict assertion above still sees every deferred tick, and it is bounded so a
+            // mob that keeps losing its target fails rather than looping.
+            if (!deferredRightNow
+                    && !villager.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET)
+                    && !villager.blockPosition().closerThan(requestedTarget, 3.5)) {
+                if (++rearms > 2) {
+                    throw helper.assertionException(
+                        "the villager lost its walk target " + rearms + " times without a search "
+                            + "pending; that is more than a transient no-path explains");
+                }
+                villager.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
+                    new WalkTarget(requestedTarget, 0.5F, 0));
             }
 
             if (parked > 0 && everHadPath
