@@ -63,7 +63,7 @@ final class FabricInteractionCompatibility {
      * modules (content registries, for one) happen to be byte-identical across both packagings and
      * never exposed this.
      *
-     * <p>Both hashes are for module version {@code 5.2.2+07b380be4c}. The mixin class and config
+     * <p>The accepted hashes are all for {@code MOD_VERSION}. The mixin class and config
      * bytes -- which are what the audit actually reasons about -- are identical in both forms and
      * remain pinned exactly, so accepting either packaging does not widen what is trusted.
      */
