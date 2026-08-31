@@ -18,7 +18,7 @@ class AuditedMixinDecisionTest {
         new ForeignMixinScanner.SwimExemptionEvidence(false, List.of());
 
     @Test void exactServerCoreClaimRequiresVerifiedRuntimeEvidence() {
-        var config = serverCoreConfig("1.5.19+26.1.2", "servercore.common.mixins.json",
+        var config = serverCoreConfig(AuditedMixinCompatibility.SERVERCORE_VERSION, "servercore.common.mixins.json",
             "me.wesley1808.servercore.mixin.optimizations.misc.PathFinderMixin", true);
         assertEquals(SafetyGate.allowlisted(),
             decide(config, ForeignMixinScanner.AuditedExemptionEvidence.unverified()).denied());
@@ -26,7 +26,7 @@ class AuditedMixinDecisionTest {
     }
 
     @Test void exactRabbitClaimRequiresVerifiedRuntimeEvidence() {
-        var config = rabbitConfig("1.3.0", "rabbit-pathfinding-fix.mixins.json",
+        var config = rabbitConfig(AuditedMixinCompatibility.RABBIT_VERSION, "rabbit-pathfinding-fix.mixins.json",
             "net.litetex.rpf.mixin.EntityNavigationMixin", false);
         assertEquals(SafetyGate.allowlisted(),
             decide(config, ForeignMixinScanner.AuditedExemptionEvidence.unverified()).denied());
@@ -39,22 +39,22 @@ class AuditedMixinDecisionTest {
         for (var nearMiss : List.of(
             serverCoreConfig("1.5.20+future", "servercore.common.mixins.json",
                 "me.wesley1808.servercore.mixin.optimizations.misc.PathFinderMixin", true),
-            serverCoreConfig("1.5.19+26.1.2", "renamed.mixins.json",
+            serverCoreConfig(AuditedMixinCompatibility.SERVERCORE_VERSION, "renamed.mixins.json",
                 "me.wesley1808.servercore.mixin.optimizations.misc.PathFinderMixin", true),
-            serverCoreConfig("1.5.19+26.1.2", "servercore.common.mixins.json",
+            serverCoreConfig(AuditedMixinCompatibility.SERVERCORE_VERSION, "servercore.common.mixins.json",
                 "foreign.ImpostorPathFinderMixin", true),
-            serverCoreConfig("1.5.19+26.1.2", "servercore.common.mixins.json",
+            serverCoreConfig(AuditedMixinCompatibility.SERVERCORE_VERSION, "servercore.common.mixins.json",
                 "me.wesley1808.servercore.mixin.optimizations.misc.PathFinderMixin", false),
-            new ForeignMixinScanner.ActiveConfig("servercore", "1.5.19+26.1.2",
+            new ForeignMixinScanner.ActiveConfig("servercore", AuditedMixinCompatibility.SERVERCORE_VERSION,
                 "servercore.common.mixins.json", Set.of(new ForeignMixinScanner.TargetClaim(
                     "me.wesley1808.servercore.mixin.optimizations.misc.PathFinderMixin",
                     PATH_FINDER)), new ForeignMixinScanner.PluginIdentity(
                         "foreign.WrongPlugin", AuditedMixinCompatibility.SERVERCORE_PLUGIN_SHA)),
-            new ForeignMixinScanner.ActiveConfig("servercore-impostor", "1.5.19+26.1.2",
+            new ForeignMixinScanner.ActiveConfig("servercore-impostor", AuditedMixinCompatibility.SERVERCORE_VERSION,
                 "servercore.common.mixins.json", Set.of(new ForeignMixinScanner.TargetClaim(
                     "me.wesley1808.servercore.mixin.optimizations.misc.PathFinderMixin",
                     PATH_FINDER)), true),
-            new ForeignMixinScanner.ActiveConfig("servercore", "1.5.19+26.1.2",
+            new ForeignMixinScanner.ActiveConfig("servercore", AuditedMixinCompatibility.SERVERCORE_VERSION,
                 "servercore.common.mixins.json", Set.of(new ForeignMixinScanner.TargetClaim(
                     "me.wesley1808.servercore.mixin.optimizations.misc.PathFinderMixin",
                     "net.minecraft.world.level.pathfinder.NodeEvaluator")), true))) {
@@ -64,16 +64,16 @@ class AuditedMixinDecisionTest {
         for (var nearMiss : List.of(
             rabbitConfig("1.4.0", "rabbit-pathfinding-fix.mixins.json",
                 "net.litetex.rpf.mixin.EntityNavigationMixin", false),
-            rabbitConfig("1.3.0", "renamed.mixins.json",
+            rabbitConfig(AuditedMixinCompatibility.RABBIT_VERSION, "renamed.mixins.json",
                 "net.litetex.rpf.mixin.EntityNavigationMixin", false),
-            rabbitConfig("1.3.0", "rabbit-pathfinding-fix.mixins.json",
+            rabbitConfig(AuditedMixinCompatibility.RABBIT_VERSION, "rabbit-pathfinding-fix.mixins.json",
                 "foreign.ImpostorNavigationMixin", false),
-            rabbitConfig("1.3.0", "rabbit-pathfinding-fix.mixins.json",
+            rabbitConfig(AuditedMixinCompatibility.RABBIT_VERSION, "rabbit-pathfinding-fix.mixins.json",
                 "net.litetex.rpf.mixin.EntityNavigationMixin", true),
-            new ForeignMixinScanner.ActiveConfig("rabbit-impostor", "1.3.0",
+            new ForeignMixinScanner.ActiveConfig("rabbit-impostor", AuditedMixinCompatibility.RABBIT_VERSION,
                 "rabbit-pathfinding-fix.mixins.json", Set.of(new ForeignMixinScanner.TargetClaim(
                     "net.litetex.rpf.mixin.EntityNavigationMixin", PATH_NAVIGATION)), false),
-            new ForeignMixinScanner.ActiveConfig("rabbit-pathfinding-fix", "1.3.0",
+            new ForeignMixinScanner.ActiveConfig("rabbit-pathfinding-fix", AuditedMixinCompatibility.RABBIT_VERSION,
                 "rabbit-pathfinding-fix.mixins.json", Set.of(new ForeignMixinScanner.TargetClaim(
                     "net.litetex.rpf.mixin.EntityNavigationMixin", PATH_FINDER)), false))) {
             assertEquals(SafetyGate.allowlisted(),
@@ -82,7 +82,7 @@ class AuditedMixinDecisionTest {
     }
 
     @Test void verifiedClaimDoesNotExemptAnAddedSensitiveClaim() {
-        var exact = serverCoreConfig("1.5.19+26.1.2", "servercore.common.mixins.json",
+        var exact = serverCoreConfig(AuditedMixinCompatibility.SERVERCORE_VERSION, "servercore.common.mixins.json",
             "me.wesley1808.servercore.mixin.optimizations.misc.PathFinderMixin", true);
         var extra = new ForeignMixinScanner.ActiveConfig(exact.modId(), exact.version(), exact.configName(),
             Set.of(exact.claims().iterator().next(),
@@ -93,10 +93,10 @@ class AuditedMixinDecisionTest {
     }
 
     @Test void nominalAuditListIsExactAndDoesNotTrustOwnerPrefixes() {
-        assertTrue(ForeignMixinScanner.isAuditedExemption("servercore", "1.5.19+26.1.2",
+        assertTrue(ForeignMixinScanner.isAuditedExemption("servercore", AuditedMixinCompatibility.SERVERCORE_VERSION,
             "servercore.common.mixins.json",
             "me.wesley1808.servercore.mixin.optimizations.misc.PathFinderMixin", PATH_FINDER));
-        assertTrue(ForeignMixinScanner.isAuditedExemption("rabbit-pathfinding-fix", "1.3.0",
+        assertTrue(ForeignMixinScanner.isAuditedExemption("rabbit-pathfinding-fix", AuditedMixinCompatibility.RABBIT_VERSION,
             "rabbit-pathfinding-fix.mixins.json", "net.litetex.rpf.mixin.EntityNavigationMixin",
             PATH_NAVIGATION));
         assertFalse(ForeignMixinScanner.isAuditedExemption("servercore", "future",

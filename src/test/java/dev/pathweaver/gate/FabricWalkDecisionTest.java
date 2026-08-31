@@ -16,8 +16,8 @@ class FabricWalkDecisionTest {
         new ForeignMixinScanner.SwimExemptionEvidence(true, List.of());
 
     @Test void exactContentAndInteractionClaimsRequireBothVerifiedBundles() {
-        var content = contentConfig("11.2.1+76b0b6bb4c", false, false);
-        var interaction = interactionConfig("5.2.2+07b380be4c", false, false);
+        var content = contentConfig(FabricSwimCompatibility.MOD_VERSION, false, false);
+        var interaction = interactionConfig(FabricInteractionCompatibility.MOD_VERSION, false, false);
         var contentOnly = FabricSwimCompatibility.exactLandEvidence();
         var interactionOnly = FabricInteractionCompatibility.exactEvidence();
         var both = contentOnly.merge(interactionOnly);
@@ -34,13 +34,13 @@ class FabricWalkDecisionTest {
     @Test void interactionVersionPluginClassAndExtraClaimNearMissesDenyBoth() {
         var both = FabricSwimCompatibility.exactLandEvidence()
             .merge(FabricInteractionCompatibility.exactEvidence());
-        var content = contentConfig("11.2.1+76b0b6bb4c", false, false);
+        var content = contentConfig(FabricSwimCompatibility.MOD_VERSION, false, false);
         for (var nearMiss : List.of(
                 interactionConfig("5.2.3+drift", false, false),
-                interactionConfig("5.2.2+07b380be4c", true, false),
-                interactionConfig("5.2.2+07b380be4c", false, true),
+                interactionConfig(FabricInteractionCompatibility.MOD_VERSION, true, false),
+                interactionConfig(FabricInteractionCompatibility.MOD_VERSION, false, true),
                 new ForeignMixinScanner.ActiveConfig("fabric-events-interaction-v0",
-                    "5.2.2+07b380be4c", "fabric-events-interaction-v0.mixins.json",
+                    FabricInteractionCompatibility.MOD_VERSION, "fabric-events-interaction-v0.mixins.json",
                     Set.of(new ForeignMixinScanner.TargetClaim("foreign.ChangedSelector", BLOCK_STATE)), false))) {
             assertEquals(SafetyGate.allowlisted(),
                 decide(content, nearMiss, both).denied(), nearMiss.toString());
@@ -50,11 +50,11 @@ class FabricWalkDecisionTest {
     @Test void contentVersionPluginAndAddedSensitiveClaimNearMissesDeny() {
         var both = FabricSwimCompatibility.exactLandEvidence()
             .merge(FabricInteractionCompatibility.exactEvidence());
-        var interaction = interactionConfig("5.2.2+07b380be4c", false, false);
+        var interaction = interactionConfig(FabricInteractionCompatibility.MOD_VERSION, false, false);
         for (var nearMiss : List.of(
                 contentConfig("11.2.2+drift", false, false),
-                contentConfig("11.2.1+76b0b6bb4c", true, false),
-                contentConfig("11.2.1+76b0b6bb4c", false, true))) {
+                contentConfig(FabricSwimCompatibility.MOD_VERSION, true, false),
+                contentConfig(FabricSwimCompatibility.MOD_VERSION, false, true))) {
             assertFalse(decide(nearMiss, interaction, both).denied().isEmpty(), nearMiss.toString());
         }
     }
