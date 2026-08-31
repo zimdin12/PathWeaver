@@ -181,6 +181,29 @@ Mean tick time fell **43.5% to 48.2%**; p99 fell **55–61%**. No overlap: every
 
 **These are not comparable to the figures published for 0.3.0.** During 0.4.0's development the mixin that isolates Minecraft's shared path-type cache from workers silently stopped applying, and a search reusing that already-populated shared cache runs faster than one filling a private cache. Every figure here was re-measured after that was fixed, on the exact release artifact rather than a close relative of it.
 
+### The brain sink, measured
+
+`brainSinkAsync` moves villager and other brain-mob path searches off the tick. Three pairs of
+60-second profiles on the 222-jar dedicated pack, 140 villagers and 30 goats in a walled arena, the
+only variable being the setting. Every thread was profiled, not just the server thread.
+
+| | on | off |
+|---|---|---|
+| **Pathfinding on the server thread** | **139 ms** | **325 ms** |
+| Pathfinding on worker threads | 227 ms | 0 ms |
+| Total pathfinding, all threads | 365 ms | 325 ms |
+| MSPT | 5.13 ms | 5.25 ms |
+
+**57% of brain-mob pathfinding comes off the tick**, and every run with the setting on was below
+every run with it off (`120, 148, 148` against `288, 288, 400` ms).
+
+It costs about **12% more CPU in total** to do that. Moving work is not removing it: the snapshot,
+hand-off and install are real, and they show up because every thread was sampled. MSPT barely moved
+and its ranges overlap, because this server sat at 5 ms against a 50 ms budget — the honest claim
+here is headroom, not throughput.
+
+Full method, controls and the seven discarded runs: [docs/evidence/BRAINSINK-0.8.0.md](docs/evidence/BRAINSINK-0.8.0.md).
+
 ### Profiled on a real modpack, with spark
 
 The tables above are a synthetic burst in a four-mod environment. This is the same question asked
