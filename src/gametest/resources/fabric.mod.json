@@ -13,7 +13,8 @@
     ],
     "fabric-gametest": [
       "dev.pathweaver.gametest.PathNavigationRoutingGameTest",
-      "dev.pathweaver.gametest.AuditedCompatibilityRoutingGameTest"
+      "dev.pathweaver.gametest.AuditedCompatibilityRoutingGameTest",
+      "dev.pathweaver.gametest.BrainSinkRefusedDispatchGameTest"
     ],
     "fabric-client-gametest": [
       "dev.pathweaver.gametest.ClientSingleplayerGameTest"
