@@ -458,6 +458,27 @@ final class AuditedMixinCompatibility {
     }
 
     /**
+     * Mixin annotations that do not, by themselves, change what a vanilla method does.
+     *
+     * <p>Everything else under the mixin package is reported. Listing the SAFE ones and failing
+     * closed on the rest is the only version of this that stays correct: the first attempt matched
+     * on the {@code injection/} subpackage, which reads as though it covers the dangerous cases and
+     * does not. {@code @Overwrite} lives at {@code org/spongepowered/asm/mixin/Overwrite}, outside
+     * that subpackage, and it replaces a whole method body -- the single most invasive thing a mixin
+     * can do, and the one that check silently ignored.
+     */
+    private static final Set<String> BENIGN_MIXIN_ANNOTATIONS = Set.of(
+        "Lorg/spongepowered/asm/mixin/Mixin;",
+        "Lorg/spongepowered/asm/mixin/Shadow;",
+        "Lorg/spongepowered/asm/mixin/Unique;",
+        "Lorg/spongepowered/asm/mixin/Final;",
+        "Lorg/spongepowered/asm/mixin/Implements;",
+        "Lorg/spongepowered/asm/mixin/Interface;",
+        "Lorg/spongepowered/asm/mixin/Debug;",
+        "Lorg/spongepowered/asm/mixin/Dynamic;",
+        "Lorg/spongepowered/asm/mixin/Pseudo;");
+
+    /**
      * Any mixin handler on this method that is NOT the one annotation this audit enumerates.
      *
      * <p>Both enumerators here looked up a single annotation descriptor and {@code continue}d past
@@ -483,8 +504,9 @@ final class AuditedMixinCompatibility {
             if (set == null) continue;
             for (AnnotationNode node : set) {
                 if (java.util.Arrays.asList(enumerated).contains(node.desc)) continue;
-                if (node.desc.startsWith("Lorg/spongepowered/asm/mixin/injection/")
-                        || node.desc.startsWith("Lcom/llamalad7/mixinextras/injector/")) {
+                if (BENIGN_MIXIN_ANNOTATIONS.contains(node.desc)) continue;
+                if (node.desc.startsWith("Lorg/spongepowered/asm/mixin/")
+                        || node.desc.startsWith("Lcom/llamalad7/mixinextras/")) {
                     found.add(node.desc);
                 }
             }

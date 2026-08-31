@@ -74,7 +74,7 @@ a chain is exactly what let a new constant default to the wrong answer when it w
 exhaustive switch.
 
 Deferred to 0.9 with the reasoning recorded, not silently dropped: splitting `PathNavigationMixin`
-(940 lines) and `ForeignMixinScanner` (1074), extracting the dispatch decision into a pure policy
+(940 lines) and `ForeignMixinScanner` (1107), extracting the dispatch decision into a pure policy
 object, de-duplicating ~180 lines of ASM toolkit across the four audit classes. Each is a real
 improvement and none is release-shaped.
 
@@ -148,7 +148,7 @@ runs record a full start/stop lifecycle.
 
 ## Verification
 
-- Unit suite: 395 tests, green.
+- Unit suite: 402 tests, green.
 - Harnesses, four consecutive rounds each: default 2, unsafe 5, refused 2, breaker 2,
   auditedRouting 2 — all green every round.
 - Roughly thirty mutations compiled and observed to fail across this work. Three survived their first
