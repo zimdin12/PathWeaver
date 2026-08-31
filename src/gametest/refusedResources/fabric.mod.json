@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "id": "pathweaver_gametest",
+  "id": "pathweaver_gametest_refused",
   "version": "1.0.0",
-  "name": "PathWeaver Game Tests",
+  "name": "PathWeaver Refused-Dispatch Brain Sink Game Test",
   "environment": "*",
   "mixins": [
     "pathweaver-gametest.mixins.json"
@@ -12,11 +12,7 @@
       "dev.pathweaver.gametest.StartupConfigMigrationProbe"
     ],
     "fabric-gametest": [
-      "dev.pathweaver.gametest.PathNavigationRoutingGameTest",
-      "dev.pathweaver.gametest.AuditedCompatibilityRoutingGameTest"
-    ],
-    "fabric-client-gametest": [
-      "dev.pathweaver.gametest.ClientSingleplayerGameTest"
+      "dev.pathweaver.gametest.BrainSinkRefusedDispatchGameTest"
     ]
   },
   "depends": {

@@ -353,6 +353,27 @@ if (providers.gradleProperty("unsafeTierHarness").isPresent()) {
     }
 }
 
+// The refused-dispatch brain-sink witness runs alone for the same reason the breaker does, and it
+// learned it the same way. It spawns a villager, and it shared a harness with
+// PathNavigationRoutingGameTest, which asserts an EXACT global dispatch delta on a named tick. An
+// extra mob perturbing server timing made that assertion fail about one run in six -- a flake in
+// somebody else's test, caused by mine.
+if (providers.gradleProperty("refusedHarness").isPresent()) {
+    tasks.register("prepareRefusedGameTestHarness") {
+        dependsOn tasks.named("processGametestResources")
+        outputs.upToDateWhen { false }
+        doLast {
+            copy {
+                from file("src/gametest/refusedResources/fabric.mod.json")
+                into layout.buildDirectory.dir("resources/gametest")
+            }
+        }
+    }
+    tasks.named("runGameTest") {
+        dependsOn tasks.named("prepareRefusedGameTestHarness")
+    }
+}
+
 // The breaker harness runs alone, and has to. Fabric GameTest v1 has no `batch` attribute, so every
 // test in a harness runs concurrently against one global config and one global SafetyGate -- and this
 // one deliberately switches a movement family off. Beside the routing tests it would be racing them
