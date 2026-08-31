@@ -133,10 +133,46 @@ does not establish a benefit on a small host — see `PathWeaverRuntime.lowCoreA
 recommends turning the mod off at two cores or fewer — nor on a pack where little pathfinding
 happens, where the honest expectation is no measurable change either way.
 
-## 10. Async `MoveToTargetSink` — reopened, and the stated reason for rejecting it was wrong
+## 10. Async `MoveToTargetSink` — built in 0.7.0, by deferring rather than answering optimistically
+
+**Status: shipped, as `brainSinkAsync`, default on.** The analysis below is kept because it is what
+the design was tested against, and because one thing it named as the real blocker turned out to be a
+blocker for a *different* approach than the one taken.
+
+**Why the blocker in this section does not apply.** It says an optimistic answer cancels its own
+search: `canStillUse` begins `if (this.path == null) return false`, so a behaviour told "yes,
+reachable" with no path is started and torn down in the same tick, and `stop()` cancels the request.
+That is correct, and it is why the implementation does the opposite — it answers **false** while the
+search is in flight, so the behaviour is never started and there is nothing to tear down. The cost is
+one tick of delay before the mob sets off, which is stated in the setting's own tooltip.
+
+**Where the deferral had to be taken, which is not obvious.** Returning false from `tryComputePath`
+is wrong: `checkExtraStartConditions` answers a false by erasing `WALK_TARGET` (offsets 83-87), so
+the mob loses its destination and an `absent(WALK_TARGET)` behaviour claims it later in the same tick.
+The deferral is therefore taken at the head of `checkExtraStartConditions`, which skips that body
+entirely — and it must still reproduce the two guards it now sits above, `remainingCooldown` (offsets
+0-18) and `reachedTarget` (39-50), or the mod pathfinds in the two cases where vanilla deliberately
+does not.
+
+**The liveness bound, and the mob that needs it.** `AnimalPanic.tick` overwrites `WALK_TARGET` with a
+fresh random position on every tick the navigation is idle, ungated. A deferral leaves the mob
+pathless, so the destination re-rolls and the parked answer is never for the question being asked.
+Without a bound a panicking animal stands still for the whole panic while dispatching one search per
+tick. The deferral is capped at two consecutive ticks; after that vanilla answers synchronously.
+
+**The POI risk this section raised, measured against the implementation.** The worst-shaped bug named
+below — `CANT_REACH_WALK_TARGET_SINCE` held long enough that `SetWalkTargetFromBlockMemory` calls
+`villager.releasePoi(...)` and the villager silently loses its workstation — does not get worse under
+this design, and the direction matters. Deferring SKIPS vanilla's write, so the timer starts later
+rather than earlier, by at most the two ticks the liveness bound allows, against a threshold of 1200.
+The erase is likewise delayed rather than suppressed, so nothing accumulates.
+
+### Original analysis (kept for the record)
 
 This section previously said the idea was structurally impossible. A bytecode investigation showed the
-argument it made was about a different idea, so it is rewritten rather than amended. (That
+argument it made was about a different idea, so it is rewritten rather than amended.
+
+(That
 investigation was done for a release briefly numbered 0.5.4, which was never published; the work
 shipped in 0.6.0.)
 

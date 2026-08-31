@@ -5,6 +5,30 @@
 Mostly defects. Twenty-odd of them, found by four parallel read-only hunts over the async, mixin,
 gate and config packages, then by an adversarial review of the whole release diff.
 
+### Villager brains now path off-thread (`brainSinkAsync`, on by default)
+
+Brain mobs — villagers, piglins, axolotls, frogs, allays, camels and about twenty other AI packages —
+never call `moveTo`. Every path they walk went through one method that asks for a route and reads the
+answer on the next line, so the mod could not see them at all. They were not being refused; they were
+invisible. On a profile of the reference pack this was the largest slice of pathfinding left on the
+server thread that could be moved.
+
+They are now answered a tick later instead, off-thread. **That one tick is a real behaviour change**
+and it is why this is a setting rather than unconditional: a brain mob sets off one tick after it
+otherwise would. Nothing else differs — the path is handed back to vanilla's own reachability and
+memory handling untouched.
+
+The warden is **not** covered: its navigation builds a custom pathfinder, and dispatch requires the
+stock one.
+
+What this cost to get right, since the honest version is more useful than the confident one: seven
+defects, found across four adversarial review rounds, every one of them mine. Deferring in the wrong
+method made vanilla erase the mob's destination. Inferring whether a dispatch had happened gave the
+wrong answer when one request superseded another, and handed a goal the route to somewhere the mob
+had already abandoned. A collected path arrived without the bookkeeping that says where it leads. And
+an unbounded deferral froze panicking animals — the way a burning animal reaches water is by
+panicking — so the deferral is now capped at two ticks, after which vanilla answers immediately.
+
 ### Player-visible
 
 - **Mobs no longer freeze for up to a second after the world changes under them.** Vanilla nulls a

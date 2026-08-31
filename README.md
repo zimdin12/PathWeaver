@@ -102,9 +102,12 @@ because the mixin never reaches a watched method.)
 
 Eligibility is not the same as coverage. It means nothing blocks dispatch for that mob type — not
 that every movement it makes goes off-thread. Brain-driven movement (`MoveToTargetSink`, which is
-villagers, piglins, axolotls, frogs, allays and the warden) calls `createPath` directly and stays
-synchronous by construction; see [DESIGN.md §10](DESIGN.md) for why that is deliberate rather than a
-gap. Wall-climber chases were in that sentence until 0.6.0 and are not any more — spiders dispatch.
+villagers, piglins, axolotls, frogs, allays and about twenty other AI packages) calls `createPath`
+directly and read its answer on the next line, so it was invisible to dispatch until 0.7.0, when
+`brainSinkAsync` began deferring it by one tick instead; see [DESIGN.md §10](DESIGN.md). The warden
+is *not* covered — its navigation builds a `PathFinder` subclass, and dispatch requires the exact
+stock class. Wall-climber chases were in that sentence until 0.6.0 and are not any more — spiders
+dispatch.
 
 Where the scan denies nothing — a lean pack, Fabric API and Lithium — `AUDITED` admits everything on
 its own, which is the configuration the benchmark below runs in. That is the case the checked tier was

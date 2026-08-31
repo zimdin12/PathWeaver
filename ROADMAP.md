@@ -210,6 +210,16 @@ reconciliation can do the right thing per origin. That single change closes:
 
 ## 0.8 — Brain-driven mobs: the city release
 
+> **Landed early, in 0.7.0, as `brainSinkAsync`.** Built by deferring
+> `MoveToTargetSink.checkExtraStartConditions` by one tick rather than answering it optimistically;
+> see DESIGN.md §10 for why the blocker recorded there applies to the optimistic shape and not this
+> one. Two corrections to the framing below. The **warden is not covered** — its navigation builds a
+> `PathFinder` subclass and dispatch requires the stock class. And the payoff is smaller than the 86%
+> quoted: on the reference pack the brain sink was ~9 percentage points of the A\* mix, because
+> villager POI *queries* (`AcquirePoi`, `NearestBedSensor`) decide reachability and discard the path,
+> and those can never be deferred. What remains here for 0.8 is the query side, which needs a
+> different mechanism entirely.
+
 Villagers, piglins, axolotls, frogs, allays, the warden. **86% of the A\* still on the server thread** is
 `MoveToTargetSink.checkExtraStartConditions`, worth ~1.4 ms/tick (~5–7% of tick time) on an ordinary
 world.
