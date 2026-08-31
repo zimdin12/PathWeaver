@@ -9,3 +9,4 @@ logs/
 .minecraft-dev*/
 benchmarks/
 bench/out/
+bench/deep/
