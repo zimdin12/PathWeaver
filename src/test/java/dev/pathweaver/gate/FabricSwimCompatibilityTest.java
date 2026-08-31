@@ -23,14 +23,24 @@ class FabricSwimCompatibilityTest {
         FabricSwimCompatibility.Verification result =
             FabricSwimCompatibility.verifyBundle(exactBundle());
 
-        assertTrue(result.valid(), () -> String.join("\n", result.diagnostics()));
-        assertTrue(result.landRegistryVerified(), "exact mutation/lookup hook targets must be pinned");
-        assertEquals(Set.of(
-            "getPathTypeFromState(III)Lnet/minecraft/world/level/pathfinder/PathType;"),
-            result.fabricInjectedMethods());
-        assertEquals(Set.of(
-            "getBlockState(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;",
-            "level()Lnet/minecraft/world/level/CollisionGetter;"), result.swimContextCalls());
+        if (ResolvedArtifact.isPinned(LandPathTypeRegistry.class,
+                FabricSwimCompatibility.MOD_VERSION)) {
+            assertTrue(result.valid(), () -> String.join("\n", result.diagnostics()));
+            assertTrue(result.landRegistryVerified(),
+                "exact mutation/lookup hook targets must be pinned");
+            assertEquals(Set.of(
+                "getPathTypeFromState(III)Lnet/minecraft/world/level/pathfinder/PathType;"),
+                result.fabricInjectedMethods());
+            assertEquals(Set.of(
+                "getBlockState(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;",
+                "level()Lnet/minecraft/world/level/CollisionGetter;"), result.swimContextCalls());
+        } else {
+            assertFalse(result.valid(), "an unpinned fabric-content-registries must not be "
+                + "certified; this build resolved "
+                + ResolvedArtifact.version(ResolvedArtifact.jarOf(LandPathTypeRegistry.class)));
+            assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("hash")),
+                () -> "the refusal must name which pinned artifact drifted: " + result.diagnostics());
+        }
     }
 
     @Test void anyCriticalResourceHashDriftFailsClosed() throws Exception {

@@ -33,13 +33,28 @@ class FabricInteractionCompatibilityTest {
     private static final String USE_ITEM_ON = "useItemOn(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/level/Level;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/phys/BlockHitResult;)Lnet/minecraft/world/InteractionResult;";
     private static final String USE_WITHOUT_ITEM = "useWithoutItem(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/phys/BlockHitResult;)Lnet/minecraft/world/InteractionResult;";
 
-    @Test void exactBundleHasOnlyTwoUnreachableInteractionInjectors() throws Exception {
+    /**
+     * The audit certifies exactly the pinned Fabric interaction module, and refuses any other.
+     *
+     * <p>See {@link ResolvedArtifact} for why both arms are asserted rather than just the pass.
+     */
+    @Test void theAuditCertifiesExactlyThePinnedInteractionModuleAndRefusesAnythingElse()
+            throws Exception {
         FabricInteractionCompatibility.Verification result =
             FabricInteractionCompatibility.verifyBundle(exactBundle());
-        assertTrue(result.valid(), () -> String.join("\n", result.diagnostics()));
-        assertEquals(Set.of(USE_ITEM_ON, USE_WITHOUT_ITEM), result.injectedTargets());
-        assertFalse(result.workerBlockStateCalls().contains(USE_ITEM_ON));
-        assertFalse(result.workerBlockStateCalls().contains(USE_WITHOUT_ITEM));
+        if (ResolvedArtifact.isPinned(BlockEvents.class,
+                FabricInteractionCompatibility.MOD_VERSION)) {
+            assertTrue(result.valid(), () -> String.join("\n", result.diagnostics()));
+            assertEquals(Set.of(USE_ITEM_ON, USE_WITHOUT_ITEM), result.injectedTargets());
+            assertFalse(result.workerBlockStateCalls().contains(USE_ITEM_ON));
+            assertFalse(result.workerBlockStateCalls().contains(USE_WITHOUT_ITEM));
+        } else {
+            assertFalse(result.valid(), "an unpinned fabric-events-interaction must not be "
+                + "certified; this build resolved "
+                + ResolvedArtifact.version(ResolvedArtifact.jarOf(BlockEvents.class)));
+            assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("hash")),
+                () -> "the refusal must name which pinned artifact drifted: " + result.diagnostics());
+        }
     }
 
     @Test void everyPinnedArtifactOrClassByteDriftFailsClosed() throws Exception {
