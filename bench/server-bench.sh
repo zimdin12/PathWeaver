@@ -120,8 +120,8 @@ echo "server up: $(grep -ao 'Done ([0-9.]*s)' "$LOG" | head -1)"
 # "superflat" bench world is not flat and 220 mobs summoned into open air fell to y=-252 and died.
 # A floor placed by /fill is the same on any pack. Each fill stays under the 32768-block limit.
 say "forceload add -40 -40 40 40"
-say "fill -40 -60 -40 40 -60 40 minecraft:stone"
-for y in -59 -58 -57 -56; do say "fill -40 $y -40 40 $y 40 minecraft:air"; done
+say "fill -40 200 -40 40 200 40 minecraft:stone"
+for y in 201 202 203 204; do say "fill -40 $y -40 40 $y 40 minecraft:air"; done
 
 # WALLS, for two reasons.
 #
@@ -133,15 +133,15 @@ for y in -59 -58 -57 -56; do say "fill -40 $y -40 40 $y 40 minecraft:air"; done
 # nothing worth moving off the server thread, so the scenario could not have shown a gain whatever
 # the setting did. A serpentine of internal walls forces long detours, which is what makes the
 # search expensive enough to be worth measuring.
-say "fill -40 -59 -40 40 -57 -40 minecraft:stone"
-say "fill -40 -59 40 40 -57 40 minecraft:stone"
-say "fill -40 -59 -40 -40 -57 40 minecraft:stone"
-say "fill 40 -59 -40 40 -57 40 minecraft:stone"
+say "fill -40 201 -40 40 203 -40 minecraft:stone"
+say "fill -40 201 40 40 203 40 minecraft:stone"
+say "fill -40 201 -40 -40 203 40 minecraft:stone"
+say "fill 40 201 -40 40 203 40 minecraft:stone"
 for x in -24 -8 8 24; do
-  say "fill $x -59 -38 $x -57 24 minecraft:stone"
+  say "fill $x 201 -38 $x 203 24 minecraft:stone"
 done
 for x in -16 0 16; do
-  say "fill $x -59 -24 $x -57 38 minecraft:stone"
+  say "fill $x 201 -24 $x 203 38 minecraft:stone"
 done
 sleep 6
 
@@ -170,12 +170,16 @@ inp = open(sys.argv[1], "a")
 for i in range(60):                # beds, spread across the arena, two blocks each
     x = -36 + (i % 10) * 8
     z = -36 + (i // 10) * 14
-    inp.write(f"setblock {x} -59 {z} minecraft:white_bed[facing=east,part=foot]\n")
-    inp.write(f"setblock {x+1} -59 {z} minecraft:white_bed[facing=east,part=head]\n")
-for kind, n in (("villager", 180), ("goat", 40)):
+    inp.write(f"setblock {x} 201 {z} minecraft:white_bed[facing=east,part=foot]\n")
+    inp.write(f"setblock {x+1} 201 {z} minecraft:white_bed[facing=east,part=head]\n")
+# Walls stand on x = -24,-16,-8,0,8,16,24. A mob summoned on one of those lines is buried in it,
+# so place them in corridor centres derived from the wall positions rather than listed beside them.
+WALLS = (-24, -16, -8, 0, 8, 16, 24)
+CORRIDORS = [x for x in range(-34, 35) if all(abs(x - w) > 2 for w in WALLS)]
+for kind, n in (("villager", 140), ("goat", 30)):
     for _ in range(n):
-        inp.write(f"summon minecraft:{kind} {random.randint(-30, 30)} -59 "
-                  f"{random.randint(-30, 30)}\n")
+        inp.write(f"summon minecraft:{kind} {random.choice(CORRIDORS)} 201 "
+                  f"{random.randint(-34, 34)}\n")
 inp.flush()
 PY
 echo "population summoned"
@@ -234,8 +238,8 @@ void() {
   exit 3
 }
 
-[ "$SUMMONED" -lt 200 ] && void "only $SUMMONED mobs summoned; not the population described"
+[ "$SUMMONED" -lt 165 ] && void "only $SUMMONED mobs summoned; not the population described"
 [ -z "${AFTER_ALIVE:-}" ] && void "no survivor count was read, so mortality is unknown"
-[ "${AFTER_ALIVE:-0}" -lt 170 ] && void "only ${AFTER_ALIVE} of 180 villagers survived; the arena leaks"
+[ "${AFTER_ALIVE:-0}" -lt 132 ] && void "only ${AFTER_ALIVE} of 140 villagers survived; the arena leaks"
 [ "$DELTA" -le 0 ] && void "nothing dispatched DURING the sample window (delta=$DELTA)"
 echo "run $LABEL complete -> $OUT/$LABEL.sparkprofile"
