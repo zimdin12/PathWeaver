@@ -316,7 +316,14 @@ the registry latch instead, and the tier is applied at dispatch. Verified both w
 server outside Loom: with Farmer's Delight loaded, `AUDITED` dispatched 11119 searches where it
 previously dispatched 0, and `STRICT` still refused to run.
 
-## Every setting, measured
+## The performance settings, measured
+
+Five of the seventeen fields are not in the table below and never were: `brainSinkAsync`,
+`workerFailureLimit`, `workerFailureWindowTicks`, `trustedMods` and `compatibilityTier`. The heading
+used to say "Every setting, measured", which was not true of any version of this table. The first
+three change behaviour rather than throughput and the last two are safety choices, so measuring them
+against tick time would answer a question nobody asked -- but the heading implied coverage the table
+does not have.
 
 Single-variable sweep: one option moves per run, everything else stays at the shipped default.
 Fabric API + Cloth + Lithium + Farmer's Delight + PathWeaver, `AUDITED`, 1024 zombies in a maze

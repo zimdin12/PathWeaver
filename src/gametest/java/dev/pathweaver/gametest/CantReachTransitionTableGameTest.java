@@ -103,6 +103,7 @@ public final class CantReachTransitionTableGameTest {
         private void build(GameTestHelper helper) {
             PathWeaverConfig cfg = PathWeaverConfig.get();
             oldBrainSink = cfg.brainSinkAsync;
+            dev.pathweaver.brain.BrainSinkDiagnostics.setEnabled(true);
             cfg.enabled = true;
             cfg.brainSinkAsync = true;
             for (int x = 0; x <= 12; x++) {

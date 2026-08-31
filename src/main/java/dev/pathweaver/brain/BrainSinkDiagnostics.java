@@ -10,23 +10,35 @@ import java.util.concurrent.ConcurrentHashMap;
  * a code change that looked like it should have fixed it. At that point the cheap thing is no longer
  * another theory; it is a record of which branch actually ran.
  *
- * <p>Deliberately tiny and deliberately not on the hot path's critical work: one map write per
- * decision, no allocation beyond the interned strings the call sites pass. It is read only by tests
- * and by nothing that ships a decision.
+ * <p>OFF unless a test switches it on. It was written as an unconditional map write per decision,
+ * which is a real cost on the one code path this mod exists to make cheaper: a village is hundreds of
+ * brain mobs, each deciding every tick, and a ConcurrentHashMap merge per decision is not free. In a
+ * performance mod that is exactly the wrong place to leave a debugging aid running. Enabled, it is
+ * what caught a wrong attribution I had repeated four times; disabled, it is a predictable branch.
  */
 public final class BrainSinkDiagnostics {
     private BrainSinkDiagnostics() {}
+
+    /** Recording is off in production; tests turn it on. */
+    private static volatile boolean enabled;
+
+    public static void setEnabled(boolean on) {
+        enabled = on;
+        if (!on) clear();
+    }
 
     private static final Map<Integer, String> LAST = new ConcurrentHashMap<>();
     private static final Map<Integer, Integer> START_CHECKS = new ConcurrentHashMap<>();
     private static final Map<Integer, Integer> TICK_HOOKS = new ConcurrentHashMap<>();
 
     public static void recordStartCheck(int entityId, String outcome) {
+        if (!enabled) return;
         LAST.put(entityId, "sc:" + outcome);
         START_CHECKS.merge(entityId, 1, Integer::sum);
     }
 
     public static void recordTickHook(int entityId, String outcome) {
+        if (!enabled) return;
         LAST.put(entityId, "tick:" + outcome);
         TICK_HOOKS.merge(entityId, 1, Integer::sum);
     }
@@ -44,6 +56,7 @@ public final class BrainSinkDiagnostics {
 
     /** Diagnostic: start/stop pairs for the behaviour, newest last, bounded. */
     public static void recordLifecycle(int entityId, String event) {
+        if (!enabled) return;
         java.util.List<String> log =
             LIFECYCLE.computeIfAbsent(entityId, k -> java.util.Collections.synchronizedList(
                 new java.util.ArrayList<>()));

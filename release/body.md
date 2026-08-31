@@ -6,6 +6,8 @@ Every time a mob works out where to walk, Minecraft does that maths **on the ser
 
 PathWeaver moves those searches onto **spare CPU cores** instead. Same paths, same mob behaviour, just not blocking the tick.
 
+**Install this if** your server drops below 20 TPS when a lot of mobs are pathing at once — a mob farm, a raid, a big village — **and you have spare cores**. If your tick time is going somewhere else, you will not notice this mod. That is the honest version, and the measurements further down are what it rests on.
+
 **Install it on the server (or in your singleplayer world). Clients need nothing.** Fabric, Minecraft **26.1.1, 26.1.2 or 26.2**, **Java 25 or newer** — most hosts still default to 21, so check. Needs Fabric API and Cloth Config.
 
 26.1.1 and 26.1.2 share one file; 26.2 is a separate build. One difference worth knowing: the checked tier (`compatibilityTier=AUDITED`) works on **26.1.1 and 26.1.2**, and refuses on **26.2**. Its per-mod exemptions are pinned to the exact bytecode they were derived from; 26.1.1's is identical, 26.2's is not, so there the tier switches the mod off. The shipped default performs no such check and is unaffected.
@@ -73,7 +75,28 @@ Be clear about what that switch does on a heavy pack: it turns the speed-up **of
 
 ---
 
-## What's new in 0.6.1
+## What's new in 0.8.0
+
+### Villager brains now path off-thread (`brainSinkAsync`, on by default)
+
+Brain mobs never call the ordinary "walk to here" method. Everything they do goes through one method
+that asks for a route and reads the answer immediately, so this mod could not see them at all — they
+were not being refused, they were invisible. That is now offloaded.
+
+**The cost, stated plainly: a brain mob sets off one tick later than it otherwise would.** That is the
+only behaviour change, it is capped at two ticks, and it is why this is a setting you can turn off
+rather than something imposed. Everything else — which route it picks, whether it decides a place is
+unreachable — is handed back to vanilla's own logic untouched.
+
+**No benchmark on this page includes it.** Every measurement below was taken on 0.6.1 with zombies and
+cod. On the reference pack the brain sink was worth roughly nine percentage points of the pathfinding
+mix, because villagers spend most of their searching deciding whether a workstation is reachable and
+then throwing the route away — and that part cannot be deferred at all.
+
+If your villagers do anything strange, `brainSinkAsync=false` turns exactly this off and changes
+nothing else.
+
+## What was new in 0.6.1
 
 **PathWeaver now notices when something goes wrong, instead of trying to predict it.**
 
@@ -116,7 +139,7 @@ Run **`/pathweaver mobs`** to see this for your own pack, and **`/pathweaver sta
 
 How many of those searches actually get installed depends entirely on load, so here are all three rather than the flattering one: **99%** in a light validation run, **96%** under the spark profile above, **~82%** in the saturated 1024-mob benchmark, where admission deliberately refuses about half of all requests rather than queue them.
 
-**Eligible is not the same as covered.** It means nothing blocks dispatch for that mob — not that every movement it makes goes off-thread. Brain-driven movement (villagers, piglins, axolotls, frogs, allays, the warden) calls the search directly and stays synchronous by design. That is next on the roadmap, not in this release.
+**Eligible is not the same as covered.** It means nothing blocks dispatch for that mob — not that every movement it makes goes off-thread. Brain-driven movement — villagers, piglins, axolotls, frogs, allays and about twenty other AI packages — used to be invisible to it entirely, and is offloaded from 0.8.0 by `brainSinkAsync`. The warden is still not covered: its navigation builds a custom pathfinder, so it never dispatches.
 
 The three held back entirely navigate with a `PathFinder` subclass rather than the stock one, which dispatch declines: the warden, whose subclass **vanilla itself** builds, and two spiders — on *this* pack, where a mod replaces spider navigation wholesale.
 
@@ -128,7 +151,7 @@ PathWeaver does not make pathfinding cheaper. It moves the same work onto anothe
 
 ## Testing
 
-358 unit tests, 4 in-game game tests, 4 in-game server harnesses, a client harness driving a real singleplayer world, and verification on a real 221-jar modded server across four configurations. With the world held still, **all six evaluator families produced node-for-node identical paths to a synchronous oracle** — one scenario per family, which is evidence rather than proof. Flying is the exception worth naming: a worker draws its start candidate from thread-confined randomness, so it is not guaranteed to match by construction. It happened to.
+395 unit tests, 12 in-game game tests, six opt-in server harnesses, a client harness driving a real singleplayer world, and verification on a real 221-jar modded server across four configurations. With the world held still, **all six evaluator families produced node-for-node identical paths to a synchronous oracle** — one scenario per family, which is evidence rather than proof. Flying is the exception worth naming: a worker draws its start candidate from thread-confined randomness, so it is not guaranteed to match by construction. It happened to.
 
 The 0.6 line has now been through **seventeen rounds of independent code review** — eleven for 0.6.0 and six for 0.6.1. Later rounds executed mutations against the test suite rather than reading the code, which repeatedly found defects that reading had missed — including a live bug in this release's own headline feature. The [changelog](https://github.com/zimdin12/PathWeaver/blob/master/CHANGELOG.md) and the [roadmap](https://github.com/zimdin12/PathWeaver/blob/master/ROADMAP.md) record what was rejected and reverted as well as what shipped: an entire compatibility-gate rewrite was built, measured, reviewed and **thrown away** because the review found it loosened a safety gate on an analysis that was wrong in four independent ways.
 

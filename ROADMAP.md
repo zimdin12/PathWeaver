@@ -103,7 +103,7 @@ vanilla churn (`EntityType` lost ~170 constants; `Minecraft.screen` moved to a p
 
 ### Rejected: splitting `PathNavigationMixin`
 
-The file is 866 lines, over the 400-line signal, and the obvious response is to split it. Measured,
+The file is 940 lines, over the 400-line signal and approaching the 1000-line refactor line, and the obvious response is to split it. Measured,
 that would make the code worse, so it is written down rather than done.
 
 A mixin cannot share `@Unique` state with another mixin. The evidence is in this repo:
@@ -111,7 +111,7 @@ A mixin cannot share `@Unique` state with another mixin. The evidence is in this
 single `pathweaver$` field directly — it casts `this` to the `PWNavigation` duck interface and goes
 through accessors. That is the only mechanism available.
 
-`PathNavigationMixin` holds 13 `@Unique` fields, and **19 of its 25 methods read or write them**. Any
+`PathNavigationMixin` holds 15 `@Unique` fields, and most of its methods read or write them. Any
 split therefore crosses that state heavily, and paying for it means adding accessor pairs to a duck
 interface for each field that crosses — putting interface dispatch in front of the hot path's own
 fields, to relocate at most six methods while the remaining file stays around 750 lines.
@@ -220,7 +220,7 @@ reconciliation can do the right thing per origin. That single change closes:
 > and those can never be deferred. What remains here for 0.8 is the query side, which needs a
 > different mechanism entirely.
 
-Villagers, piglins, axolotls, frogs, allays, the warden. **86% of the A\* still on the server thread** is
+Villagers, piglins, axolotls, frogs, allays. (Not the warden — its navigation builds a custom pathfinder, so it never dispatches.) The 86% figure this section used to lead with was wrong by an order of magnitude and is corrected in the block above: the brain sink was ~9 percentage points of the A\* mix. What is
 `MoveToTargetSink.checkExtraStartConditions`, worth ~1.4 ms/tick (~5–7% of tick time) on an ordinary
 world.
 
