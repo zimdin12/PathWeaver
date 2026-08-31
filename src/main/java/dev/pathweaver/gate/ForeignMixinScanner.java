@@ -117,10 +117,17 @@ public final class ForeignMixinScanner {
      * Compatibility exemptions are exact audited tuples, never owner prefixes or whole-mod trust.
      * The initial fail-closed policy deliberately starts empty; entries require retained evidence for
      * one exact mod version, config, concrete mixin class, and target before they can be added.
+     *
+     * <p>The content-registries identity is DERIVED from the audit that pins it, never repeated. It
+     * used to be a literal here as well, and re-pinning for 26.2 moved the pin and not the copy: the
+     * Swim claim shape stopped matching, two claims fell through to the AuditKey path, and because
+     * both of their targets are shared pathfinding targets the scan denied all six evaluator
+     * families on a branch that declares the artifact audited. It failed closed, and it was still
+     * wrong. On 26.1.2 the two spellings coincide, so nothing caught it there.
      */
-    private static final String FABRIC_CONTENT_ID = "fabric-content-registries-v0";
-    private static final String FABRIC_CONTENT_VERSION = "11.2.1+76b0b6bb4c";
-    private static final String FABRIC_CONTENT_CONFIG = "fabric-content-registries-v0.mixins.json";
+    private static final String FABRIC_CONTENT_ID = FabricSwimCompatibility.MOD_ID;
+    private static final String FABRIC_CONTENT_VERSION = FabricSwimCompatibility.MOD_VERSION;
+    private static final String FABRIC_CONTENT_CONFIG = FabricSwimCompatibility.CONFIG;
     private static final String FABRIC_CONTEXT_MIXIN =
         "net.fabricmc.fabric.mixin.content.registry.PathfindingContextMixin";
     private static final String FABRIC_WALK_MIXIN =

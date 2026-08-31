@@ -272,7 +272,7 @@ class ForeignMixinScannerTest {
 
     private static ForeignMixinScanner.ActiveConfig exactFabricPathfindingConfig() {
         return new ForeignMixinScanner.ActiveConfig(
-            "fabric-content-registries-v0", "11.2.1+76b0b6bb4c",
+            FabricSwimCompatibility.MOD_ID, FabricSwimCompatibility.MOD_VERSION,
             "fabric-content-registries-v0.mixins.json", Set.of(
                 new ForeignMixinScanner.TargetClaim(
                     "net.fabricmc.fabric.mixin.content.registry.PathfindingContextMixin",
