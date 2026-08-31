@@ -66,8 +66,24 @@ Neither is release-shaped, and neither should be done by pasting new hashes over
 audit is a claim that someone looked; updating the pin without looking makes the claim false while
 leaving it green.
 
-## What the 26.2 branch does have
+## Harness matrix, both branches, 2026-08-31
 
-- Unit suite: 400 tests, green — the branch's first green suite.
-- Unsafe-tier harness (the shipped default): green.
-- Default AUDITED harness: **red**, for the reason above.
+| Harness | Tier | 26.1.2 | 26.2 |
+|---|---|---|---|
+| default | AUDITED | 2 passed | **1 failed** |
+| `-PunsafeTierHarness` | UNSAFE (shipped default) | 5 passed | 5 passed |
+| `-PrefusedHarness` | AUDITED | 2 passed | 2 passed |
+| `-PbreakerHarness` | AUDITED | 2 passed | 2 passed |
+| `-PauditedRoutingHarness` | AUDITED | 2 passed | **1 failed** |
+| unit suite | n/a | 400 passed | 400 passed |
+
+Both 26.2 failures are this one cause, and both name it:
+
+- default: `coordinate move must dispatch one async request`. Nothing dispatches, because every
+  family is denied.
+- auditedRouting: `live evidence must contain the exact ServerCore audit key`. There is no audit
+  key, because the audit refused.
+
+`refused` and `breaker` pass on 26.2 precisely because they assert refusal, which is what 26.2 does.
+
+400 green on 26.2 is the branch's first green unit suite.
