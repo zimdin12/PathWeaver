@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.pathweaver.PathWeaverRuntime;
 import dev.pathweaver.async.EntityInstallSink;
+import dev.pathweaver.brain.BrainSinkDiagnostics;
 import dev.pathweaver.brain.BrainSinkPolicy;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.duck.PWNavigation;
@@ -150,15 +151,27 @@ public abstract class MoveToTargetSinkMixin {
         pathweaver$suppliedFromPark = false;
 
         PathWeaverConfig cfg = PathWeaverConfig.get();
-        if (!cfg.enabled || !cfg.brainSinkAsync) return;
+        if (!cfg.enabled || !cfg.brainSinkAsync) {
+            BrainSinkDiagnostics.recordStartCheck(mob.getId(), "off");
+            return;
+        }
         PathWeaverRuntime runtime = PathWeaverRuntime.get();
-        if (!runtime.isRunning()) return;
+        if (!runtime.isRunning()) {
+            BrainSinkDiagnostics.recordStartCheck(mob.getId(), "notRunning");
+            return;
+        }
 
         PathNavigation navigation = mob.getNavigation();
-        if (!(navigation instanceof PWNavigation duck)) return;
+        if (!(navigation instanceof PWNavigation duck)) {
+            BrainSinkDiagnostics.recordStartCheck(mob.getId(), "noDuck");
+            return;
+        }
 
         Optional<WalkTarget> walkTarget = mob.getBrain().getMemory(MemoryModuleType.WALK_TARGET);
-        if (walkTarget.isEmpty()) return;
+        if (walkTarget.isEmpty()) {
+            BrainSinkDiagnostics.recordStartCheck(mob.getId(), "noWalkTarget");
+            return;
+        }
         BlockPos asked = walkTarget.get().getTarget().currentBlockPosition();
 
         // VANILLA'S OWN TWO GUARDS, REPRODUCED, because this inject sits above both of them and
@@ -178,8 +191,14 @@ public abstract class MoveToTargetSinkMixin {
         // Both must be checked BEFORE takeBrainSinkPath, not after: taking removes the slot, and if
         // vanilla then returns at either guard the wrap never runs and the answer is destroyed --
         // which is what turns a single wasted search into a loop.
-        if (remainingCooldown > 0) return;
-        if (reachedTarget(mob, walkTarget.get())) return;
+        if (remainingCooldown > 0) {
+            BrainSinkDiagnostics.recordStartCheck(mob.getId(), "cooldown");
+            return;
+        }
+        if (reachedTarget(mob, walkTarget.get())) {
+            BrainSinkDiagnostics.recordStartCheck(mob.getId(), "reached");
+            return;
+        }
 
         pathweaver$startCheckClaimTick = level.getGameTime();
         boolean defer;
@@ -191,6 +210,7 @@ public abstract class MoveToTargetSinkMixin {
             pathweaver$startCheckClaimTick = Long.MIN_VALUE;
             throw failure;
         }
+        BrainSinkDiagnostics.recordStartCheck(mob.getId(), defer ? "DEFER" : "ranVanillaOrSupplied");
         if (defer) {
             cir.setReturnValue(false);
             // Released HERE, because @At("RETURN") does not fire for an @Inject cancellation:
@@ -303,7 +323,10 @@ public abstract class MoveToTargetSinkMixin {
         // The start check has already decided for this call -- either it supplied a path the wrap is
         // about to consume, or it deliberately fell through so vanilla could search. Deciding again
         // here would override that, and did.
-        if (pathweaver$startCheckClaimTick == gameTime) return;
+        if (pathweaver$startCheckClaimTick == gameTime) {
+            BrainSinkDiagnostics.recordTickHook(mob.getId(), "standDown");
+            return;
+        }
 
         PathWeaverConfig cfg = PathWeaverConfig.get();
         if (!cfg.enabled || !cfg.brainSinkAsync) return;
@@ -314,7 +337,9 @@ public abstract class MoveToTargetSinkMixin {
         if (!(navigation instanceof PWNavigation duck)) return;
 
         BlockPos asked = walkTarget.getTarget().currentBlockPosition();
-        if (pathweaver$decideDefers(mob, navigation, duck, walkTarget, asked, gameTime)) {
+        boolean tickDefer = pathweaver$decideDefers(mob, navigation, duck, walkTarget, asked, gameTime);
+        BrainSinkDiagnostics.recordTickHook(mob.getId(), tickDefer ? "DEFER" : "ranVanillaOrSupplied");
+        if (tickDefer) {
             cir.setReturnValue(false);
         }
     }

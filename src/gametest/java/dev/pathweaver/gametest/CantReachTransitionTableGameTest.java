@@ -164,7 +164,10 @@ public final class CantReachTransitionTableGameTest {
                     + " pend=" + dev.pathweaver.PathWeaverRuntime.get().entitySink()
                         .hasPendingBrainSink(villager.getId(), walledOff)
                     + " reg=" + dev.pathweaver.PathWeaverRuntime.get().entitySink()
-                        .isRegistered(villager.getId()));
+                        .isRegistered(villager.getId())
+                    + " last=" + dev.pathweaver.brain.BrainSinkDiagnostics.last(villager.getId())
+                    + " sc=" + dev.pathweaver.brain.BrainSinkDiagnostics.startChecks(villager.getId())
+                    + " th=" + dev.pathweaver.brain.BrainSinkDiagnostics.tickHooks(villager.getId()));
             }
             if (present) {
                 long since = brain.getMemory(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE)
