@@ -192,10 +192,15 @@ sleep "$SETTLE"
 # sampled at all, so the measurement could not distinguish "moved the work" from "removed it".
 say "spark profiler cancel"
 sleep 5
+# Count the population with the SAME command on both sides of the window. The earlier version read
+# a "Count:" that no villager command had produced -- it picked up another mod's output and reported
+# 192 villagers where 140 had been summoned. A number whose noun you have not checked is not evidence.
+say "execute if entity @e[type=minecraft:villager]"
+sleep 2
 say "pathweaver status"
 sleep 3
 BEFORE_DISPATCH="$(grep -aoE 'dispatched=[0-9]+' "$LOG" | tail -1 | cut -d= -f2)"
-BEFORE_ALIVE="$(grep -aoE 'Count: [0-9]+' "$LOG" | tail -1 | cut -d' ' -f2)"
+BEFORE_ALIVE="$(grep -aoE 'Test passed. Count: [0-9]+' "$LOG" | tail -1 | grep -oE '[0-9]+$')"
 
 say "spark profiler start --thread * --not-combined"
 sleep 5
@@ -217,7 +222,7 @@ sleep 2
 say "pathweaver status"
 sleep 5
 AFTER_DISPATCH="$(grep -aoE "dispatched=[0-9]+" "$LOG" | tail -1 | cut -d= -f2)"
-AFTER_ALIVE="$(grep -aoE "Count: [0-9]+" "$LOG" | tail -1 | cut -d" " -f2)"
+AFTER_ALIVE="$(grep -aoE "Test passed. Count: [0-9]+" "$LOG" | tail -1 | grep -oE "[0-9]+$")"
 
 say "stop"
 sleep 45
@@ -239,7 +244,23 @@ void() {
 }
 
 [ "$SUMMONED" -lt 165 ] && void "only $SUMMONED mobs summoned; not the population described"
-[ -z "${AFTER_ALIVE:-}" ] && void "no survivor count was read, so mortality is unknown"
-[ "${AFTER_ALIVE:-0}" -lt 132 ] && void "only ${AFTER_ALIVE} of 140 villagers survived; the arena leaks"
-[ "$DELTA" -le 0 ] && void "nothing dispatched DURING the sample window (delta=$DELTA)"
+[ -z "${BEFORE_ALIVE:-}" ] || [ -z "${AFTER_ALIVE:-}" ] &&
+  void "the population was not counted on both sides of the window, so stability is unknown"
+[ "${BEFORE_ALIVE:-0}" -lt 80 ] &&
+  void "only ${BEFORE_ALIVE} villagers were alive when the window opened; too few to measure"
+if [ "$(( AFTER_ALIVE * 100 / BEFORE_ALIVE ))" -lt 90 ]; then
+  void "the population fell from $BEFORE_ALIVE to $AFTER_ALIVE DURING the window; the arms are not comparable"
+fi
+# The dispatch control runs in BOTH directions, because the two arms expect opposite things.
+#
+# With the brain sink on, these mobs are villagers and goats and every one of their walk targets goes
+# through MoveToTargetSink, so the window must show dispatches or the feature did not run. With it
+# off, that route must dispatch nothing -- so a non-trivial count would mean the setting did not take
+# effect and the two arms are not actually different. Asserting only the first would have let a
+# silently-ignored setting through as a clean result.
+if [ "$BRAIN_SINK" = "true" ]; then
+  [ "$DELTA" -le 0 ] && void "brain sink is ON but nothing dispatched during the window (delta=$DELTA)"
+else
+  [ "$DELTA" -gt 20 ] && void "brain sink is OFF but $DELTA searches dispatched; the setting did not take effect"
+fi
 echo "run $LABEL complete -> $OUT/$LABEL.sparkprofile"
