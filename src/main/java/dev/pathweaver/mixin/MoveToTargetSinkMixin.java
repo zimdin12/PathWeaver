@@ -95,6 +95,21 @@ public abstract class MoveToTargetSinkMixin {
     @Unique private int pathweaver$consecutiveDeferrals;
 
     /**
+     * The tick on which this behaviour last deferred, so "consecutive" means what the name says.
+     *
+     * <p>Only the branches that END a decision reset the counter, so a deferral episode cut short by
+     * something else erasing WALK_TARGET left it at 1 or 2 and the NEXT, unrelated walk inherited a
+     * spent budget -- taking the bound on its first tick and running a synchronous A* while its async
+     * budget was untouched.
+     *
+     * <p>Keying the budget to the DESTINATION instead was tried and is wrong: {@code AnimalPanic}
+     * re-rolls the destination every tick, so the budget reset every tick, the bound never tripped,
+     * and the panicking-mob freeze came straight back. The tests caught it immediately. A gap in
+     * ticks is the thing that actually separates two episodes.
+     */
+    @Unique private long pathweaver$lastDeferralTick = Long.MIN_VALUE;
+
+    /**
      * True while {@code checkExtraStartConditions} owns the decision for this call.
      *
      * <p>The two hooks were fighting. When the start check declines to defer -- at the liveness
@@ -186,17 +201,33 @@ public abstract class MoveToTargetSinkMixin {
         if (reachedTarget(mob, walkTarget.get())) return;
 
         pathweaver$startCheckOwnsDecision = true;
-        if (pathweaver$decideDefers(mob, navigation, duck, walkTarget.get(), asked)) {
-            cir.setReturnValue(false);
+        boolean defer;
+        try {
+            defer = pathweaver$decideDefers(mob, navigation, duck, walkTarget.get(), asked,
+                level.getGameTime());
+        } catch (Throwable failure) {
+            // A throw is not a RETURN either, so the handler below will not run.
+            pathweaver$startCheckOwnsDecision = false;
+            throw failure;
         }
+        if (defer) {
+            cir.setReturnValue(false);
+            // Released HERE, because @At("RETURN") does not fire for an @Inject cancellation:
+            // CallbackInjector.injectReturnCode constructs a NEW return for it, and injection points
+            // were resolved against pre-injection bytecode, so that node is not in the handler's
+            // list. Leaving it set was harmless only by accident of control flow -- a cancelled start
+            // check leaves the behaviour STOPPED so tick() cannot run -- and it was written down as a
+            // guarantee.
+            pathweaver$startCheckOwnsDecision = false;
+        }
+        // Not deferring: vanilla's body now runs tryComputePath, and the claim must still be held
+        // across it so the second hook stands down. try/finally here was tried and is WRONG for
+        // exactly that reason -- it releases when THIS handler returns, which is before vanilla's
+        // body runs, so the tick hook re-ran the decision and reintroduced the bug a31ad01 fixed.
+        // Three game tests caught it. The RETURN handler is what covers this path.
     }
 
-    /**
-     * Release the decision claim however this call ended, including the cancelled path.
-     *
-     * <p>{@code @At("RETURN")} fires for an {@code @Inject} cancellation too, so a deferred tick
-     * clears the flag as reliably as one that fell through.
-     */
+    /** Release the claim after vanilla's body has run. Covers the non-cancelled path only. */
     @Inject(
         method = "checkExtraStartConditions(Lnet/minecraft/server/level/ServerLevel;"
             + "Lnet/minecraft/world/entity/Mob;)Z",
@@ -216,9 +247,12 @@ public abstract class MoveToTargetSinkMixin {
      */
     @Unique
     private boolean pathweaver$decideDefers(Mob mob, PathNavigation navigation, PWNavigation duck,
-                                            WalkTarget walkTarget, BlockPos asked) {
+                                            WalkTarget walkTarget, BlockPos asked, long gameTime) {
         EntityInstallSink sink = PathWeaverRuntime.get().entitySink();
         int entityId = mob.getId();
+
+        // A break in the run of deferred ticks starts a fresh budget.
+        if (gameTime != pathweaver$lastDeferralTick + 1L) pathweaver$consecutiveDeferrals = 0;
 
         Path landed = sink.takeBrainSinkPath(entityId, asked);
         if (landed != null) {
@@ -237,6 +271,7 @@ public abstract class MoveToTargetSinkMixin {
 
         if (sink.hasPendingBrainSink(entityId, asked)) {
             pathweaver$consecutiveDeferrals++;
+            pathweaver$lastDeferralTick = gameTime;
             return true;
         }
 
@@ -245,8 +280,12 @@ public abstract class MoveToTargetSinkMixin {
         // reporting and its own comment warns it can disagree with dispatch, so predicting is not an
         // option. Dispatch records its own slot at the point it registers, which is the only place
         // that knows a request was really admitted.
+        // A window already open on this navigation means something re-entered; the navigation refuses
+        // and we leave the whole call to vanilla rather than dispatch blind.
+        if (!duck.pathweaver$enterBrainSinkRequest(walkTarget.getSpeedModifier(), asked)) {
+            return false;
+        }
         Path immediate;
-        duck.pathweaver$enterBrainSinkRequest(walkTarget.getSpeedModifier(), asked);
         try {
             immediate = navigation.createPath(asked, PATHWEAVER$VANILLA_REACH_RANGE);
         } finally {
@@ -255,6 +294,7 @@ public abstract class MoveToTargetSinkMixin {
 
         if (sink.hasPendingBrainSink(entityId, asked)) {
             pathweaver$consecutiveDeferrals++;
+            pathweaver$lastDeferralTick = gameTime;
             return true;
         }
 
@@ -265,6 +305,7 @@ public abstract class MoveToTargetSinkMixin {
         // deferral no longer erases the walk target.
         if (sink.isRegistered(entityId)) {
             pathweaver$consecutiveDeferrals++;
+            pathweaver$lastDeferralTick = gameTime;
             return true;
         }
 
@@ -307,7 +348,7 @@ public abstract class MoveToTargetSinkMixin {
         if (!(navigation instanceof PWNavigation duck)) return;
 
         BlockPos asked = walkTarget.getTarget().currentBlockPosition();
-        if (pathweaver$decideDefers(mob, navigation, duck, walkTarget, asked)) {
+        if (pathweaver$decideDefers(mob, navigation, duck, walkTarget, asked, gameTime)) {
             cir.setReturnValue(false);
         }
     }

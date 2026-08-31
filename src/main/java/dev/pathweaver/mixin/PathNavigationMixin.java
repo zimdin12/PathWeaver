@@ -213,12 +213,16 @@ public abstract class PathNavigationMixin implements PWNavigation {
     @Unique private BlockPos pathweaver$brainSinkAsked;
 
     @Override
-    public void pathweaver$enterBrainSinkRequest(double speed, BlockPos asked) {
+    public boolean pathweaver$enterBrainSinkRequest(double speed, BlockPos asked) {
+        // Fail closed on re-entry. currentOrigin is never null, so a non-null saved origin means a
+        // window is already open, and opening a second would clobber the saved pair.
+        if (pathweaver$brainSinkSavedOrigin != null) return false;
         pathweaver$brainSinkSavedOrigin = pathweaver$currentOrigin;
         pathweaver$currentOrigin = dev.pathweaver.async.RequestOrigin.BRAIN_SINK;
         pathweaver$brainSinkAsked = asked;
         pathweaver$beginMovement(speed);
         pathweaver$navigationRequestDepth++;
+        return true;
     }
 
     @Override

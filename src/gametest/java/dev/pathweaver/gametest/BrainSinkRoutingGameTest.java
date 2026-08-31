@@ -200,6 +200,19 @@ public final class BrainSinkRoutingGameTest {
         });
     }
 
+    // NOT COVERED HERE: the tick() re-path route.
+    //
+    // Two game tests for it were written and both deleted, because neither was attributable. A
+    // pending brain-sink slot observed while a mob is walking can belong to a dispatch the START
+    // check made for a destination the mob has since drifted away from -- so the mutation that makes
+    // the tick hook inert survived both, first keyed on the navigation's path and then on the brain's
+    // PATH memory. Keeping a test that cannot fail for the right reason would manufacture
+    // confidence, which is worse than the gap.
+    //
+    // The route's PRESENCE is pinned structurally instead, by
+    // dev.pathweaver.mixin.MoveToTargetSinkContractTest, which does kill that mutation. Its
+    // BEHAVIOUR once taken is genuinely uncovered.
+
     private static void check(GameTestHelper helper, boolean condition, String message) {
         if (!condition) throw helper.assertionException(message);
     }
@@ -278,6 +291,16 @@ public final class BrainSinkRoutingGameTest {
             check(villager.onGround(),
                 "precondition: the villager must be settled, or its first search fails for reasons "
                     + "that have nothing to do with this feature");
+
+            // Start from an idle navigation, and assert it. everHadPath latches on ANY path the
+            // navigation holds, and a villager forty ticks after spawn is often already walking one
+            // of its own idle strolls -- VillageBoundRandomStroll is in the villager IDLE package,
+            // which is the default activity. Latching on that path skips the assertion this whole
+            // file exists for, and the run then passes on the arrival check alone.
+            villager.getNavigation().stop();
+            check(villager.getNavigation().isDone(),
+                "precondition: the navigation must be idle, or everHadPath latches on a stroll path "
+                    + "the villager already had and the survival assertion never runs");
 
             parkedBefore = PathWeaverRuntime.get().outcomeCount(RequestOutcome.PARKED_FOR_BRAIN);
             requestedTarget = helper.absolutePos(new BlockPos(10, 2, 3));

@@ -43,10 +43,15 @@ public interface PWNavigation {
      * a tick before its own behaviour is running, at the speed dispatch captured rather than the
      * {@code WalkTarget}'s.
      *
-     * <p>The previous origin is saved and restored rather than assumed, for the same reason the
-     * recompute wrap saves it: a foreign injection can call into navigation from inside a behaviour.
+     * <p>Returns false and opens nothing if a brain-sink window is already open on this navigation.
+     * The saved origin and destination live in fields here, not in a local the way the recompute wrap
+     * saves its enclosing origin, so a nested enter would clobber both and the inner exit would
+     * restore a null origin into the outer window -- and a null origin silently takes the "not
+     * BRAIN_SINK" arm everywhere, so the outer dispatch would record no slot and never park. Vanilla
+     * cannot nest these; a foreign injection calling into navigation from inside a behaviour could.
+     * Refusing is the fail-closed answer: the caller runs vanilla synchronously instead.
      */
-    void pathweaver$enterBrainSinkRequest(double speed, net.minecraft.core.BlockPos asked);
+    boolean pathweaver$enterBrainSinkRequest(double speed, net.minecraft.core.BlockPos asked);
 
     /** Main thread: close the brain-sink window and restore the enclosing origin. */
     void pathweaver$exitBrainSinkRequest();
