@@ -1,3 +1,0 @@
-spark profiler stop --save-to-file
-spark help
-stop

@@ -8,3 +8,4 @@ run/
 logs/
 .minecraft-dev*/
 benchmarks/
+bench/out/
