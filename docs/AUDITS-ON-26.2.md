@@ -1,55 +1,45 @@
-# Why the audits refuse on 26.2, and what it costs
+# The audits on 26.2: what was wrong, and what fixed it
 
-Measured 2026-08-31 on the `mc-26.2` branch. An earlier version of this document was checked by a
-reviewer who re-ran every claim on their own instrument, and several did not survive. What follows is
-the corrected version. The refutations are recorded at the bottom rather than quietly edited out,
-because a findings document that hides its own corrections is worth less than one that shows them.
+Measured 2026-08-31. An earlier version of this document described the broken state and got several
+things wrong; a reviewer re-ran every claim and refuted nine of them. Those corrections are kept at
+the bottom rather than edited away, because a findings document that hides its own corrections is
+worth less than one that shows them.
 
-## The short version
+**Status: fixed.** At `compatibilityTier=AUDITED` on 26.2 the mod now certifies all four audited
+artifacts, and every harness passes on both branches.
 
-At `compatibilityTier=AUDITED`, PathWeaver on 26.2 does **nothing at all**. All six evaluator families
-run on the server thread, exactly as vanilla, and the mod says so loudly at world start:
+## What was wrong
 
-```
-Foreign-mixin scan complete: scanned=38, failed=0, deniedFamilies=6.
-PathWeaver is doing NOTHING on this pack. All 6 movement
-families are running on the server thread, exactly as vanilla.
-```
+At `AUDITED`, PathWeaver on 26.2 did nothing at all. All six evaluator families ran on the server
+thread and the mod said so at world start. Every audit pinned 26.1.2 artifacts, and 26.2 resolves
+different ones, so all four refused on the version gate before any bytes were read.
 
-At the shipped default, `compatibilityTier=UNSAFE`, PathWeaver on 26.2 works: the unsafe-tier harness
-passes 5/5, four runs for four.
+This was never a 0.8.0 regression. The pins last changed on 2026-07-26, before the port branch's
+first commit on 2026-08-19, so they had been stale for the branch's entire life, and 0.6.1+26.2 was
+published in that state.
 
-This costs only the operators who deliberately opted into the stricter tier. It is not a 0.8.0
-regression. The pins last changed on 2026-07-26, before the port branch first commit on 2026-08-19,
-so they have been stale for the whole life of the branch.
+## What each audit needed
 
-## What each audit says on 26.2
-
-| Audit | Resolved on 26.2 | Pinned | Verdict |
+| Audit | 26.1.2 pin | 26.2 resolves | What it needed |
 |---|---|---|---|
-| `servercore` | `1.5.19+26.2` | `1.5.19+26.1.2` | refuses on version; shape proof would pass |
-| `fabric-content-registries-v0` | `11.3.1+37b1aa249e` | `11.2.1+76b0b6bb4c` | refuses on version |
-| `fabric-events-interaction-v0` | `5.2.7+515ac5339e` | `5.2.2+07b380be4c` | refuses on version |
-| `rabbit-pathfinding-fix` | `1.4.0` | `1.3.0` | refuses on version; **shape genuinely changed** |
+| `servercore` | `1.5.19+26.1.2` | `1.5.19+26.2` | new hashes; shape proof already passed |
+| `fabric-content-registries-v0` | `11.2.1+76b0b6bb4c` | `11.3.1+37b1aa249e` | new hashes |
+| `fabric-events-interaction-v0` | `5.2.2+07b380be4c` | `5.2.7+515ac5339e` | new hashes |
+| `rabbit-pathfinding-fix` | `1.3.0` | `1.4.0` | a new proof: it changed mechanism |
 
-**The runtime refuses on the version string, before reading any bytes.** `inspectRuntime` gates on the
-mod version and returns early, so no shape proof executes in production at all:
+Three were pure hash drift. Their shape proofs passed on the new bytes without any change, which is
+what made them mechanically re-derivable rather than a fresh audit.
 
-```
-Foreign-mixin scan failure (fail-closed): servercore exact audit: unsupported version 1.5.19+26.2
-Foreign-mixin scan failure (fail-closed): rabbit-pathfinding-fix exact audit: unsupported version 1.4.0
-```
+Byte facts, independently reproduced. Vanilla `PathFinder` is identical across 26.1.2 and 26.2 and
+matches its pinned hash, which is the positive control. `PathNavigation`, `BlockStateBase`,
+`WalkNodeEvaluator` and `Frog$FrogNodeEvaluator` all differ, which is the negative control.
+ServerCore's two mixin configs and its plugin are byte-identical between the two builds; only
+`PathFinderMixin` differs, and its 26.2 form still carries exactly three `@Redirect` handlers on the
+pinned `findPath` descriptor with the three pinned INVOKE targets.
 
-The shape results below come from calling the verifiers directly, which is a different question from
-what the running mod does. Re-pinning therefore means bumping the version constants as well as the
-hashes; the hashes alone would never be reached.
-
-Byte facts, independently reproduced. Vanilla `PathFinder` is identical on 26.1.2 and 26.2 and matches
-its pinned hash, which is the positive control. `PathNavigation`, `BlockStateBase`, `WalkNodeEvaluator`
-and `Frog$FrogNodeEvaluator` all differ, which is the negative control. ServerCore two mixin configs
-and its mixin plugin are byte-identical across the two builds; only `PathFinderMixin` differs, and its
-26.2 form still carries exactly three `@Redirect` handlers on the pinned `findPath` descriptor with the
-three pinned INVOKE targets.
+The Fabric interaction module needed only one module hash here. The dev environment resolves the same
+bytes that ship nested inside `fabric-api-0.157.0+26.2`, confirmed by extracting the nested jar and
+hashing it, so the two packaging forms the 26.1.2 branch distinguishes are one hash on 26.2.
 
 ## Rabbit 1.4.0 changed mechanism, and the audit could not see half of it
 
@@ -58,75 +48,71 @@ three pinned INVOKE targets.
 `double modifyTimeout(double)`, keeping the `@Inject` into `doStuckDetection`. It still modifies two
 vanilla methods, by two different mechanisms.
 
-The enumerator recognised exactly three annotations, `@Mixin`, `@Redirect` for ServerCore and `@Inject`
-for rabbit, and **silently skipped** every method carrying anything else. It counted one modified
-method, expected two, and failed closed. The guard worked. But the reason it refused was not the reason
-it reported, and the underlying hole was worse than the symptom:
+The enumerator recognised three annotations, `@Mixin`, `@Redirect` and `@Inject`, and **silently
+skipped** every method carrying anything else. It counted one modified method, expected two, and
+failed closed. The guard worked, but the reason it refused was not the reason it reported, and the
+hole underneath was worse than the symptom:
 
-> An artifact with exactly the pinned handlers **plus** an extra `@ModifyConstant`, `@ModifyVariable`,
-> `@Overwrite` or MixinExtras injector satisfied the pinned count, because the extra modification never
-> entered the count meant to notice it.
+> An artifact with exactly the pinned handlers **plus** an extra `@ModifyConstant`,
+> `@ModifyVariable`, `@Overwrite` or MixinExtras injector satisfied the pinned count, because the
+> extra modification never entered the count meant to notice it.
 
-The SHA-256 pin on the mixin class contained that for the artifacts pinned today. It would have bitten
-whoever next re-pinned: a green shape proof that under-reports the modification surface makes the audit
-claim false while leaving it green. **Fixed** — both enumerators now diagnose any injection annotation
-they do not enumerate, which is what the two Fabric audits already did. A test synthesising the exact
-1.4.0 shape is mutation-verified against the old silent skip.
+The SHA-256 pin on the mixin class contained that for the artifacts pinned at the time. It would have
+bitten whoever next re-pinned, which was this work: a green shape proof that under-reports the
+modification surface makes the audit's claim false while leaving it green.
 
-Note also that `modifiedMethods()` is never read by the production decision; validity is
-`diagnostics.isEmpty()`. The load-bearing guard was the count inside the enumerator, not the set.
+Both fixed. The enumerators now report any injection annotation they do not enumerate, matching what
+the two Fabric audits already did, and the rabbit audit understands `@ModifyConstant` as a
+modification. The safety argument does not change with the mechanism: whatever the mixin modifies
+must be unreachable from the worker's search closure, and that is proved against the bytes either
+way.
 
-## Why the two 26.2 harness failures happen
+## The defect the re-pin exposed
 
-They have **two different causes**, and neither is rabbit.
+`ForeignMixinScanner` kept its own literal copy of the content-registries id, version and config name
+beside the audit that pins the same artifact. Moving the pin and not the copy made the Swim claim
+shape stop matching, so two claims fell through to the `AuditKey` path, and because both of their
+targets are shared pathfinding targets the scan denied all six families on a branch that declares the
+artifact audited. It failed closed, and it was still wrong.
 
-- **default (AUDITED)** — `coordinate move must dispatch one async request`. The routing test asserts
-  all six families are denied and then *clears* the denials before reaching this assertion, so the scan
-  denials are not what blocks it. The blocker is `FabricLandPathRegistryLatch`: the content-registries
-  audit refuses on version, so `hooksVerified` stays false, `allowsWalk()` returns false, and
-  `SafetyGate.canDispatch` denies because AUDITED does not bypass the scan.
-- **auditedRouting** — `live evidence must contain the exact ServerCore audit key`. That one is a
-  genuine audit-refusal failure, and it is the ServerCore audit.
+On 26.1.2 the two spellings coincide, so nothing there ever caught it: a list you have to remember to
+update, with the failure deferred to whoever updates one copy. All three are derived from the audit
+now, and a mutation reintroducing a drifted copy turns two tests red.
 
-**A partial re-pin might well fix the default harness.** Re-pinning `fabric-content-registries-v0`
-alone would reopen the land-registry latch. That is the strongest open question here, and it has not
-been tested, because testing it means editing pins.
-
-## Harness matrix, both branches, 2026-08-31
+## Result
 
 | Harness | Tier | 26.1.2 | 26.2 |
 |---|---|---|---|
-| default | AUDITED | 2 passed | **1 failed** |
+| default | AUDITED | 2 passed | 2 passed |
 | `-PunsafeTierHarness` | UNSAFE (shipped default) | 5 passed | 5 passed |
 | `-PrefusedHarness` | AUDITED | 2 passed | 2 passed |
 | `-PbreakerHarness` | AUDITED | 2 passed | 2 passed |
-| `-PauditedRoutingHarness` | AUDITED | 2 passed | **1 failed** |
+| `-PauditedRoutingHarness` | AUDITED | 2 passed | 2 passed |
 | unit suite | n/a | 401 passed | 401 passed |
 
-`refused` and `breaker` pass on 26.2 precisely because they assert refusal, which is what 26.2 does.
+`default` and `auditedRouting` used to fail on 26.2. At runtime the scan now emits no audit refusals
+at all, and logs live evidence for the content registry, the land-registry lifecycle and the audited
+tuple.
 
-The unsafe-tier dispatch counters are timing-dependent and should not be quoted as a property: four
-runs on 26.2 gave `dispatched` of 5, 5, 6, 5 with `installed` 1 every time. The stable fact is 5/5
-passing.
+Dispatch counters are timing-dependent and should not be quoted as properties: four unsafe-tier runs
+on 26.2 gave 5, 5, 6, 5. The stable facts are the pass counts.
 
 ## Corrections to the first version of this document
 
-Recorded rather than removed, because each was a claim stated with more confidence than the evidence
-carried.
+Each was stated with more confidence than the evidence carried.
 
-1. **`fabric-events-interaction-v0` was listed as `11.3.1+37b1aa249e`.** That is the content-registries
-   version, duplicated into the wrong row. It resolves `5.2.7+515ac5339e`.
+1. **`fabric-events-interaction-v0` was listed as `11.3.1+37b1aa249e`.** That is the
+   content-registries version, in the wrong row. It resolves `5.2.7+515ac5339e`.
 2. **"Nothing here is inferred from version numbers"** — that row was not measured.
-3. **"The shape proof re-runs mechanically against whatever bytes are present"** — not at runtime. The
-   version gate short-circuits before any bytes are read.
-4. **The quoted rabbit diagnostic** came from calling the verifier directly, not from the running mod,
-   which refuses on version.
-5. **"Nothing dispatches because every family is denied"** — the routing test clears the denials before
-   the failing assertion. The land-registry latch is the blocker.
-6. **"Re-pinning the three clean audits would not help"** — not established, and probably wrong for the
-   default harness.
+3. **"The shape proof re-runs mechanically against whatever bytes are present"** — not at runtime.
+   The version gate short-circuits before any bytes are read.
+4. **The quoted rabbit diagnostic** came from calling the verifier directly, not from the running
+   mod, which refuses on version.
+5. **"Nothing dispatches because every family is denied"** — the routing test clears the denials
+   before the failing assertion. The land-registry latch was the blocker.
+6. **"Re-pinning the three clean audits would not help"** — wrong, and this is the one that mattered.
+   Re-pinning content-registries is exactly what reopened the latch.
 7. **"Both 26.2 failures are this one cause"** — two causes, neither of them rabbit.
-8. **`dispatched=7, installed=1, discarded=3`** was one run timing, quoted as a property.
+8. **`dispatched=7, installed=1, discarded=3`** was one run's timing quoted as a property.
 9. **The enumerator gap was described as a `@ModifyConstant` blind spot.** It was every non-`@Inject`
-   annotation in one enumerator and every non-`@Redirect` in the other, and rabbit 1.4.0 is a real
-   upstream mechanism change, not only something the audit could not see.
+   annotation in one enumerator and every non-`@Redirect` in the other.
