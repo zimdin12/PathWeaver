@@ -4,7 +4,6 @@ import dev.pathweaver.config.PathWeaverConfig;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.WalkTarget;
@@ -127,7 +126,7 @@ public final class CantReachTransitionTableGameTest {
             for (int y = 2; y <= 4; y++) {
                 for (int z = 0; z <= 6; z++) helper.setBlock(WALL_X, y, z, Blocks.BEDROCK);
             }
-            villager = helper.spawn(EntityType.VILLAGER, 9, 2, 3);
+            villager = helper.spawn(VanillaTypes.mob(VanillaTypes.VILLAGER), 9, 2, 3);
             villager.setOnGround(true);
             reachable = helper.absolutePos(new BlockPos(10, 2, 3));
             walledOff = helper.absolutePos(new BlockPos(2, 2, 3));

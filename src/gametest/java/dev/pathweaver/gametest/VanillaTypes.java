@@ -17,6 +17,11 @@ import net.minecraft.world.entity.Mob;
  * accessor: 26.2 also renamed {@code ResourceLocation} to {@code Identifier}, so naming that type
  * would reintroduce exactly the problem being solved, while {@code toString} is declared on Object.
  *
+ * <p>Lives on BOTH branches deliberately. It was written on mc-26.2 and only there, so every new
+ * villager test written on master compiled fine, was merged, and then failed on the port branch --
+ * which is exactly what happened to the three brain-sink tests. One shared source costs nothing and
+ * removes a porting step that has to be remembered.
+ *
  * <p>Test-only. Nothing in the shipped mod looks a mob type up by name.
  */
 final class VanillaTypes {
