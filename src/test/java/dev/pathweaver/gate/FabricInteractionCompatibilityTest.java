@@ -42,18 +42,21 @@ class FabricInteractionCompatibilityTest {
             throws Exception {
         FabricInteractionCompatibility.Verification result =
             FabricInteractionCompatibility.verifyBundle(exactBundle());
-        if (ResolvedArtifact.isPinned(BlockEvents.class,
-                FabricInteractionCompatibility.MOD_VERSION)) {
+        if (ResolvedArtifact.isPinnedAsExpected(FabricInteractionCompatibility.MOD_ID,
+                BlockEvents.class, FabricInteractionCompatibility.MOD_VERSION)) {
             assertTrue(result.valid(), () -> String.join("\n", result.diagnostics()));
             assertEquals(Set.of(USE_ITEM_ON, USE_WITHOUT_ITEM), result.injectedTargets());
             assertFalse(result.workerBlockStateCalls().contains(USE_ITEM_ON));
             assertFalse(result.workerBlockStateCalls().contains(USE_WITHOUT_ITEM));
         } else {
-            assertFalse(result.valid(), "an unpinned fabric-events-interaction must not be "
+            assertFalse(result.valid(), () -> "an unpinned fabric-events-interaction must not be "
                 + "certified; this build resolved "
-                + ResolvedArtifact.version(ResolvedArtifact.jarOf(BlockEvents.class)));
-            assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("hash")),
-                () -> "the refusal must name which pinned artifact drifted: " + result.diagnostics());
+                + resolvedVersionQuietly(BlockEvents.class));
+            assertTrue(result.diagnostics().stream()
+                    .anyMatch(d -> d.contains("module jar hash mismatch")),
+                () -> "the refusal must be the expected one -- the module jar drifting -- so that "
+                    + "an unrelated internal failure cannot impersonate it: "
+                    + result.diagnostics());
         }
     }
 
@@ -101,6 +104,12 @@ class FabricInteractionCompatibilityTest {
                 classBytes(PathfindingContext.class), classBytes(PathTypeCache.class),
                 classBytes(PathNavigationRegion.class), workerEvaluators());
         }
+    }
+
+    /** For a failure message only, so it can never throw over the real assertion. */
+    private static String resolvedVersionQuietly(Class<?> probe) {
+        try { return ResolvedArtifact.version(ResolvedArtifact.jarOf(probe)); }
+        catch (Exception e) { return "<unreadable: " + e + ">"; }
     }
 
     private static byte[] zipBytes(ZipFile zip, String entryName) throws Exception {
