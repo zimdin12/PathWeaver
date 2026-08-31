@@ -15,3 +15,10 @@ servercore=pinned
 rabbit-pathfinding-fix=pinned
 fabric-events-interaction-v0=pinned
 fabric-content-registries-v0=pinned
+
+# THIS BRANCH IS AUDITED FOR 26.2.
+#
+# The audits were re-derived against the artifacts 26.2 resolves: servercore 1.5.19+26.2,
+# rabbit-pathfinding-fix 1.4.0, and Fabric API 0.157.0+26.2 (events-interaction 5.2.7+515ac5339e,
+# content-registries 11.3.1+37b1aa249e). Every shape proof passes on those bytes. See
+# docs/AUDITS-ON-26.2.md for what changed and how it was checked.

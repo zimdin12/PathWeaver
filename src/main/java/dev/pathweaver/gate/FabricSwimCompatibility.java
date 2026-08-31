@@ -33,7 +33,7 @@ import java.util.Set;
 /** Runtime fingerprint and ASM proof for one exact Fabric Swim compatibility tuple. */
 final class FabricSwimCompatibility {
     static final String MOD_ID = "fabric-content-registries-v0";
-    static final String MOD_VERSION = "11.2.1+76b0b6bb4c";
+    static final String MOD_VERSION = "11.3.1+37b1aa249e";
     static final String CONFIG = "fabric-content-registries-v0.mixins.json";
     static final String CONTEXT_MIXIN =
         "net.fabricmc.fabric.mixin.content.registry.PathfindingContextMixin";
@@ -43,9 +43,9 @@ final class FabricSwimCompatibility {
         "net.fabricmc.fabric.mixin.content.registry.BlockBehaviourBlockStateBaseMixin";
 
     private static final String MODULE_SHA =
-        "d1c8a0a2753850ec422f9c03824a0475a24f1d27bbbf1227d9f9d952406bebd1";
+        "2411c889e9d3709a5a7fa91fe2417fefd010070c4819b996a9e7fa1bdd43e0dc";
     private static final String CONFIG_SHA =
-        "0e9df73ad0f08696f4bf99024307b8b72151d13c7626f23e456d115b9eb65f9e";
+        "0aede4db261cdbf3323d195b51f596c2b7a041a047399172af181ff549f4d5f9";
     private static final String CONTEXT_MIXIN_SHA =
         "d0c6db69f100e9b49c81fc9ea205566ab0effeba6bc17a73e5884e8c1e0a951e";
     private static final String WALK_MIXIN_SHA =
@@ -63,7 +63,7 @@ final class FabricSwimCompatibility {
     private static final String PATH_CONTEXT_SHA =
         "30aae3ceae3c27e7f3071d8d9b8232035ad8b15ae8d7999da3fbbaa49add6a9b";
     private static final String BLOCK_STATE_BASE_SHA =
-        "91a6b29e9ec0bd3ca18c05cd677b3a8e689c7849a3793c27373e531f9a1834fb";
+        "6391d498b3e1aff66783374415253021b9ed46e5c8110da97700b305652c4991";
 
     private static final String CONTEXT_INTERNAL =
         "net/minecraft/world/level/pathfinder/PathfindingContext";

@@ -33,7 +33,7 @@ import java.util.Set;
 /** Exact runtime fingerprints and ASM proofs for audited foreign pathfinding mixins. */
 final class AuditedMixinCompatibility {
     static final String SERVERCORE_ID = "servercore";
-    static final String SERVERCORE_VERSION = "1.5.19+26.1.2";
+    static final String SERVERCORE_VERSION = "1.5.19+26.2";
     static final String SERVERCORE_CONFIG = "servercore.common.mixins.json";
     private static final String SERVERCORE_FABRIC_CONFIG = "servercore.fabric.mixins.json";
     static final String SERVERCORE_MIXIN =
@@ -43,32 +43,32 @@ final class AuditedMixinCompatibility {
     static final String PATH_FINDER = "net.minecraft.world.level.pathfinder.PathFinder";
 
     static final String RABBIT_ID = "rabbit-pathfinding-fix";
-    static final String RABBIT_VERSION = "1.3.0";
+    static final String RABBIT_VERSION = "1.4.0";
     static final String RABBIT_CONFIG = "rabbit-pathfinding-fix.mixins.json";
     static final String RABBIT_MIXIN = "net.litetex.rpf.mixin.EntityNavigationMixin";
     static final String PATH_NAVIGATION =
         "net.minecraft.world.entity.ai.navigation.PathNavigation";
 
     static final String SERVERCORE_MODULE_SHA =
-        "593941ef360ba493b180c213bbb093d95223dba4a34d97e7559b914847363aa4";
+        "4f7c9fb3b35b364d8f6500d04f0d5481656f617a83bc69742b47f39adff59666";
     private static final String SERVERCORE_CONFIG_SHA =
         "39a5120066542578e74e3775a880d14f04bee935e2d6764132cdf3f7d7af82a7";
     private static final String SERVERCORE_FABRIC_CONFIG_SHA =
         "93b73019559e3c40245fc684d3d4e1b06049362ae3eaa5db53b179807a014a9f";
     private static final String SERVERCORE_MIXIN_SHA =
-        "ff0e986419f4685469063772c85e477810dfe425bf33a1ad1a62ed65ac6aefa7";
+        "0e22f5b9af818401529add92c6ebc26d372ba32511db78dca17161bf27304f41";
     static final String SERVERCORE_PLUGIN_SHA =
         "0e6ddc8d3c66c7e5826831845e0da41f6594b758a128d207419083b081e33cf6";
     private static final String PATH_FINDER_SHA =
         "095d620eaac37aa71af017858682e89689039a3b999cf2a5fcfce3f1c3973b2c";
     static final String RABBIT_MODULE_SHA =
-        "6388f7a83b303c7de485f5f0089bd7e887ea45f9adf6bc9b099cad932fa58851";
+        "4194ecb5993185922615cbb010fd63ee298e19c52a2978aa17d5c0e77e094d3c";
     private static final String RABBIT_CONFIG_SHA =
         "4adce45f270e2890686cd403392fdb81f1450024ff6814df04e51c57ec49fde6";
     private static final String RABBIT_MIXIN_SHA =
-        "bb31e6819c0d00216c9f2841849beff0ce5234f298d804876a91f7e5b225926b";
+        "6b7915b4bf9e6b1c483f3037c88e97a8f5b753942b7996ec7244a01cabc2d39d";
     private static final String PATH_NAVIGATION_SHA =
-        "ecfbf40003f91522f8cb99da84ff4ab9e4891e9511808412421fc640be7b339e";
+        "1a426f6642a7e5d18d8f948fa588dbb25deb6751ee37f5c9045e02eb3cb4e83b";
 
     private static final String MIXIN_DESC = "Lorg/spongepowered/asm/mixin/Mixin;";
     private static final String REDIRECT_DESC =

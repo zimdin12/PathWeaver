@@ -44,7 +44,7 @@ import java.util.Set;
  */
 final class FabricInteractionCompatibility {
     static final String MOD_ID = "fabric-events-interaction-v0";
-    static final String MOD_VERSION = "5.2.2+07b380be4c";
+    static final String MOD_VERSION = "5.2.7+515ac5339e";
     static final String CONFIG = "fabric-events-interaction-v0.mixins.json";
     static final String MIXIN =
         "net.fabricmc.fabric.mixin.event.interaction.BlockBehaviourBlockStateBaseMixin";
@@ -68,16 +68,15 @@ final class FabricInteractionCompatibility {
      * remain pinned exactly, so accepting either packaging does not widen what is trusted.
      */
     private static final Set<String> MODULE_SHAS = Set.of(
-        // standalone Maven artifact, as resolved in a Loom dev environment
-        "dc4a15c9250c6d0e5839e5b696792b06869c65f1ab7e71627986d8f9ed247d60",
-        // nested inside the aggregate fabric-api jar, as shipped to users
-        "c86603921ac5fd84135a7af31d54de3761d3ad027cba3694c29945cec8c3e2bf");
+        // One hash on 26.2: the dev environment resolves the same bytes that ship nested in
+        // fabric-api-0.157.0+26.2, confirmed by extracting the nested jar and hashing it.
+        "9e73edbb9be73696000c2e4eee9c4e246ca59c2031e5856f9d88062019f83ecd");
     private static final String CONFIG_SHA = "9a8445db121fce8e80c928290b8623f2f6e126459fddcb259b2016ae777f9759";
     private static final String MIXIN_SHA = "c35a9d60b12e32f2b1540b0116f6459bf515e8d1901dc18be5ebff9fd5bf72e7";
-    private static final String BLOCK_STATE_BASE_SHA = "91a6b29e9ec0bd3ca18c05cd677b3a8e689c7849a3793c27373e531f9a1834fb";
+    private static final String BLOCK_STATE_BASE_SHA = "6391d498b3e1aff66783374415253021b9ed46e5c8110da97700b305652c4991";
     private static final String PATH_FINDER_SHA = "095d620eaac37aa71af017858682e89689039a3b999cf2a5fcfce3f1c3973b2c";
     private static final String NODE_EVALUATOR_SHA = "8ac7d5eef6bad45b148a051ee8d5d3d890281c66672d761e785361c506f421e1";
-    static final String WALK_SHA = "dd94893c06c47e3bb386cf3e521ffa2c8c71d31e547b162a138c02ac9312568f";
+    static final String WALK_SHA = "3e8ec632e2fb9949d9460507b0288e1752acd40b029d1499f05bcbf195204936";
     static final String PATH_CONTEXT_SHA = "30aae3ceae3c27e7f3071d8d9b8232035ad8b15ae8d7999da3fbbaa49add6a9b";
     private static final String PATH_TYPE_CACHE_SHA = "1073ec12b68b267a928316c2ddab85cd7af2220c8b8eeca482a84fdff164a7d3";
     private static final String PATH_REGION_SHA = "96b574637c3782d38ea2af0534ee644bd899fdf19f803bfd6bebe922ab016d8d";
@@ -117,7 +116,7 @@ final class FabricInteractionCompatibility {
         "net.minecraft.world.level.pathfinder.AmphibiousNodeEvaluator",
         "4eaa062968f8e353bff5df4fc0a61287b2b0387885e86b42a3b40c992050df5d",
         "net.minecraft.world.entity.animal.frog.Frog$FrogNodeEvaluator",
-        "0fb1bfa9dad8599b84aceccae2edc7eb79b26c83c066698a0769f641400fad09",
+        "278948bf6e2c2927a66e9a190feeea84f504a99f5bd76e5d2f892228d6b282a5",
         "net.minecraft.world.entity.monster.creaking.Creaking$HomeNodeEvaluator",
         "65118998c7fe8dca68f39ee318992d17403a44b8f978c1ac123bbbe54d58fd93");
 
