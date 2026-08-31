@@ -15,6 +15,7 @@ import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.level.pathfinder.Path;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -73,6 +74,16 @@ public abstract class MoveToTargetSinkMixin {
     @Unique private static final int PATHWEAVER$VANILLA_REACH_RANGE = 0;
 
     /**
+     * Vanilla's throttle for a mob that cannot make progress: {@code stop()} sets it to
+     * {@code random.nextInt(40)} whenever the navigation reports itself stuck.
+     */
+    @Shadow private int remainingCooldown;
+
+    @Shadow private boolean reachedTarget(Mob mob, WalkTarget walkTarget) {
+        throw new AssertionError();
+    }
+
+    /**
      * The path this call should use instead of searching.
      *
      * <p>Paired with an explicit flag rather than using null as the sentinel. Null is a legitimate
@@ -83,6 +94,16 @@ public abstract class MoveToTargetSinkMixin {
      */
     @Unique private Path pathweaver$suppliedPath;
     @Unique private boolean pathweaver$hasSuppliedPath;
+    /**
+     * True only for a path taken from the park.
+     *
+     * <p>The tail replay must not run on the refusal route. There, vanilla's real {@code createPath}
+     * already ran and may have returned through its reuse short-circuit (offsets 41-75), which exits
+     * BEFORE the tail at 193-225 -- so vanilla deliberately wrote neither {@code targetPos} nor
+     * {@code reachRange} nor reset the stuck timeout. Replaying unconditionally would overwrite a
+     * target vanilla chose to leave alone.
+     */
+    @Unique private boolean pathweaver$suppliedFromPark;
 
     @Inject(
         method = "checkExtraStartConditions(Lnet/minecraft/server/level/ServerLevel;"
@@ -94,6 +115,7 @@ public abstract class MoveToTargetSinkMixin {
             ServerLevel level, Mob mob, CallbackInfoReturnable<Boolean> cir) {
         pathweaver$suppliedPath = null;
         pathweaver$hasSuppliedPath = false;
+        pathweaver$suppliedFromPark = false;
 
         PathWeaverConfig cfg = PathWeaverConfig.get();
         if (!cfg.enabled || !cfg.brainSinkAsync) return;
@@ -107,19 +129,51 @@ public abstract class MoveToTargetSinkMixin {
         if (walkTarget.isEmpty()) return;
         BlockPos asked = walkTarget.get().getTarget().currentBlockPosition();
 
-        EntityInstallSink sink = runtime.entitySink();
+        // VANILLA'S OWN TWO GUARDS, REPRODUCED, because this inject sits above both of them and
+        // skipping them is not free.
+        //
+        //   0-18  remainingCooldown > 0  -> decrement and refuse
+        //  39-50  reachedTarget(...)     -> erase WALK_TARGET and refuse, no path computed
+        //
+        // Jumping the first one made the mod dispatch a search every other tick for a mob vanilla
+        // had deliberately stopped pathing, and -- because the cancel returns before the decrement
+        // at offsets 7-14 -- held the throttle open for roughly twice as long. The feature inverted
+        // the exact guard that exists to stop a stuck mob pathfinding.
+        //
+        // Jumping the second dispatched a full A* to a block the mob was already standing on, and
+        // withheld the arrival erase for a tick.
+        //
+        // Both must be checked BEFORE takeBrainSinkPath, not after: taking removes the slot, and if
+        // vanilla then returns at either guard the wrap never runs and the answer is destroyed --
+        // which is what turns a single wasted search into a loop.
+        if (remainingCooldown > 0) return;
+        if (reachedTarget(mob, walkTarget.get())) return;
+
+        if (pathweaver$decideDefers(mob, navigation, duck, walkTarget.get(), asked)) {
+            cir.setReturnValue(false);
+        }
+    }
+
+    /**
+     * Take, defer or dispatch. Returns true when the caller must report "no path this tick".
+     *
+     * <p>Shared by both call sites so they cannot drift apart. The two vanilla guards are NOT in
+     * here: they belong to {@code checkExtraStartConditions} only, and {@code tick()} reaches
+     * {@code tryComputePath} without them.
+     */
+    @Unique
+    private boolean pathweaver$decideDefers(Mob mob, PathNavigation navigation, PWNavigation duck,
+                                            WalkTarget walkTarget, BlockPos asked) {
+        EntityInstallSink sink = PathWeaverRuntime.get().entitySink();
         int entityId = mob.getId();
 
         Path landed = sink.takeBrainSinkPath(entityId, asked);
         if (landed != null) {
-            pathweaver$supply(landed);
-            return;
+            pathweaver$supply(landed, true);
+            return false;
         }
 
-        if (sink.hasPendingBrainSink(entityId, asked)) {
-            cir.setReturnValue(false);
-            return;
-        }
+        if (sink.hasPendingBrainSink(entityId, asked)) return true;
 
         // Ask the navigation, then read what it did. Whether dispatch happens is decided behind the
         // safety gate, the origin gate, admission and the breaker; MobEligibility exists for
@@ -127,38 +181,70 @@ public abstract class MoveToTargetSinkMixin {
         // option. Dispatch records its own slot at the point it registers, which is the only place
         // that knows a request was really admitted.
         Path immediate;
-        duck.pathweaver$enterBrainSinkRequest(walkTarget.get().getSpeedModifier(), asked);
+        duck.pathweaver$enterBrainSinkRequest(walkTarget.getSpeedModifier(), asked);
         try {
             immediate = navigation.createPath(asked, PATHWEAVER$VANILLA_REACH_RANGE);
         } finally {
             duck.pathweaver$exitBrainSinkRequest();
         }
 
-        if (sink.hasPendingBrainSink(entityId, asked)) {
-            cir.setReturnValue(false);
-            return;
-        }
+        if (sink.hasPendingBrainSink(entityId, asked)) return true;
 
         // Still registered, but no slot of ours: another request for this mob is in flight and
         // dispatch either preserved it or superseded it. `immediate` on those routes is the mob's
         // CURRENTLY INSTALLED path, not a search result -- handing it back would answer this
         // destination with the route to a different one. Waiting a tick costs nothing now that the
         // deferral no longer erases the walk target.
-        if (sink.isRegistered(entityId)) {
-            cir.setReturnValue(false);
-            return;
-        }
+        if (sink.isRegistered(entityId)) return true;
 
         // Dispatch was refused outright, so this really is vanilla's own synchronous answer -- a
         // path, or null meaning no route exists. Either way it is the value vanilla would have had,
         // so hand it to the real call site rather than searching for the same destination twice.
-        pathweaver$supply(immediate);
+        pathweaver$supply(immediate, false);
+        return false;
+    }
+
+    /**
+     * The {@code tick()} re-path route, which is otherwise not offloaded at all.
+     *
+     * <p>Dropping this hook when the deferral moved upstream quietly halved the feature. Vanilla's
+     * {@code tick()} calls {@code tryComputePath} whenever the walk target has drifted more than two
+     * blocks (offsets 93-104), which is the dominant route for anything following a moving entity --
+     * piglins, allays, frogs, temptation-followed mobs. With no hook there, nobody opens the
+     * brain-sink window, {@code navigationRequestDepth} stays zero and every one of those searches
+     * runs synchronously on the server thread.
+     *
+     * <p>A {@code false} here is harmless, which is why the deferral is safe on this route and not on
+     * the other: {@code tick()} simply does not restart the behaviour, and the mob keeps walking the
+     * path it already has.
+     */
+    @Inject(method = "tryComputePath", at = @At("HEAD"), cancellable = true)
+    private void pathweaver$deferRepath(Mob mob, WalkTarget walkTarget, long gameTime,
+                                        CallbackInfoReturnable<Boolean> cir) {
+        // Reached from checkExtraStartConditions only when that inject already supplied a path, and
+        // the wrap below is about to consume it. Deciding again here would dispatch a second search
+        // for a question that has already been answered.
+        if (pathweaver$hasSuppliedPath) return;
+
+        PathWeaverConfig cfg = PathWeaverConfig.get();
+        if (!cfg.enabled || !cfg.brainSinkAsync) return;
+        PathWeaverRuntime runtime = PathWeaverRuntime.get();
+        if (!runtime.isRunning()) return;
+
+        PathNavigation navigation = mob.getNavigation();
+        if (!(navigation instanceof PWNavigation duck)) return;
+
+        BlockPos asked = walkTarget.getTarget().currentBlockPosition();
+        if (pathweaver$decideDefers(mob, navigation, duck, walkTarget, asked)) {
+            cir.setReturnValue(false);
+        }
     }
 
     @Unique
-    private void pathweaver$supply(Path path) {
+    private void pathweaver$supply(Path path, boolean fromPark) {
         pathweaver$suppliedPath = path;
         pathweaver$hasSuppliedPath = true;
+        pathweaver$suppliedFromPark = fromPark;
     }
 
     @WrapOperation(
@@ -175,15 +261,17 @@ public abstract class MoveToTargetSinkMixin {
         if (!pathweaver$hasSuppliedPath) return original.call(instance, target, reachRange);
 
         Path supplied = pathweaver$suppliedPath;
+        boolean fromPark = pathweaver$suppliedFromPark;
         // Consumed once. Leaving it set would answer a later, different question with this path.
         pathweaver$suppliedPath = null;
         pathweaver$hasSuppliedPath = false;
+        pathweaver$suppliedFromPark = false;
 
         // Replay the tail the real createPath would have run. Only createPath writes targetPos and
         // reachRange; the moveTo(Path, double) that start() uses writes neither. Without this the
         // navigation ends up holding a route to one destination while targetPos names another, and
         // the next recomputePath() reads targetPos and walks the mob back to the old one.
-        if (instance instanceof PWNavigation duck) {
+        if (fromPark && instance instanceof PWNavigation duck) {
             duck.pathweaver$replayCreatePathTail(supplied, reachRange);
         }
         return supplied;

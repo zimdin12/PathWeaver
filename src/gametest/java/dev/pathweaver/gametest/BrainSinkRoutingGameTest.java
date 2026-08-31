@@ -44,6 +44,76 @@ public final class BrainSinkRoutingGameTest {
         });
     }
 
+    /**
+     * Vanilla refuses to path for a mob that is already at its walk target, and erases the memory.
+     *
+     * <p>The hook sits above that guard, so it has to reproduce it. Without the reproduction the mod
+     * dispatched a full A* to a block the mob was standing on, and — because the deferral cancels
+     * before vanilla's body runs — withheld the arrival erase for a tick, blocking every
+     * {@code absent(WALK_TARGET)} behaviour for that tick. That is a milder form of the exact defect
+     * this file was written to catch.
+     *
+     * <p>Observable and attributable: with the guard, vanilla runs and clears WALK_TARGET; without
+     * it, the deferral keeps the memory alive while a pointless search is in flight.
+     */
+    @GameTest(maxTicks = 400)
+    public void anArrivedMobIsNotSentPathfindingForABlockItIsStandingOn(GameTestHelper helper) {
+        int[] armedAt = {-1};
+        Mob[] mob = new Mob[1];
+        BlockPos[] armedPos = new BlockPos[1];
+        helper.onEachTick(() -> {
+            long tick = helper.getTick();
+            if (tick < 20) return;
+            if (mob[0] == null) {
+                for (int x = 0; x <= 8; x++) {
+                    for (int z = 0; z <= 6; z++) helper.setBlock(x, 1, z, Blocks.STONE);
+                }
+                mob[0] = helper.spawn(EntityType.VILLAGER, 3, 2, 3);
+                mob[0].setOnGround(true);
+                return;
+            }
+            if (armedAt[0] < 0) {
+                if (tick < 60) return;
+                // Its own block. reachedTarget() is true immediately.
+                armedPos[0] = mob[0].blockPosition();
+                mob[0].getBrain().setMemory(MemoryModuleType.WALK_TARGET,
+                    new WalkTarget(armedPos[0], 0.5F, 0));
+                armedAt[0] = (int) tick;
+                return;
+            }
+
+            // THE ASSERTION, and it is about dispatch rather than about timing.
+            //
+            // A tick-budget version of this was tried twice and the mutation that deletes the guard
+            // survived both. Deleting it costs about one tick: the pointless search lands, gets
+            // collected, and vanilla erases the memory a tick or two later anyway -- so at a budget
+            // of 100 and again at 4, the test could not tell the two builds apart. Tightening
+            // further would only have made it flaky at the resolution of entity-tick ordering.
+            //
+            // What is unambiguous is that no search should exist AT ALL for a mob standing on its
+            // destination. The slot is per-entity and per-destination, so this is attributable.
+            check(helper, !PathWeaverRuntime.get().entitySink()
+                    .hasPendingBrainSink(mob[0].getId(), armedPos[0]),
+                "a search was dispatched for a mob already standing on its walk target; vanilla "
+                    + "computes nothing there (offsets 39-50 jump straight to the arrival erase)");
+
+            if (!mob[0].getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET)) {
+                helper.succeed();
+                return;
+            }
+            if (tick - armedAt[0] > 40) {
+                throw helper.assertionException(
+                    "a mob standing on its own walk target still holds WALK_TARGET after "
+                        + (tick - armedAt[0]) + " ticks; vanilla erases it at offsets 83-87 on the "
+                        + "next evaluation without computing anything");
+            }
+        });
+    }
+
+    private static void check(GameTestHelper helper, boolean condition, String message) {
+        if (!condition) throw helper.assertionException(message);
+    }
+
     private static final class Scenario {
         private final GameTestHelper helper;
         private final PathWeaverConfig cfg;

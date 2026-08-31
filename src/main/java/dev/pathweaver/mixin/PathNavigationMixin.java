@@ -725,11 +725,15 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // that knows a brain-sink request was really admitted, which is what the hook needs and
             // what it previously tried to infer from a predicate that cannot tell a supersede from a
             // refusal.
+            stage = dev.pathweaver.async.RequestOutcome.DispatchStage.REGISTERED;
+            // AFTER the stage advances, not before. Between register() and this assignment the
+            // registration exists while `stage` still says it does not, so a throw in here would send
+            // the catch down the not-registered arm -- leaking the registration and leaving the slot
+            // pending forever, which freezes that mob's brain sink and every other dispatch for it.
             if (this.pathweaver$currentOrigin == dev.pathweaver.async.RequestOrigin.BRAIN_SINK
                     && this.pathweaver$brainSinkAsked != null) {
                 sink.noteBrainSinkDispatch(entityId, this.pathweaver$brainSinkAsked);
             }
-            stage = dev.pathweaver.async.RequestOutcome.DispatchStage.REGISTERED;
             boolean accepted = rt.pool().submit(new PathRequest(submittedKey, tick, search,
                 result -> rt.installer().enqueue(submittedKey, tick, result, dx, dy, dz),
                 rt.installer()::enqueueDiscard,
