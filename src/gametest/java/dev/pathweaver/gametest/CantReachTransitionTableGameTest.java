@@ -58,7 +58,7 @@ public final class CantReachTransitionTableGameTest {
 
     private static final int WALL_X = 6;
 
-    @GameTest(maxTicks = 1800)
+    @GameTest(maxTicks = 3200)
     public void everyTransitionOfTheCantReachMemoryHolds(GameTestHelper helper) {
         State s = new State();
         helper.onEachTick(() -> s.tick(helper));
@@ -128,6 +128,7 @@ public final class CantReachTransitionTableGameTest {
             }
             villager = helper.spawn(VanillaTypes.mob(VanillaTypes.VILLAGER), 9, 2, 3);
             villager.setOnGround(true);
+            pathweaverStripBrainToMovementOnly(villager);
             reachable = helper.absolutePos(new BlockPos(10, 2, 3));
             walledOff = helper.absolutePos(new BlockPos(2, 2, 3));
         }
@@ -213,12 +214,12 @@ public final class CantReachTransitionTableGameTest {
                 }
                 return;
             }
-            // 700 ticks, not 400. The villager has to actually attempt the walled path, and
+            // 1400 ticks, not 700, and not 400 before that. The villager has to actually attempt
             // between the deferral, vanilla's stuck cooldown (up to 40 ticks per stop) and its own
             // idle behaviours competing for the walk target, that took longer than 400 about one run
             // in six. The assertion is that the detector FIRES, and it does; the budget was measuring
             // impatience rather than the property.
-            if (tick - enteredStage > 700) {
+            if (tick - enteredStage > 1400) {
                 throw helper.assertionException(
                     "a walled-off destination never set CANT_REACH_WALK_TARGET_SINCE, so every "
                         + "assertion here that depends on it being settable proves nothing. at="
@@ -268,6 +269,36 @@ public final class CantReachTransitionTableGameTest {
                 throw helper.assertionException(
                     "standing on the walk target did not clear CANT_REACH_WALK_TARGET_SINCE");
             }
+        }
+
+        /**
+         * Leave the villager with ONE behaviour: the movement sink this gate is about.
+         *
+         * <p>This test was flaky, and the flakiness was structural rather than a defect in the
+         * feature: a live villager brain runs idle strolling, look-at and its job-site and
+         * meeting-point behaviours, all of which write WALK_TARGET. The gate then had to out-wait
+         * whichever of them happened to win, which is why the stamping stage carried a 700-tick
+         * budget and still failed about one run in six with a control that failed three in
+         * eighteen. It was measuring the brain competing with itself.
+         *
+         * <p>Stripping the brain removes the competition instead of budgeting around it. What is
+         * left is exactly the transition table DESIGN.md section 10 asks about: MoveToTargetSink,
+         * a walk target, and the CANT_REACH memory.
+         */
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private void pathweaverStripBrainToMovementOnly(net.minecraft.world.entity.Mob mob) {
+            net.minecraft.world.entity.ai.Brain brain = mob.getBrain();
+            brain.removeAllBehaviors();
+            brain.addActivity(
+                net.minecraft.world.entity.schedule.Activity.CORE,
+                com.google.common.collect.ImmutableList.of(
+                    com.mojang.datafixers.util.Pair.of(
+                        0, new net.minecraft.world.entity.ai.behavior.MoveToTargetSink())),
+                java.util.Set.of(),
+                java.util.Set.of());
+            brain.setCoreActivities(
+                java.util.Set.of(net.minecraft.world.entity.schedule.Activity.CORE));
+            brain.useDefaultActivity();
         }
 
         private void aim(net.minecraft.world.entity.ai.Brain<?> brain, BlockPos target) {

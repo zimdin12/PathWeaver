@@ -220,7 +220,15 @@ tasks.named("runGameTest") {
                 + "the game-test harness cannot write a config the serializer will accept")
         }
         def configVersion = matcher.group(1)
-        def tier = providers.gradleProperty("unsafeTierHarness").isPresent() ? "UNSAFE" : "AUDITED"
+        // The CANT_REACH gate has to run at UNSAFE, because it is a test OF THE BRAIN SINK.
+        //
+        // At AUDITED the dev classpath denies every movement family, so the sink cannot dispatch and
+        // the gate measures vanilla brain timing and nothing else. It sat at dispatched=0 for its
+        // whole life, which is why it was flaky (it was timing a villager competing with its own
+        // idle behaviours) and why two separate mutations of the feature left it green.
+        def unsafeTier = providers.gradleProperty("unsafeTierHarness").isPresent()
+            || providers.gradleProperty("cantReachHarness").isPresent()
+        def tier = unsafeTier ? "UNSAFE" : "AUDITED"
         def config = layout.buildDirectory
             .file("run/gameTest/config/pathweaver.json").get().asFile
         config.parentFile.mkdirs()

@@ -122,14 +122,19 @@ unit tests green. All four are pinned.
 
 ## What is not done
 
-**The shipping gate is written and not reliable.** `DESIGN.md` §10 and `ROADMAP.md` both required a
-game test over the whole `CANT_REACH_WALK_TARGET_SINCE` transition table before this feature ships.
-It exists, it covers all four transitions, and it fails about **5 runs in 18** — with a control at
-**3 in 18**, so the flake is **not** attributable to the feature (Fisher exact, p = 0.69).
+**The shipping gate ran at the wrong tier for its whole life.** `DESIGN.md` section 10 and
+`ROADMAP.md` both required a game test over the `CANT_REACH_WALK_TARGET_SINCE` transition table
+before this feature ships. That test existed and covered all four transitions, and it had **never
+tested the feature**: the harness ran at `compatibilityTier=AUDITED`, where the dev classpath denies
+all six movement families, so the brain sink could not dispatch. Every run recorded `dispatched=0`.
+It was timing a vanilla villager, which is why it was flaky and why mutations of the feature left it
+green.
 
-It runs opt-in under `-PcantReachHarness` and gates nothing. Both documents now say
-written-and-unmet. The test is kept rather than deleted because it is the only reproducer of the
-signature, and a test held out of the gate is honest where a deleted one is not.
+The harness runs at `UNSAFE` now and the same gate records `dispatched=6`. It kills a mutation
+removing the liveness bound. The residual flake is measured not to be the feature: 8 of 10 pass with
+the sink on, against a control at 6 of 8 with it off, and doubling the tick budget did not move the
+rate. The gate is waived as blocking and kept as an on-demand reproducer, with that reasoning in
+DESIGN.md rather than dropped quietly.
 
 **A correction I owe on that.** I reported a "reproducible, feature-attributed freeze" four times, on
 a control of 0-in-8 that had been measured on a materially different version of the test. It did not

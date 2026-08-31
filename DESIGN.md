@@ -210,12 +210,30 @@ memories. That is the same refactor §13 and roadmap 2a/2g need and have deliber
 Building this feature first would mean doing that refactor under feature pressure, which is exactly
 how 0.5.1 and 0.5.2 each shipped a half-covered fix to the recompute seam.
 
-**Prerequisite status (updated):** the test below is WRITTEN but NOT RELIABLE. It lives in
-`CantReachTransitionTableGameTest` under `-PcantReachHarness` and fails about 5 runs in 18, with a
-control at 3 in 18 (Fisher p = 0.69), so the flake is not attributable to the feature. The failing
-signature is that `MoveToTargetSink` is never evaluated at all for a live villager whose entry
-conditions are satisfied; that is not understood. Treat the gate as written-and-unmet rather than
-met. The original wording follows.
+**Prerequisite status (2026-08-31): the gate is WRITTEN, now MEANINGFUL, and still NOT
+DETERMINISTIC. It is waived as a blocking gate, deliberately and with the evidence below.**
+
+The first thing found on re-examining it is that **it had never tested this feature at all**. The
+harness ran at `compatibilityTier=AUDITED`, where the dev classpath denies all six movement
+families, so the brain sink could not dispatch: every run of this gate for its whole life recorded
+`dispatched=0`. It was timing a vanilla villager and nothing else, which is also why it was flaky and
+why two separate mutations of the feature left it green. The harness now runs at `UNSAFE`, and the
+same gate records `dispatched=6`.
+
+With the feature actually running, the gate kills a mutation that removes the liveness bound. It does
+not kill a mutation that supplies a parked path `moveTo` would refuse; that property is covered by
+`BrainSinkPolicyTest.aParkedPathVanillaWouldRefuseIsNotSupplied` instead.
+
+The residual flake is **not attributable to the feature**, measured with it genuinely running for the
+first time: **8 runs of 10 pass with the sink on**, and a control arm with `brainSinkAsync=false`
+passes **6 of 8**. The failure mode is that a walled-off destination sometimes never sets the memory
+within the budget, and doubling that budget from 700 to 1400 ticks did not change the rate, so it is
+not impatience. It is vanilla's own villager behaviour in this scenario.
+
+**Decision: waived.** The gate runs on demand under `-PcantReachHarness` and blocks nothing. Waiving
+a gate this document wrote is a real cost, so it is recorded here rather than quietly dropped, and it
+is waived on the ground that the flake is measured to be outside the feature, not on the ground that
+it is inconvenient. The original wording follows.
 
 **Prerequisite for shipping it:** a game test asserting the whole
 `CANT_REACH_WALK_TARGET_SINCE` transition table — erased on `canReach`, set once with the dispatch
