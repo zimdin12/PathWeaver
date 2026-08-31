@@ -181,6 +181,29 @@ Mean tick time fell **43.5% to 48.2%**; p99 fell **55–61%**. No overlap: every
 
 **These are not comparable to the figures published for 0.3.0.** During 0.4.0's development the mixin that isolates Minecraft's shared path-type cache from workers silently stopped applying, and a search reusing that already-populated shared cache runs faster than one filling a private cache. Every figure here was re-measured after that was fixed, on the exact release artifact rather than a close relative of it.
 
+### The brain sink, measured
+
+`brainSinkAsync` moves villager and other brain-mob path searches off the tick. Three pairs of
+60-second profiles on the 222-jar dedicated pack, 140 villagers and 30 goats in a walled arena, the
+only variable being the setting. Every thread was profiled, not just the server thread.
+
+| | on | off |
+|---|---|---|
+| **Pathfinding on the server thread** | **139 ms** | **325 ms** |
+| Pathfinding on worker threads | 227 ms | 0 ms |
+| Total pathfinding, all threads | 365 ms | 325 ms |
+| MSPT | 5.13 ms | 5.25 ms |
+
+**57% of brain-mob pathfinding comes off the tick**, and every run with the setting on was below
+every run with it off (`120, 148, 148` against `288, 288, 400` ms).
+
+It costs about **12% more CPU in total** to do that. Moving work is not removing it: the snapshot,
+hand-off and install are real, and they show up because every thread was sampled. MSPT barely moved
+and its ranges overlap, because this server sat at 5 ms against a 50 ms budget — the honest claim
+here is headroom, not throughput.
+
+Full method, controls and the seven discarded runs: [docs/evidence/BRAINSINK-0.8.0.md](docs/evidence/BRAINSINK-0.8.0.md).
+
 ### Profiled on a real modpack, with spark
 
 The tables above are a synthetic burst in a four-mod environment. This is the same question asked
@@ -195,6 +218,25 @@ Profiles were saved locally rather than uploaded, so the pack's composition stay
 
 **Pathfinding's share of the server thread fell by 60%**, with 7,262 searches dispatched and 96.3%
 installed over the profiled window.
+
+**Three things this measurement is not**, established by re-reading the retained profiles rather than
+by reasoning about them:
+
+- **It is not a `brainSinkAsync` measurement.** The population was goal-driven and flying navigation,
+  bees prominent. Across both profiles there is one `Brain` frame totalling 4 ms and *zero* time in
+  `MoveToTargetSink`, which is the only route `brainSinkAsync` gates. Nothing on this page measures
+  the brain sink.
+- **It is not reproducible from this tree.** The load was driven by a synthetic in-mod retarget probe
+  that accounts for 3,604 of the 5,572 ms attributed to pathfinding in the off arm. That class is in
+  neither the current source nor the shipped jar. `bench/` can run the scenario again; it cannot
+  reproduce these numbers.
+- **The percentage flatters itself.** The denominator is the whole sampled thread, which is 67-74%
+  idle at this load, so the share of *real work* is about four times larger than the headline. Both
+  arms held 20 TPS, so the honest claim is headroom, not throughput.
+
+Measured against tick time instead, the same two profiles give **15.47 ms/tick off and 12.52 ms/tick
+on** — about 19% off the tick — and pathfinding as a share of `tickServer` falls from 40.3% to 19.8%.
+Those are the figures worth quoting.
 
 What remains on the server thread with the mod on is mostly `PathNavigation.createPath` (1,872 ms) —
 the dispatch itself: building the region, cloning the evaluator, running the search's prologue. That

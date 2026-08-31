@@ -20,8 +20,22 @@ PATHFINDING = (
     "net.minecraft.world.level.pathfinder",
     "net.minecraft.world.entity.ai.navigation",
     "PathNavigation", "NodeEvaluator", "PathFinder", "PathfindingContext",
+    # A modded navigator that does its work without calling down through a vanilla frame is
+    # otherwise invisible: stormiespiders' AdvancedClimberPathNavigator was 16 ms of unattributed
+    # time in both arms of the retained pair. "PathNavigator" is not "PathNavigation".
+    "PathNavigator",
 )
-BRAIN_SINK = ("dev.pathweaver",)
+
+# The mod's own cost. Mixin handlers are MERGED INTO the target class, so they are labelled
+# net.minecraft...PathNavigation.wrapOperation$fbo000$pathweaver$armCoordinateMove and carry no
+# "dev.pathweaver" at all. Matching only the package missed them and matching only the marker
+# missed the plain classes; neither set contains the other.
+BRAIN_SINK = ("dev.pathweaver", "pathweaver$")
+
+# The denominator that means something. Share-of-thread is 67-74% idle on a healthy server, so it
+# understates the share of real work about fourfold; it only looks stable across arms because spark
+# fixes the sample count.
+TICK = "net.minecraft.server.MinecraftServer.tickServer"
 
 
 def label(node):
@@ -58,28 +72,41 @@ def summarise(path):
                     pw_time += w
             return path_time, pw_time
 
+        def tick_time():
+            return sum(total(n) for n in pool if label(n) == TICK)
+
         root_sum = sum(total(pool[i]) for i in thread.children_refs)
         path_time = pw_time = 0.0
         for i in thread.children_refs:
             p, w = subtree(i, False, False)
             path_time += p
             pw_time += w
-        out[thread.name] = (thread_total, root_sum, path_time, pw_time)
-    return out
+        out[thread.name] = (thread_total, root_sum, path_time, pw_time, tick_time())
+    return {"threads": out, "ticks": data.metadata.number_of_ticks}
 
 
 def report(tag, path):
-    print(f"===== {tag}   {Path(path).name}")
-    for name, (thread_total, root_sum, path_time, pw_time) in summarise(path).items():
-        if thread_total <= 0:
+    data = summarise(path)
+    ticks = data["ticks"]
+    print(f"===== {tag}   {Path(path).name}   ticks={ticks}")
+    rows = sorted(data["threads"].items(), key=lambda kv: -kv[1][2])
+    if len(rows) == 1:
+        print("  ONE THREAD ONLY. The workers that receive the moved work were not sampled, so "
+              "this cannot tell 'moved the work' from 'removed the work'. Profile with --thread *.")
+    for name, (thread_total, root_sum, path_time, pw_time, tick_ms) in rows:
+        if thread_total <= 0 or (path_time == 0 and pw_time == 0 and "Server thread" not in name):
             continue
         drift = abs(root_sum - thread_total) / thread_total
         if drift > 0.01:
             print(f"  {name}: SELF-CHECK FAILED, roots sum to {root_sum:.0f} ms but the thread "
                   f"reports {thread_total:.0f} ms. The tree walk is wrong; no figure printed.")
             continue
-        print(f"  {name:<28} total {thread_total:9.0f} ms   pathfinding {path_time:8.0f} ms "
-              f"({100 * path_time / thread_total:5.2f}%)   pathweaver {pw_time:7.0f} ms")
+        print(f"  {name:<30} total {thread_total:8.0f} ms  pathfinding {path_time:7.0f} ms  "
+              f"pathweaver {pw_time:6.0f} ms")
+        if tick_ms > 0:
+            mspt = tick_ms / ticks if ticks else float("nan")
+            print(f"  {'':<30} tickServer {tick_ms:7.0f} ms  MSPT {mspt:5.2f} ms/tick  "
+                  f"pathfinding/tick {100 * path_time / tick_ms:5.2f}% of real work")
 
 
 if __name__ == "__main__":
