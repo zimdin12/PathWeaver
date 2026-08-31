@@ -72,6 +72,14 @@ public final class BrainSinkPolicy {
         boolean isRegistered(int entityId);
 
         /**
+         * Would vanilla's {@code moveTo} accept this path?
+         *
+         * <p>Behind the port so the decision stays free of Minecraft, and because it is the one
+         * question the policy cannot answer from its own state.
+         */
+        boolean acceptableToVanilla(Path path);
+
+        /**
          * Open the brain-sink window, run vanilla's {@code createPath}, close the window.
          *
          * <p>Returns a {@link Probe} rather than a bare {@code Path} because null is a legitimate
@@ -118,9 +126,25 @@ public final class BrainSinkPolicy {
     public Decision decide(int entityId, BlockPos asked, double speed, long gameTime,
                            SearchPort port) {
         Path landed = port.takeParked(entityId, asked);
-        if (landed != null) {
+        if (landed != null && port.acceptableToVanilla(landed)) {
             deferralsSinceProgress = 0;
             return new Decision(Action.SUPPLY_FROM_PARK, landed);
+        }
+        if (landed != null) {
+            // A parked path vanilla would refuse must NOT be handed to the behaviour.
+            //
+            // MoveToTargetSink.start() calls moveTo(path, speed) and DISCARDS the boolean (offset
+            // 30: pop). So a refused path leaves the behaviour started and holding a non-null `path`
+            // field while the navigation holds none -- and canStillUse reads the BEHAVIOUR's field,
+            // not the navigation's, so it keeps returning true. The mob then sits with a walk target,
+            // no route, and no unreachable memory, because nothing re-evaluates: that is the frozen
+            // villager this cost three review rounds to find.
+            //
+            // Vanilla never meets this because it computes a fresh path every time. Ours can be up
+            // to maxResultAgeTicks old by the time it is collected. The install route has carried
+            // INSTALL_REJECTED for this exact reason since 0.7; the supply route had nothing.
+            deferralsSinceProgress = 0;
+            return Decision.of(Action.RUN_VANILLA);
         }
 
         // Liveness, checked AFTER the collection attempt so a landed answer is never refused, and

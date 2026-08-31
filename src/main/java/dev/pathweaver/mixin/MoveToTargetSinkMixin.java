@@ -245,6 +245,11 @@ public abstract class MoveToTargetSinkMixin {
                 @Override public boolean isRegistered(int id) {
                     return sink.isRegistered(id);
                 }
+                @Override public boolean acceptableToVanilla(Path path) {
+                    // The two conditions moveTo(Path, double) refuses on: an already-finished path,
+                    // and one that trims to no nodes.
+                    return path != null && !path.isDone() && path.getNodeCount() > 0;
+                }
                 @Override public BrainSinkPolicy.Probe probe(double speed, BlockPos at) {
                     // A window already open on this navigation means something re-entered; the
                     // navigation refuses and the policy leaves the call to vanilla.

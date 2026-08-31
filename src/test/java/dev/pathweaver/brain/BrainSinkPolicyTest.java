@@ -47,6 +47,11 @@ class BrainSinkPolicyTest {
             calls.add("hasPending");
             return probed ? pendingAfterProbe : pendingBefore;
         }
+        boolean acceptable = true;
+        @Override public boolean acceptableToVanilla(Path path) {
+            calls.add("acceptable");
+            return acceptable;
+        }
         @Override public boolean isRegistered(int entityId) {
             calls.add("isRegistered");
             return registered;
@@ -80,9 +85,34 @@ class BrainSinkPolicyTest {
 
         assertEquals(BrainSinkPolicy.Action.SUPPLY_FROM_PARK, d.action());
         assertSame(landed, d.path());
-        assertEquals(List.of("take"), port.calls,
+        assertEquals(List.of("take", "acceptable"), port.calls,
             "a landed answer must be collected before anything else is consulted; probing first "
                 + "would dispatch a search for a question already answered");
+    }
+
+    /**
+     * A parked path vanilla would refuse must never be handed to the behaviour.
+     *
+     * <p>{@code MoveToTargetSink.start()} calls {@code moveTo(path, speed)} and discards the boolean
+     * (offset 30 is a bare {@code pop}). A refused path therefore leaves the behaviour STARTED,
+     * holding a non-null {@code path} field while the navigation holds none -- and
+     * {@code canStillUse} reads the behaviour's field, not the navigation's, so it keeps saying yes.
+     * The mob sits with a walk target, no route and no unreachable memory, because nothing
+     * re-evaluates. That is the frozen villager, and vanilla cannot reach it because vanilla always
+     * computes a fresh path; ours can be up to maxResultAgeTicks old when collected.
+     */
+    @Test void aParkedPathVanillaWouldRefuseIsNotSupplied() {
+        BrainSinkPolicy policy = new BrainSinkPolicy();
+        FakePort port = new FakePort();
+        port.parked = stubPath();
+        port.acceptable = false;
+
+        BrainSinkPolicy.Decision d = policy.decide(MOB, A, 1.0, 100L, port);
+
+        assertEquals(BrainSinkPolicy.Action.RUN_VANILLA, d.action(),
+            "handing back a path moveTo will refuse leaves the behaviour started with no route and "
+                + "nothing that will ever re-evaluate it");
+        assertNull(d.path());
     }
 
     @Test void aSearchStillInFlightDefers() {
