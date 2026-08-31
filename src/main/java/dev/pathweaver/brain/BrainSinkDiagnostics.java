@@ -40,7 +40,27 @@ public final class BrainSinkDiagnostics {
 
     public static int tickHooks(int entityId) { return TICK_HOOKS.getOrDefault(entityId, 0); }
 
+    private static final Map<Integer, java.util.List<String>> LIFECYCLE = new ConcurrentHashMap<>();
+
+    /** Diagnostic: start/stop pairs for the behaviour, newest last, bounded. */
+    public static void recordLifecycle(int entityId, String event) {
+        java.util.List<String> log =
+            LIFECYCLE.computeIfAbsent(entityId, k -> java.util.Collections.synchronizedList(
+                new java.util.ArrayList<>()));
+        synchronized (log) {
+            if (log.size() >= 12) log.remove(0);
+            log.add(event);
+        }
+    }
+
+    public static String lifecycle(int entityId) {
+        java.util.List<String> log = LIFECYCLE.get(entityId);
+        if (log == null) return "none";
+        synchronized (log) { return String.join(">", log); }
+    }
+
     public static void clear() {
+        LIFECYCLE.clear();
         LAST.clear();
         START_CHECKS.clear();
         TICK_HOOKS.clear();

@@ -353,6 +353,27 @@ if (providers.gradleProperty("unsafeTierHarness").isPresent()) {
     }
 }
 
+// The CANT_REACH transition table runs alone. It shares PathWeaverConfig.brainSinkAsync with the
+// other brain-sink tests -- three classes capture it, set it true, and restore it -- and it reads a
+// per-entity diagnostic that only means anything if nothing else is driving the same feature. Run
+// beside them, its instrumentation reported sc=0: the hook had never been called for its villager at
+// all, which is a statement about the harness, not about the mod.
+if (providers.gradleProperty("cantReachHarness").isPresent()) {
+    tasks.register("prepareCantReachGameTestHarness") {
+        dependsOn tasks.named("processGametestResources")
+        outputs.upToDateWhen { false }
+        doLast {
+            copy {
+                from file("src/gametest/cantReachResources/fabric.mod.json")
+                into layout.buildDirectory.dir("resources/gametest")
+            }
+        }
+    }
+    tasks.named("runGameTest") {
+        dependsOn tasks.named("prepareCantReachGameTestHarness")
+    }
+}
+
 // AuditedCompatibilityRoutingGameTest ran in the DEFAULT harness beside
 // PathNavigationRoutingGameTest, which asserts EXACT deltas on the process-global dispatch counter
 // at seven points. Its harness-mate spawns a mob and dispatches, and the counter is shared -- so a

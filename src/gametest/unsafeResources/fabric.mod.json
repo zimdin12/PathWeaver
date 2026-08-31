@@ -10,8 +10,7 @@
   "entrypoints": {
     "fabric-gametest": [
       "dev.pathweaver.gametest.UnsafeTierWaiverGameTest",
-      "dev.pathweaver.gametest.BrainSinkRoutingGameTest",
-      "dev.pathweaver.gametest.CantReachTransitionTableGameTest"
+      "dev.pathweaver.gametest.BrainSinkRoutingGameTest"
     ]
   },
   "depends": {

@@ -21,6 +21,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.Optional;
@@ -349,6 +350,37 @@ public abstract class MoveToTargetSinkMixin {
         pathweaver$suppliedPath = path;
         pathweaver$hasSuppliedPath = true;
         pathweaver$suppliedFromPark = fromPark;
+    }
+
+    /**
+     * Diagnostic only: the PATH memory's lifecycle, which is where the deadlock lives.
+     *
+     * <p>PATH is written by start() and tick() and erased by stop(). If it is present while the
+     * behaviour is not running, the entry condition PATH VALUE_ABSENT can never be met again and the
+     * mob is frozen for good. Recording start/stop pairs says whether a start went without its stop.
+     *
+     * <p>The RETURN hook on start() also answers whether vanilla's moveTo accepted the path we handed
+     * it, which start() itself discards (offset 30 is a bare pop).
+     */
+    @Inject(
+        method = "start(Lnet/minecraft/server/level/ServerLevel;"
+            + "Lnet/minecraft/world/entity/Mob;J)V",
+        at = @At("RETURN"),
+        require = 1
+    )
+    private void pathweaver$traceStart(ServerLevel level, Mob mob, long gameTime, CallbackInfo ci) {
+        BrainSinkDiagnostics.recordLifecycle(mob.getId(),
+            "start(navPath=" + (mob.getNavigation().getPath() != null) + ")");
+    }
+
+    @Inject(
+        method = "stop(Lnet/minecraft/server/level/ServerLevel;"
+            + "Lnet/minecraft/world/entity/Mob;J)V",
+        at = @At("RETURN"),
+        require = 1
+    )
+    private void pathweaver$traceStop(ServerLevel level, Mob mob, long gameTime, CallbackInfo ci) {
+        BrainSinkDiagnostics.recordLifecycle(mob.getId(), "stop");
     }
 
     @WrapOperation(
