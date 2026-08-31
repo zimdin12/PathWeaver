@@ -50,8 +50,10 @@ if [ -f config/pathweaver.json ] && [ ! -f config/pathweaver.json.pristine ]; th
 fi
 
 restore() {
-  kill "${SERVERPID:-0}" 2>/dev/null
-  kill "${TAILPID:-0}" 2>/dev/null
+  # NEVER default these to 0. `kill 0` signals the whole process group, which includes whatever
+  # invoked this script: a three-pair campaign died after its first run because of exactly that,
+  # exiting 0 and leaving a half-finished set of profiles that looked like a complete one.
+  [ -n "${TAILPID:-}" ] && kill "$TAILPID" 2>/dev/null
   [ -f "$SERVER/server.properties.pristine" ] &&
     cp -f "$SERVER/server.properties.pristine" "$SERVER/server.properties"
   [ -f "$SERVER/config/pathweaver.json.pristine" ] &&
@@ -226,7 +228,7 @@ AFTER_ALIVE="$(grep -aoE "Test passed. Count: [0-9]+" "$LOG" | tail -1 | grep -o
 
 say "stop"
 sleep 45
-kill "${TAILPID:-0}" 2>/dev/null
+[ -n "${TAILPID:-}" ] && kill "$TAILPID" 2>/dev/null
 
 # ---------------------------------------------------------------- controls
 #
