@@ -49,7 +49,7 @@ final class AuditedMixinCompatibility {
     static final String PATH_NAVIGATION =
         "net.minecraft.world.entity.ai.navigation.PathNavigation";
 
-    private static final String SERVERCORE_MODULE_SHA =
+    static final String SERVERCORE_MODULE_SHA =
         "593941ef360ba493b180c213bbb093d95223dba4a34d97e7559b914847363aa4";
     private static final String SERVERCORE_CONFIG_SHA =
         "39a5120066542578e74e3775a880d14f04bee935e2d6764132cdf3f7d7af82a7";
@@ -61,7 +61,7 @@ final class AuditedMixinCompatibility {
         "0e6ddc8d3c66c7e5826831845e0da41f6594b758a128d207419083b081e33cf6";
     private static final String PATH_FINDER_SHA =
         "095d620eaac37aa71af017858682e89689039a3b999cf2a5fcfce3f1c3973b2c";
-    private static final String RABBIT_MODULE_SHA =
+    static final String RABBIT_MODULE_SHA =
         "6388f7a83b303c7de485f5f0089bd7e887ea45f9adf6bc9b099cad932fa58851";
     private static final String RABBIT_CONFIG_SHA =
         "4adce45f270e2890686cd403392fdb81f1450024ff6814df04e51c57ec49fde6";

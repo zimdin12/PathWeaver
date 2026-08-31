@@ -270,6 +270,15 @@ tasks.named("sourcesJar") {
 test {
     useJUnitPlatform()
 
+    // COMPATIBILITY.md is READ by a test, and Gradle cannot see that.
+    //
+    // publishedTableCarriesExactArtifactHashesAndDriftBoundary asserts the published hash table
+    // still quotes the hashes the audits enforce. Undeclared, the table is not a task input, so
+    // editing it leaves :test UP-TO-DATE and the build reports green on a check that never ran.
+    // Found while mutation-verifying that test: a corrupted hash "passed" in one second. Same shape
+    // as the skipped-test bug below -- a result nobody produced, read as a result.
+    inputs.file('COMPATIBILITY.md').withPropertyName('compatibilityTable')
+
     // Fail the build on a skipped test.
     //
     // CertifiedLandProvidersTest booted Minecraft's registries in its own @BeforeAll behind an
