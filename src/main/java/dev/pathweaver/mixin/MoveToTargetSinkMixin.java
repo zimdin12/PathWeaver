@@ -26,7 +26,7 @@ import java.util.Optional;
 /**
  * Feature C: offload the villager-brain movement sink.
  *
- * <p>Brain mobs — villagers, piglins, axolotls, frogs, allays, camels, the warden, and about twenty
+ * <p>Brain mobs — villagers, piglins, axolotls, frogs, allays, camels, and about twenty
  * other AI packages — never call {@code moveTo(x, y, z, speed)}. Every path they walk is computed by
  * {@code MoveToTargetSink.tryComputePath}, which calls {@code createPath} and reads the answer on the
  * next line, so the four ordinary dispatch sites never see them. They were not being refused; they
@@ -72,6 +72,42 @@ public abstract class MoveToTargetSinkMixin {
 
     /** Vanilla calls {@code createPath(pos, 0)} here — offset 18 is {@code iconst_0}. */
     @Unique private static final int PATHWEAVER$VANILLA_REACH_RANGE = 0;
+
+    /**
+     * How many ticks in a row this behaviour may answer "not yet" before it must answer for real.
+     *
+     * <p>A LIVENESS BOUND, and without it the feature can stall a mob indefinitely. The slot is keyed
+     * on the exact destination asked for, and several vanilla behaviours rewrite that destination
+     * every tick. {@code AnimalPanic.tick} is the worst: it overwrites WALK_TARGET with a FRESH
+     * random position on every tick the navigation is idle, with no {@code absent(WALK_TARGET)} gate.
+     * A deferral leaves the mob with no path, so {@code isDone()} stays true, so the destination
+     * re-rolls, so the parked answer is never for the question being asked -- and the animal stands
+     * still for the whole 5-6 second panic while dispatching one full A* per tick. A burning goat
+     * never reaches water.
+     *
+     * <p>Two is enough to be useful and small enough to be safe: the common case lands in one tick,
+     * and anything that has not answered in two gets vanilla's synchronous answer instead. Progress
+     * is then guaranteed by construction rather than by hoping the destination holds still.
+     */
+    @Unique private static final int PATHWEAVER$MAX_CONSECUTIVE_DEFERRALS = 2;
+
+    /** Consecutive ticks this behaviour has deferred without collecting anything. */
+    @Unique private int pathweaver$consecutiveDeferrals;
+
+    /**
+     * True while {@code checkExtraStartConditions} owns the decision for this call.
+     *
+     * <p>The two hooks were fighting. When the start check declines to defer -- at the liveness
+     * bound, or having supplied nothing -- vanilla carries on into {@code tryComputePath}, whose hook
+     * then ran the decision a SECOND time against a counter the bound had just reset, deferred, and
+     * so returned the false that makes vanilla erase the walk target. The bound could never take
+     * effect and the mob never got a path: measured at three failures in four runs.
+     *
+     * <p>Keying the stand-down on {@code hasSuppliedPath} is not enough, because the fall-through
+     * path deliberately supplies nothing. One decision per start attempt is the property that
+     * matters, so it is stated directly.
+     */
+    @Unique private boolean pathweaver$startCheckOwnsDecision;
 
     /**
      * Vanilla's throttle for a mob that cannot make progress: {@code stop()} sets it to
@@ -149,9 +185,26 @@ public abstract class MoveToTargetSinkMixin {
         if (remainingCooldown > 0) return;
         if (reachedTarget(mob, walkTarget.get())) return;
 
+        pathweaver$startCheckOwnsDecision = true;
         if (pathweaver$decideDefers(mob, navigation, duck, walkTarget.get(), asked)) {
             cir.setReturnValue(false);
         }
+    }
+
+    /**
+     * Release the decision claim however this call ended, including the cancelled path.
+     *
+     * <p>{@code @At("RETURN")} fires for an {@code @Inject} cancellation too, so a deferred tick
+     * clears the flag as reliably as one that fell through.
+     */
+    @Inject(
+        method = "checkExtraStartConditions(Lnet/minecraft/server/level/ServerLevel;"
+            + "Lnet/minecraft/world/entity/Mob;)Z",
+        at = @At("RETURN")
+    )
+    private void pathweaver$releaseDecisionClaim(ServerLevel level, Mob mob,
+                                                 CallbackInfoReturnable<Boolean> cir) {
+        pathweaver$startCheckOwnsDecision = false;
     }
 
     /**
@@ -169,11 +222,23 @@ public abstract class MoveToTargetSinkMixin {
 
         Path landed = sink.takeBrainSinkPath(entityId, asked);
         if (landed != null) {
+            pathweaver$consecutiveDeferrals = 0;
             pathweaver$supply(landed, true);
             return false;
         }
 
-        if (sink.hasPendingBrainSink(entityId, asked)) return true;
+        // Liveness. Checked after the collection attempt, so a landed answer is never refused, and
+        // before dispatch, so a mob that is about to be answered synchronously does not also start a
+        // search nobody will collect.
+        if (pathweaver$consecutiveDeferrals >= PATHWEAVER$MAX_CONSECUTIVE_DEFERRALS) {
+            pathweaver$consecutiveDeferrals = 0;
+            return false;
+        }
+
+        if (sink.hasPendingBrainSink(entityId, asked)) {
+            pathweaver$consecutiveDeferrals++;
+            return true;
+        }
 
         // Ask the navigation, then read what it did. Whether dispatch happens is decided behind the
         // safety gate, the origin gate, admission and the breaker; MobEligibility exists for
@@ -188,18 +253,25 @@ public abstract class MoveToTargetSinkMixin {
             duck.pathweaver$exitBrainSinkRequest();
         }
 
-        if (sink.hasPendingBrainSink(entityId, asked)) return true;
+        if (sink.hasPendingBrainSink(entityId, asked)) {
+            pathweaver$consecutiveDeferrals++;
+            return true;
+        }
 
         // Still registered, but no slot of ours: another request for this mob is in flight and
         // dispatch either preserved it or superseded it. `immediate` on those routes is the mob's
         // CURRENTLY INSTALLED path, not a search result -- handing it back would answer this
         // destination with the route to a different one. Waiting a tick costs nothing now that the
         // deferral no longer erases the walk target.
-        if (sink.isRegistered(entityId)) return true;
+        if (sink.isRegistered(entityId)) {
+            pathweaver$consecutiveDeferrals++;
+            return true;
+        }
 
         // Dispatch was refused outright, so this really is vanilla's own synchronous answer -- a
         // path, or null meaning no route exists. Either way it is the value vanilla would have had,
         // so hand it to the real call site rather than searching for the same destination twice.
+        pathweaver$consecutiveDeferrals = 0;
         pathweaver$supply(immediate, false);
         return false;
     }
@@ -221,10 +293,10 @@ public abstract class MoveToTargetSinkMixin {
     @Inject(method = "tryComputePath", at = @At("HEAD"), cancellable = true)
     private void pathweaver$deferRepath(Mob mob, WalkTarget walkTarget, long gameTime,
                                         CallbackInfoReturnable<Boolean> cir) {
-        // Reached from checkExtraStartConditions only when that inject already supplied a path, and
-        // the wrap below is about to consume it. Deciding again here would dispatch a second search
-        // for a question that has already been answered.
-        if (pathweaver$hasSuppliedPath) return;
+        // The start check has already decided for this call -- either it supplied a path the wrap is
+        // about to consume, or it deliberately fell through so vanilla could search. Deciding again
+        // here would override that, and did.
+        if (pathweaver$startCheckOwnsDecision) return;
 
         PathWeaverConfig cfg = PathWeaverConfig.get();
         if (!cfg.enabled || !cfg.brainSinkAsync) return;

@@ -110,6 +110,68 @@ public final class BrainSinkRoutingGameTest {
         });
     }
 
+    /**
+     * A mob whose destination is rewritten every tick must still move.
+     *
+     * <p>This is the {@code AnimalPanic} shape, and it is the reason the deferral carries a liveness
+     * bound. {@code AnimalPanic.tick} overwrites WALK_TARGET with a FRESH random position on every
+     * tick the navigation is idle, with no {@code absent(WALK_TARGET)} gate. Deferring leaves the mob
+     * with no path, so {@code isDone()} stays true, so the destination re-rolls, so the answer that
+     * eventually parks is never for the question now being asked. Without the bound the animal stands
+     * still for the whole panic while dispatching one full A* per tick — strictly more pathfinding
+     * than vanilla does, in a mod that exists to do less. For a burning mob, panic is how it reaches
+     * water.
+     *
+     * <p>The test does not set anything on fire; it reproduces the mechanism directly, which is the
+     * part that belongs to this mod.
+     */
+    @GameTest(maxTicks = 600)
+    public void aMobWhoseTargetIsRewrittenEveryTickStillMoves(GameTestHelper helper) {
+        Mob[] mob = new Mob[1];
+        BlockPos[] start = new BlockPos[1];
+        int[] armedAt = {-1};
+        helper.onEachTick(() -> {
+            long tick = helper.getTick();
+            if (tick < 20) return;
+            if (mob[0] == null) {
+                for (int x = 0; x <= 12; x++) {
+                    for (int z = 0; z <= 6; z++) helper.setBlock(x, 1, z, Blocks.STONE);
+                }
+                mob[0] = helper.spawn(EntityType.VILLAGER, 2, 2, 3);
+                mob[0].setOnGround(true);
+                return;
+            }
+            if (armedAt[0] < 0) {
+                if (tick < 60) return;
+                armedAt[0] = (int) tick;
+                start[0] = mob[0].blockPosition();
+            }
+
+            // A DIFFERENT destination every tick, exactly as AnimalPanic does.
+            int step = (int) ((tick - armedAt[0]) % 5);
+            mob[0].getBrain().setMemory(MemoryModuleType.WALK_TARGET,
+                new WalkTarget(helper.absolutePos(new BlockPos(8 + step, 2, 2 + (step % 4))),
+                    1.0F, 0));
+
+            if (!mob[0].blockPosition().closerThan(start[0], 2.5)) {
+                helper.succeed();
+                return;
+            }
+            if (tick - armedAt[0] > 200) {
+                throw helper.assertionException(
+                    "the mob has not moved in 200 ticks while its walk target was rewritten every "
+                        + "tick. Deferring on a destination that keeps changing means the parked "
+                        + "answer is never the one being asked for, so without a liveness bound the "
+                        + "mob never gets a path at all -- and it dispatches a search every tick "
+                        + "while standing still. at=" + mob[0].blockPosition()
+                        + " start=" + start[0]
+                        + " hasPath=" + (mob[0].getNavigation().getPath() != null)
+                        + " walkTarget=" + mob[0].getBrain()
+                            .hasMemoryValue(MemoryModuleType.WALK_TARGET));
+            }
+        });
+    }
+
     private static void check(GameTestHelper helper, boolean condition, String message) {
         if (!condition) throw helper.assertionException(message);
     }
@@ -205,7 +267,9 @@ public final class BrainSinkRoutingGameTest {
                         + "off-thread search was still outstanding. Deferring must not make vanilla "
                         + "forget where the mob was going: MoveToTargetSink is priority 1 and Brain "
                         + "iterates priorities ascending, so an absent(WALK_TARGET) stroll behaviour "
-                        + "claims the mob on that same tick");
+                        + "claims the mob on that same tick. at="
+                        + villager.blockPosition() + " target=" + requestedTarget
+                        + " navPath=" + (villager.getNavigation().getPath() != null));
             }
 
             if (parked > 0 && everHadPath
