@@ -122,7 +122,28 @@ echo "server up: $(grep -ao 'Done ([0-9.]*s)' "$LOG" | head -1)"
 say "forceload add -40 -40 40 40"
 say "fill -40 -60 -40 40 -60 40 minecraft:stone"
 for y in -59 -58 -57 -56; do say "fill -40 $y -40 40 $y 40 minecraft:air"; done
-sleep 4
+
+# WALLS, for two reasons.
+#
+# Containment: on an open slab the villagers wander off the edge and fall. A run that looked healthy
+# ended with 117 of 180 alive, and the survivor control is only meaningful once they cannot leave.
+#
+# And cost: on a flat empty floor A* is trivial. The first controlled run dispatched 3204 searches,
+# 3199 of them the brain sink, and all eight workers together accounted for 412 ms -- there was
+# nothing worth moving off the server thread, so the scenario could not have shown a gain whatever
+# the setting did. A serpentine of internal walls forces long detours, which is what makes the
+# search expensive enough to be worth measuring.
+say "fill -40 -59 -40 40 -57 -40 minecraft:stone"
+say "fill -40 -59 40 40 -57 40 minecraft:stone"
+say "fill -40 -59 -40 -40 -57 40 minecraft:stone"
+say "fill 40 -59 -40 40 -57 40 minecraft:stone"
+for x in -24 -8 8 24; do
+  say "fill $x -59 -38 $x -57 24 minecraft:stone"
+done
+for x in -16 0 16; do
+  say "fill $x -59 -24 $x -57 38 minecraft:stone"
+done
+sleep 6
 
 say "gamerule doMobSpawning false"
 say "gamerule randomTickSpeed 0"
@@ -215,6 +236,6 @@ void() {
 
 [ "$SUMMONED" -lt 200 ] && void "only $SUMMONED mobs summoned; not the population described"
 [ -z "${AFTER_ALIVE:-}" ] && void "no survivor count was read, so mortality is unknown"
-[ "${AFTER_ALIVE:-0}" -lt 150 ] && void "only ${AFTER_ALIVE} of 180 villagers survived; arena is wrong"
+[ "${AFTER_ALIVE:-0}" -lt 170 ] && void "only ${AFTER_ALIVE} of 180 villagers survived; the arena leaks"
 [ "$DELTA" -le 0 ] && void "nothing dispatched DURING the sample window (delta=$DELTA)"
 echo "run $LABEL complete -> $OUT/$LABEL.sparkprofile"
