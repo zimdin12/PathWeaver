@@ -196,6 +196,25 @@ Profiles were saved locally rather than uploaded, so the pack's composition stay
 **Pathfinding's share of the server thread fell by 60%**, with 7,262 searches dispatched and 96.3%
 installed over the profiled window.
 
+**Three things this measurement is not**, established by re-reading the retained profiles rather than
+by reasoning about them:
+
+- **It is not a `brainSinkAsync` measurement.** The population was goal-driven and flying navigation,
+  bees prominent. Across both profiles there is one `Brain` frame totalling 4 ms and *zero* time in
+  `MoveToTargetSink`, which is the only route `brainSinkAsync` gates. Nothing on this page measures
+  the brain sink.
+- **It is not reproducible from this tree.** The load was driven by a synthetic in-mod retarget probe
+  that accounts for 3,604 of the 5,572 ms attributed to pathfinding in the off arm. That class is in
+  neither the current source nor the shipped jar. `bench/` can run the scenario again; it cannot
+  reproduce these numbers.
+- **The percentage flatters itself.** The denominator is the whole sampled thread, which is 67-74%
+  idle at this load, so the share of *real work* is about four times larger than the headline. Both
+  arms held 20 TPS, so the honest claim is headroom, not throughput.
+
+Measured against tick time instead, the same two profiles give **15.47 ms/tick off and 12.52 ms/tick
+on** — about 19% off the tick — and pathfinding as a share of `tickServer` falls from 40.3% to 19.8%.
+Those are the figures worth quoting.
+
 What remains on the server thread with the mod on is mostly `PathNavigation.createPath` (1,872 ms) —
 the dispatch itself: building the region, cloning the evaluator, running the search's prologue. That
 is the cost this design deliberately keeps on the tick, and it is what the synchronous arm's 3,664 ms
