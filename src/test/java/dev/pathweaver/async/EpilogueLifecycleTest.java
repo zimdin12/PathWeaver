@@ -59,6 +59,16 @@ class EpilogueLifecycleTest {
         int movementDepth = 0;
         @Override public void pathweaver$enterMovementRequest() { movementDepth++; }
         @Override public void pathweaver$exitMovementRequest() { movementDepth--; }
+        int brainSinkDepth = 0;
+        @Override public boolean pathweaver$enterBrainSinkRequest(double speed, net.minecraft.core.BlockPos asked) {
+            brainSinkDepth++;
+            return true;
+        }
+        @Override public void pathweaver$exitBrainSinkRequest() { brainSinkDepth--; }
+        int tailReplays = 0;
+        @Override public void pathweaver$replayCreatePathTail(Path path, int reachRange) {
+            tailReplays++;
+        }
         @Override public boolean pathweaver$consumeAcceptedDeferred() { return false; }
 
         int rollbacks;

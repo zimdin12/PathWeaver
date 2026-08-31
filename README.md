@@ -102,9 +102,12 @@ because the mixin never reaches a watched method.)
 
 Eligibility is not the same as coverage. It means nothing blocks dispatch for that mob type — not
 that every movement it makes goes off-thread. Brain-driven movement (`MoveToTargetSink`, which is
-villagers, piglins, axolotls, frogs, allays and the warden) calls `createPath` directly and stays
-synchronous by construction; see [DESIGN.md §10](DESIGN.md) for why that is deliberate rather than a
-gap. Wall-climber chases were in that sentence until 0.6.0 and are not any more — spiders dispatch.
+villagers, piglins, axolotls, frogs, allays and about twenty other AI packages) calls `createPath`
+directly and read its answer on the next line, so it was invisible to dispatch until 0.7.0, when
+`brainSinkAsync` began deferring it by one tick instead; see [DESIGN.md §10](DESIGN.md). The warden
+is *not* covered — its navigation builds a `PathFinder` subclass, and dispatch requires the exact
+stock class. Wall-climber chases were in that sentence until 0.6.0 and are not any more — spiders
+dispatch.
 
 Where the scan denies nothing — a lean pack, Fabric API and Lithium — `AUDITED` admits everything on
 its own, which is the configuration the benchmark below runs in. That is the case the checked tier was
@@ -161,7 +164,7 @@ Average tick rate is not what players notice — a server sitting at "20 TPS" st
 
 ### Measured on the configuration you would actually get
 
-This benchmark uses **no harness intervention at all**: stock Fabric API, Lithium loaded, `compatibilityTier=AUDITED`, shipped limits (`maxInFlight=256`, `poolThreads=0`; path reuse off, which is the shipped default). The gate opened on its own. The only difference between arms is the master switch. 1024 zombies in a walled maze, all retargeted every 6 ticks; two pairs, interleaved and order-reversed so machine drift cannot masquerade as an effect, **on the exact jar in this release**.
+This benchmark uses **no harness intervention at all**: stock Fabric API, Lithium loaded, `compatibilityTier=AUDITED`, shipped limits (`maxInFlight=256`, `poolThreads=0`; path reuse off, which is the shipped default). The gate opened on its own. The only difference between arms is the master switch. 1024 zombies in a walled maze, all retargeted every 6 ticks; two pairs, interleaved and order-reversed so machine drift cannot masquerade as an effect, **on the 0.6.1 jar, measured 2026-07-31** (they have not been re-measured since; the 0.7 and 0.8 changes are correctness work, not throughput work, and no benchmark here includes the villager-brain offload).
 
 | | Synchronous | With PathWeaver |
 |---|---|---|

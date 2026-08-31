@@ -242,6 +242,11 @@ class ModMenuIntegrationContractTest {
         expectedCategories.put("trustedMods", "general");
         expectedCategories.put("poolThreads", "performance");
         expectedCategories.put("maxInFlight", "performance");
+        // Performance, not general: it decides WHICH searches the mod takes on, which is the
+        // same kind of dial as worker capacity. It is the one option here with a behaviour
+        // cost -- one tick before a brain mob sets off -- and that is stated in its tooltip
+        // rather than by filing it beside the safety switches.
+        expectedCategories.put("brainSinkAsync", "performance");
         expectedCategories.put("repathToleranceBlocks", "repath");
         expectedCategories.put("stalenessMoveThreshold", "repath");
         expectedCategories.put("maxResultAgeTicks", "repath");

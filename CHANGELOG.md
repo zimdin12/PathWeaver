@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.8.0 — The villager release, and what it cost to get right
+
+### Villager brains now path off-thread (`brainSinkAsync`, on by default)
+
+Brain mobs — villagers, piglins, axolotls, frogs, allays, camels and about twenty other AI packages —
+never call `moveTo`. Every path they walk went through one method that asks for a route and reads the
+answer on the next line, so the mod could not see them at all. They were not being refused; they were
+invisible. On a profile of the reference pack this was the largest slice of pathfinding left on the
+server thread that could be moved.
+
+They are now answered a tick later instead, off-thread. **That one tick is a real behaviour change**
+and it is why this is a setting rather than unconditional: a brain mob sets off one tick after it
+otherwise would. Nothing else differs — the path is handed back to vanilla's own reachability and
+memory handling untouched.
+
+The warden is **not** covered: its navigation builds a custom pathfinder, and dispatch requires the
+stock one.
+
+What this cost to get right, since the honest version is more useful than the confident one: seven
+defects, found across four adversarial review rounds, every one of them mine. Deferring in the wrong
+method made vanilla erase the mob's destination. Inferring whether a dispatch had happened gave the
+wrong answer when one request superseded another, and handed a goal the route to somewhere the mob
+had already abandoned. A collected path arrived without the bookkeeping that says where it leads. And
+an unbounded deferral froze panicking animals — the way a burning animal reaches water is by
+panicking — so the deferral is now capped at two ticks, after which vanilla answers immediately.
+
+### Also in this release
+
+Seven parallel reviews — features, consistency, usability, architecture, wiring,
+injection seams, and testing against claims — found a long tail. The ones a player or
+operator would notice:
+
+- **The log is quiet again on a healthy install.** The scan warned that N movement
+  families had been forced to sync, nine to fourteen times per launch on a heavy
+  pack, and then waived every one of them forty lines later. At the shipped default
+  those warnings were all false. They are informational now, and say what happened.
+- **Singleplayer players can run the diagnostics.** `/pathweaver` required permission
+  level 2, so nobody on a world without cheats could run it — on a mod whose page
+  tells them to. `status` is now open; `mobs` keeps a level, because it constructs
+  every registered mob type in one tick.
+- **`/pathweaver status` adds up again.** Once brain-sink results existed,
+  `installed + discarded` silently stopped accounting for `dispatched`. Parked
+  results are named on that line rather than folded into `installed`, which would
+  claim a mob is walking a path it has not been given yet.
+- **`/pathweaver mobs` no longer contradicts the running configuration.** It told
+  operators that brain-driven movement stays synchronous by design, in the release
+  that made it asynchronous by default.
+- **A setting that claimed to need a restart, and did not.** `brainSinkAsync` was
+  marked restart-required and is read live on every call.
+- **A malformed config field is caught.** `brainSinkAsync` was the only setting with
+  no strict type check, so `"brainSinkAsync": "yes"` would have been coerced silently
+  while the same mistake in any other field was rejected loudly.
+- **A compatibility hole closed.** A foreign mixin into `WallClimberNavigation`
+  denied nothing, even though 0.6 began dispatching for wall-climbers.
+
+Internal, and worth naming because the next release depends on it: the brain-sink
+protocol moved out of the mixin into a plain class, so the liveness bound, the
+deferral budget and all four decision paths are unit-tested instead of being
+reachable only by spawning a villager and hoping. Four dispatch guards that every
+test asserted the predicate of, and nothing asserted were CALLED, are now pinned —
+one of them guards a documented permanent corruption of a mob's pathfinding malus,
+and deleting it left the entire suite green.
+
+### Not done, and said here rather than discovered later
+
+The shipping gate this feature set itself — a game test covering the whole
+`CANT_REACH_WALK_TARGET_SINCE` transition table — is **written but not reliable**. It
+fails about 5 runs in 18, with a control at 3 in 18, so the flake is not
+attributable to the feature (Fisher p = 0.69). It runs opt-in under
+`-PcantReachHarness` and gates nothing. An earlier control suggested the feature was
+at fault; that measurement was taken on a materially different version of the test
+and did not survive re-measuring.
+
+
 ## 0.7.0 — Fewer wrong answers, and fewer places to hide one
 
 Mostly defects. Twenty-odd of them, found by four parallel read-only hunts over the async, mixin,

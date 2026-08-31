@@ -19,6 +19,16 @@ class EntityInstallSinkTest {
         int movementDepth = 0;
         @Override public void pathweaver$enterMovementRequest() { movementDepth++; }
         @Override public void pathweaver$exitMovementRequest() { movementDepth--; }
+        int brainSinkDepth = 0;
+        @Override public boolean pathweaver$enterBrainSinkRequest(double speed, net.minecraft.core.BlockPos asked) {
+            brainSinkDepth++;
+            return true;
+        }
+        @Override public void pathweaver$exitBrainSinkRequest() { brainSinkDepth--; }
+        int tailReplays = 0;
+        @Override public void pathweaver$replayCreatePathTail(Path path, int reachRange) {
+            tailReplays++;
+        }
         @Override public boolean pathweaver$consumeAcceptedDeferred() { return false; }
 
         int rollbacks, aborts;
@@ -498,6 +508,127 @@ class EntityInstallSinkTest {
         sink.register(key(1L, 6L, 18), throwing);
         assertDoesNotThrow(() -> sink.install(key(1L, 6L, 18), dummyPath()));
         assertFalse(sink.isRegistered(18));
+    }
+
+
+    // ---- brain-sink park/collect ------------------------------------------------------------
+
+    private static final net.minecraft.core.BlockPos ASKED =
+        new net.minecraft.core.BlockPos(10, 64, 10);
+    private static final net.minecraft.core.BlockPos ELSEWHERE =
+        new net.minecraft.core.BlockPos(90, 64, 90);
+
+    private static void registerBrainSink(EntityInstallSink sink, RequestKey key, PWNavigation nav) {
+        sink.register(key, nav, RequestTarget.of(Set.of(), 0, false, 0, 0.0F), false,
+            RequestOrigin.BRAIN_SINK);
+    }
+
+    @Test void aBrainSinkResultIsParkedForCollectionInsteadOfBeingInstalled() {
+        EntityInstallSink sink = new EntityInstallSink();
+        FakeNav nav = new FakeNav();
+        RequestKey key = key(1L, 1L, 7);
+        registerBrainSink(sink, key, nav);
+        sink.noteBrainSinkDispatch(7, ASKED);
+        Path path = dummyPath();
+
+        sink.install(key, path);
+
+        assertEquals(0, nav.installs,
+            "the brain installs this path itself in start(); installing it here would start the mob "
+                + "walking a tick before its own behaviour is running");
+        assertSame(path, sink.takeBrainSinkPath(7, ASKED), "the path must be collectable");
+        assertNull(sink.takeBrainSinkPath(7, ASKED),
+            "one search answers one question; a second collection would hand back a path the "
+                + "behaviour has already installed and partly walked");
+    }
+
+    @Test void aParkedPathIsNotHandedToADifferentQuestion() {
+        EntityInstallSink sink = new EntityInstallSink();
+        RequestKey key = key(1L, 1L, 8);
+        registerBrainSink(sink, key, new FakeNav());
+        sink.noteBrainSinkDispatch(8, ASKED);
+        sink.install(key, dummyPath());
+
+        assertNull(sink.takeBrainSinkPath(8, ELSEWHERE),
+            "a path to one destination must never answer a question about another");
+        assertNotNull(sink.takeBrainSinkPath(8, ASKED), "and the right question still gets it");
+    }
+
+    /**
+     * The defect this exists to catch is a freeze, not a leak.
+     *
+     * <p>Only {@code parkForBrain} used to clear a pending slot, so any outcome that is not an
+     * install -- NO_PATH above all, the ordinary answer for a destination with no route -- left the
+     * slot pending. {@code hasPendingBrainSink} is what makes {@code MoveToTargetSink} report "not
+     * answered yet" and skip vanilla's unreachable bookkeeping, so for {@code maxResultAgeTicks} the
+     * behaviour would refuse to start, never record the target unreachable, and never run the
+     * random-position fallback vanilla uses to get unstuck. The mob just stands there.
+     */
+    @Test void aSearchThatFindsNoPathHandsTheBrainBackToVanillaImmediately() {
+        EntityInstallSink sink = new EntityInstallSink();
+        RequestKey key = key(1L, 1L, 9);
+        registerBrainSink(sink, key, new FakeNav());
+        sink.noteBrainSinkDispatch(9, ASKED);
+        assertTrue(sink.hasPendingBrainSink(9, ASKED), "precondition: the slot is pending");
+
+        sink.noPath(key);
+
+        assertFalse(sink.hasPendingBrainSink(9, ASKED),
+            "a search that produced nothing must release the behaviour in the same tick, or the mob "
+                + "stands still until the slot expires");
+        assertEquals(0, sink.brainSinkSlotCount(), "and the slot itself must be gone");
+    }
+
+    @Test void aDiscardedBrainSinkSearchAlsoReleasesTheBehaviour() {
+        EntityInstallSink sink = new EntityInstallSink();
+        RequestKey key = key(1L, 1L, 11);
+        registerBrainSink(sink, key, new FakeNav());
+        sink.noteBrainSinkDispatch(11, ASKED);
+
+        sink.discard(key, RequestOutcome.SUPERSEDED);
+
+        assertFalse(sink.hasPendingBrainSink(11, ASKED), "supersession must release it too");
+        assertEquals(0, sink.brainSinkSlotCount(), "no slot may survive its request");
+    }
+
+    /**
+     * A discard must not throw away a path that a DIFFERENT, successful request already parked.
+     * Releasing unconditionally would do exactly that.
+     */
+    @Test void aDiscardDoesNotDestroyAnAlreadyParkedPath() {
+        EntityInstallSink sink = new EntityInstallSink();
+        RequestKey parkedKey = key(1L, 1L, 12);
+        registerBrainSink(sink, parkedKey, new FakeNav());
+        sink.noteBrainSinkDispatch(12, ASKED);
+        sink.install(parkedKey, dummyPath());
+        assertEquals(1, sink.brainSinkSlotCount(), "precondition: a path is parked");
+
+        RequestKey laterKey = key(1L, 2L, 12);
+        registerBrainSink(sink, laterKey, new FakeNav());
+        sink.discard(laterKey, RequestOutcome.SUPERSEDED);
+
+        assertNotNull(sink.takeBrainSinkPath(12, ASKED),
+            "a parked answer belongs to the search that produced it, not to whichever request "
+                + "happens to end next");
+    }
+
+    @Test void parkedSlotsAreSweptSoAWalkTargetThatMovesCannotLeakPaths() {
+        EntityInstallSink sink = new EntityInstallSink();
+        for (int entityId = 20; entityId < 70; entityId++) {
+            RequestKey key = key(1L, entityId, entityId);
+            registerBrainSink(sink, key, new FakeNav());
+            sink.noteBrainSinkDispatch(entityId, ASKED);
+            sink.install(key, dummyPath());
+        }
+        assertEquals(50, sink.brainSinkSlotCount(), "precondition: 50 parked paths are held");
+
+        // The sweep runs off the same clock the cooldown maps use; this is how the existing
+        // cooldown test advances it.
+        sink.shouldForceSync(999, 10_000L, RequestOrigin.MOVE_TO);
+
+        assertEquals(0, sink.brainSinkSlotCount(),
+            "uncollected paths must expire; unlike the cooldown maps a slot holds a Path, so a leak "
+                + "here leaks the nodes it owns as well as the id");
     }
 
     private static RequestKey key(long epoch, long token, int entityId) {

@@ -1,6 +1,6 @@
 {
   "text.autoconfig.pathweaver.category.general": "General",
-  "text.autoconfig.pathweaver.category.performance": "Worker capacity (restart required)",
+  "text.autoconfig.pathweaver.category.performance": "Workers and coverage",
   "text.autoconfig.pathweaver.category.repath": "Repath and result validity",
   "text.autoconfig.pathweaver.option.allowModdedMobAsync": "Speed up mod-added mobs (unsafe)",
   "text.autoconfig.pathweaver.option.allowModdedMobAsync.@Tooltip[0]": "A different question from Compatibility risk: that one is whose code, this one is whose mob.",
@@ -33,6 +33,10 @@
   "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip[0]": "0 disables path reuse entirely, which is the shipped default.",
   "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip[1]": "Above 0, a mob whose target drifted less than this keeps its current path instead of searching again.",
   "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip[2]": "Avoids searches rather than moving them off-thread. Measured at 0, 1 and 4 with no difference outside noise.",
+  "text.autoconfig.pathweaver.option.brainSinkAsync": "Path villager brains off-thread",
+  "text.autoconfig.pathweaver.option.brainSinkAsync.@Tooltip[0]": "Villagers, piglins, frogs and allays ask for paths in a way the other settings never see.",
+  "text.autoconfig.pathweaver.option.brainSinkAsync.@Tooltip[1]": "On, their searches move to a worker thread, at the cost of one tick before the mob sets off.",
+  "text.autoconfig.pathweaver.option.brainSinkAsync.@Tooltip[2]": "On the reference pack this was the largest block of pathfinding that could be moved off it.",
   "text.autoconfig.pathweaver.option.stalenessMoveThreshold": "Discard results after the mob moves (blocks)",
   "text.autoconfig.pathweaver.option.stalenessMoveThreshold.@Tooltip[0]": "Do not set this near zero. A finished search is discarded if its mob moved farther than this.",
   "text.autoconfig.pathweaver.option.stalenessMoveThreshold.@Tooltip[1]": "A moving mob always moves: at 0, 91.8% of dispatched searches were never installed in the window.",

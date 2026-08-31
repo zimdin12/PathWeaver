@@ -4,6 +4,7 @@ import dev.pathweaver.PathWeaver;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.duck.PWNavigation;
 import dev.pathweaver.gate.FabricLandPathRegistryLatch;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.pathfinder.Path;
 
 import java.util.Map;
@@ -87,6 +88,33 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
      * reused within a run, so a bare set leaked an id per stranding for the life of the server.
      */
     private final Map<Integer, Long> syncNextRecompute = new ConcurrentHashMap<>();
+
+    /**
+     * One villager-brain movement search per mob: what it asked for, and the answer once it lands.
+     *
+     * <p>{@code path} is null while the search is in flight and non-null once parked. Both states are
+     * load-bearing and neither can be inferred from the registration: a pending slot tells
+     * {@code MoveToTargetSink} to report "not yet" WITHOUT running vanilla's unreachable bookkeeping,
+     * and a parked slot is the answer it collects on a later tick.
+     *
+     * <p>Keyed on the {@code BlockPos} the behaviour actually asked for, not on {@link RequestTarget}.
+     * The sink would have to reconstruct the target set the way {@code createPath(BlockPos, int)}
+     * builds it internally, and a reconstruction that drifted from vanilla would hand a path for one
+     * destination to a question about another. The behaviour's own BlockPos cannot drift.
+     */
+    private final Map<Integer, BrainSinkSlot> brainSink = new ConcurrentHashMap<>();
+
+    private record BrainSinkSlot(BlockPos asked, Path path, long expiryTick) {
+        boolean answers(BlockPos question, long tick) {
+            // Inclusive, to match isStale, which calls a result stale only at age > maxResultAgeTicks
+            // -- so age == max is still fresh there. Exclusive here made the slot expire a tick
+            // EARLIER than the result it holds. At the clamped minimum of 1 that is fatal and silent:
+            // a slot dispatched at T expires at T+1 and can never be collected at T+1, so every brain
+            // mob dispatches a search nobody reads, hits the liveness bound, and runs a synchronous
+            // one anyway. Strictly more work than vanilla, at a setting the config permits.
+            return tick <= expiryTick && asked.equals(question);
+        }
+    }
     private final AtomicBoolean callbackFailureLogged = new AtomicBoolean();
     private final AtomicBoolean rollbackFailureLogged = new AtomicBoolean();
     private final AtomicBoolean rearmFailureLogged = new AtomicBoolean();
@@ -204,7 +232,30 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     private void finishDiscard(Registration registration, RequestOutcome reason) {
         rollbackOptimisticTarget(registration);
         rearmRecomputeIfStranded(registration, reason);
+        releasePendingBrainSink(registration);
         dev.pathweaver.PathWeaverRuntime.get().markOutcome(reason);
+    }
+
+    /**
+     * Hand a brain-sink caller back to vanilla when its search ended without a path to park.
+     *
+     * <p>Without this the sink freezes the mob. {@code hasPendingBrainSink} is what tells
+     * {@code MoveToTargetSink} to report "not answered yet" and skip vanilla's unreachable
+     * bookkeeping, and only {@code parkForBrain} clears it. Every route that is NOT an install --
+     * NO_PATH above all, which is the ordinary answer for a destination with no route -- would leave
+     * the slot pending until it expired, so for {@code maxResultAgeTicks} the behaviour would refuse
+     * to start, decline to record the target as unreachable, and never run the random-position
+     * fallback vanilla uses to get unstuck. A villager asked to walk somewhere unreachable would
+     * simply stand still.
+     *
+     * <p>Only a PENDING slot is released. A parked one belongs to a search that succeeded and is
+     * waiting to be collected, and a discard arriving for some other request must not throw it away.
+     */
+    private void releasePendingBrainSink(Registration registration) {
+        if (registration.origin() != RequestOrigin.BRAIN_SINK) return;
+        int entityId = registration.key().entityId();
+        BrainSinkSlot slot = brainSink.get(entityId);
+        if (slot != null && slot.path() == null) brainSink.remove(entityId, slot);
     }
 
     /**
@@ -390,13 +441,81 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         // BOTH maps, or the early-out defeats half the sweep. Keyed on failUntilTick alone, the
         // retry tokens were never swept in the ordinary case -- failUntilTick is empty unless a
         // worker actually threw, which on a healthy pack is never.
-        if ((failUntilTick.isEmpty() && syncNextRecompute.isEmpty())
+        if ((failUntilTick.isEmpty() && syncNextRecompute.isEmpty() && brainSink.isEmpty())
                 || tick - lastCooldownSweepTick < COOLDOWN_SWEEP_INTERVAL_TICKS) {
             return;
         }
         lastCooldownSweepTick = tick;
         failUntilTick.entrySet().removeIf(entry -> tick >= entry.getValue());
         syncNextRecompute.entrySet().removeIf(entry -> tick >= entry.getValue());
+        // Brain-sink slots expire on the same clock. A walk target that moves before the behaviour
+        // collects leaves its slot behind, and unlike the two cooldown maps a slot holds a Path, so
+        // leaking one leaks the nodes it owns as well as the id.
+        brainSink.entrySet().removeIf(entry -> tick >= entry.getValue().expiryTick());
+    }
+
+    /**
+     * Main thread: record that a brain-sink search has been dispatched for this mob and destination.
+     *
+     * <p>Called by the mixin only after dispatch is confirmed, never speculatively. A slot written
+     * for a search that did not actually dispatch would make the sink report "not yet" forever, and
+     * the behaviour would never start.
+     */
+    public void noteBrainSinkDispatch(int entityId, BlockPos asked) {
+        brainSink.put(entityId, new BrainSinkSlot(asked.immutable(), null,
+            currentTick + PathWeaverConfig.get().maxResultAgeTicks));
+    }
+
+    /**
+     * Main thread: is a brain-sink search for exactly this destination still in flight?
+     *
+     * <p>Deliberately narrower than {@link #isRegistered(int)}. Any other registration for this mob
+     * belongs to a different origin and must not make the behaviour withhold vanilla's bookkeeping,
+     * because nothing is going to park a result for it.
+     */
+    public boolean hasPendingBrainSink(int entityId, BlockPos asked) {
+        BrainSinkSlot slot = brainSink.get(entityId);
+        return slot != null && slot.path() == null && slot.answers(asked, currentTick);
+    }
+
+    /**
+     * Main thread: take the parked path for this destination, or null.
+     *
+     * <p>Removes on a hit, so one search answers one question. Leaving it would let a later tick
+     * collect the same path again after the behaviour had already installed and partly walked it.
+     */
+    public Path takeBrainSinkPath(int entityId, BlockPos asked) {
+        BrainSinkSlot slot = brainSink.get(entityId);
+        if (slot == null || slot.path() == null || !slot.answers(asked, currentTick)) return null;
+        brainSink.remove(entityId, slot);
+        return slot.path();
+    }
+
+    /** Test seam: how many brain-sink slots are held, so a leak is observable rather than inferred. */
+    int brainSinkSlotCount() { return brainSink.size(); }
+
+    /**
+     * Park a landed brain-sink path against the question that asked for it.
+     *
+     * <p>The optimistic target is rolled back because nothing was installed: leaving it would name
+     * the new destination while {@code path} still held the previous route, which is the mismatched
+     * pairing {@code rollbackOptimisticTarget} exists to prevent.
+     *
+     * <p>A result whose slot has gone -- swept, or superseded by a newer question -- is dropped
+     * rather than resurrected, and counted as ARRIVED_STALE because that is what it is: a correct
+     * answer to a question nobody is asking any more.
+     */
+    private void parkForBrain(Registration registration, Path path) {
+        int entityId = registration.key().entityId();
+        rollbackOptimisticTarget(registration);
+        BrainSinkSlot slot = brainSink.get(entityId);
+        if (slot == null || slot.path() != null || currentTick >= slot.expiryTick()) {
+            dev.pathweaver.PathWeaverRuntime.get().markOutcome(RequestOutcome.ARRIVED_STALE);
+            return;
+        }
+        brainSink.put(entityId, new BrainSinkSlot(slot.asked(), path, slot.expiryTick()));
+        failUntilTick.remove(entityId);
+        dev.pathweaver.PathWeaverRuntime.get().markOutcome(RequestOutcome.PARKED_FOR_BRAIN);
     }
 
     private Registration matching(RequestKey key) {
@@ -426,6 +545,15 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
     public void install(RequestKey key, Path path) {
         Registration registration = matching(key);
         if (registration != null && inFlight.remove(key.entityId(), registration)) {
+            // A brain-sink result is NOT installed here. Its behaviour installs it itself, so this
+            // route parks it and undoes the optimistic target exactly as every other non-installing
+            // route does. Placed before the try because parking cannot throw into vanilla moveTo,
+            // and routing it through the install path would credit INSTALLED for a mob that is not
+            // yet walking anything.
+            if (registration.origin() == RequestOrigin.BRAIN_SINK) {
+                parkForBrain(registration, path);
+                return;
+            }
             try {
                 if (!registration.navigation().pathweaver$install(path)) {
                     // Vanilla declined it. Ordinary, not a failure: no cooldown, because nothing
@@ -565,6 +693,7 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         rearmFailureLogged.set(false);
         failUntilTick.clear();
         syncNextRecompute.clear();
+        brainSink.clear();
         // Reset the sweep clock too. A new server starts its tick count near zero, so a
         // timestamp left from a long previous run would suppress sweeping until the new
         // server had been up as long as the old one.

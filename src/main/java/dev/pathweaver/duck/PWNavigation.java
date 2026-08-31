@@ -34,6 +34,46 @@ public interface PWNavigation {
     void pathweaver$exitMovementRequest();
 
     /**
+     * Main thread: open the window in which an inner {@code createPath} is a villager-brain movement
+     * request, so its result parks for the behaviour instead of being installed here.
+     *
+     * <p>Separate from {@link #pathweaver$enterMovementRequest()} because the origin decides the
+     * completion route, not just whether dispatch is allowed. {@code MoveToTargetSink} installs the
+     * path itself in {@code start()}; installing it from the sink as well would start the mob walking
+     * a tick before its own behaviour is running, at the speed dispatch captured rather than the
+     * {@code WalkTarget}'s.
+     *
+     * <p>Returns false and opens nothing if a brain-sink window is already open on this navigation.
+     * The saved origin and destination live in fields here, not in a local the way the recompute wrap
+     * saves its enclosing origin, so a nested enter would clobber both and the inner exit would
+     * restore a null origin into the outer window -- and a null origin silently takes the "not
+     * BRAIN_SINK" arm everywhere, so the outer dispatch would record no slot and never park. Vanilla
+     * cannot nest these; a foreign injection calling into navigation from inside a behaviour could.
+     * Refusing is the fail-closed answer: the caller runs vanilla synchronously instead.
+     */
+    boolean pathweaver$enterBrainSinkRequest(double speed, net.minecraft.core.BlockPos asked);
+
+    /** Main thread: close the brain-sink window and restore the enclosing origin. */
+    void pathweaver$exitBrainSinkRequest();
+
+    /**
+     * Main thread: replay vanilla {@code createPath}'s tail for a path this navigation did not build.
+     *
+     * <p>Only {@code createPath} writes {@code targetPos} and {@code reachRange}; {@code moveTo(Path,
+     * double)} writes neither. A brain behaviour installs its path through {@code moveTo}, and when
+     * that path came from the park the real {@code createPath} never ran, so without this the
+     * navigation ends up holding a route to one destination while {@code targetPos} still names
+     * another. That is the mismatched pairing {@link #pathweaver$rollbackOptimisticTarget()} exists
+     * to prevent, and it is worse here than there: the next {@code recomputePath()} reads
+     * {@code targetPos} and walks the mob back to the previous destination.
+     *
+     * <p>Timing matches vanilla exactly. Vanilla assigns these inside {@code createPath}, before the
+     * behaviour has called {@code moveTo}, so the window in which {@code targetPos} leads
+     * {@code path} is one vanilla produces too.
+     */
+    void pathweaver$replayCreatePathTail(Path path, int reachRange);
+
+    /**
      * Main thread: take the "this dispatch was accepted" flag, so an overriding movement method can
      * report success the way the base one does.
      *

@@ -46,7 +46,11 @@ class RequestOutcomeTest {
                 // wanted it, and stopped before running the search. The whole point of that check is
                 // that this row grows as the genuine discard rows shrink, so counting it as waste
                 // would make the waste ratio rise exactly when less work is being wasted.
-                || outcome == RequestOutcome.CANCELLED_BEFORE_START;
+                || outcome == RequestOutcome.CANCELLED_BEFORE_START
+                // The search ran and produced a path that is being held for the behaviour that
+                // asked for it. Nothing was thrown away -- the collection just happens on a later
+                // tick than the install would have.
+                || outcome == RequestOutcome.PARKED_FOR_BRAIN;
             assertEquals(!exempt, outcome.isDiscard(), outcome + " is on the wrong side of the line");
         }
     }
@@ -112,7 +116,12 @@ class RequestOutcomeTest {
     void onlyAnInstalledPathOrAProvenAbsenceIsGoodNews() {
         for (RequestOutcome outcome : RequestOutcome.values()) {
             boolean expected = outcome == RequestOutcome.INSTALLED
-                || outcome == RequestOutcome.NO_PATH;
+                || outcome == RequestOutcome.NO_PATH
+                // Green for the same reason INSTALLED is: an off-thread search succeeded and its
+                // path is going to be used. It is a separate row rather than folded into INSTALLED
+                // because the mob is not walking it yet, and an operator reading `installed` is
+                // entitled to conclude that it is.
+                || outcome == RequestOutcome.PARKED_FOR_BRAIN;
             assertEquals(expected, outcome.isGoodNews(),
                 outcome + " is on the wrong side of the green/amber line; the footer tells the "
                     + "operator only amber rows are wasted work");

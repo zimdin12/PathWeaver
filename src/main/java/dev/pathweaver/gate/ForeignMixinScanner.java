@@ -101,6 +101,10 @@ public final class ForeignMixinScanner {
         "net.minecraft.world.entity.ai.navigation.WaterBoundPathNavigation",
         "net.minecraft.world.entity.ai.navigation.AmphibiousPathNavigation",
         "net.minecraft.world.entity.ai.navigation.FlyingPathNavigation",
+        // Added late: 0.6 began dispatching for wall-climbers and this mod mixes into the
+        // class itself, but the scan was never taught to watch it -- so a foreign mixin into
+        // WallClimberNavigation denied nothing. Debugify ships one on the reference pack.
+        "net.minecraft.world.entity.ai.navigation.WallClimberNavigation",
         // Per-search scratch structures that must stay confined to the searching thread.
         "net.minecraft.world.level.pathfinder.BinaryHeap",
         "net.minecraft.world.level.pathfinder.Node",
@@ -907,8 +911,15 @@ public final class ForeignMixinScanner {
             // reporting site and the land-registry gate still answer from the frozen value, so the
             // two would describe different processes.
             CompatibilityTier tier = PathWeaverConfig.get().compatibilityTier;
-            if (tierFrozen && !tierAllowsAudited && tier.allowsAudited()) {
-                tier = CompatibilityTier.UNSAFE == tier ? tier : frozenEquivalentTier();
+            // Guarded on bypassesScan, not allowsAudited. allowsAudited() returns true for BOTH
+            // tiers, so `!tierAllowsAudited` was false whenever tierFrozen was true and this
+            // reconciliation could never fire -- nine lines of comment describing a branch that was
+            // dead by construction. bypassesScan() is the predicate that actually differs (UNSAFE
+            // only), and it is the loosening this exists to refuse: a process frozen at AUDITED must
+            // not start bypassing the scan because the operator selected UNSAFE afterwards, while
+            // every gate and reporting site still answers from the frozen value.
+            if (tierFrozen && !tierBypassesScan && tier.bypassesScan()) {
+                tier = frozenEquivalentTier();
             }
             // Freeze it here, where the evidence that depends on it is computed. Everything else
             // reads the frozen answer, so a later settings save cannot leave startup denials waived
@@ -970,11 +981,26 @@ public final class ForeignMixinScanner {
                 List<String> forced = new ArrayList<>();
                 for (Class<?> family : denied) forced.add(family.getSimpleName());
                 java.util.Collections.sort(forced);
-                PathWeaver.LOG.warn("Mod '{}' config '{}' targets sensitive pathfinding code{}; "
-                        + "forcing {} evaluator famil{} to sync pathing: {}",
-                    config.modId(), config.configName(),
-                    config.pluginContributed() ? " (plugin-expanded)" : "",
-                    forced.size(), forced.size() == 1 ? "y" : "ies", String.join(", ", forced));
+                // WARN only if the denial is going to be ENFORCED. The tier is already frozen by
+                // this point, so we know. At the shipped default these denials are waived forty
+                // lines below (replaceDenials(Set.of())), and this line was still announcing that N
+                // families had been forced to sync -- nine to fourteen times per launch on a heavy
+                // pack, every one of them false, and each contradicted by the block that follows.
+                // An operator triaging by grepping WARN met a wall of warnings on a healthy install.
+                if (ActiveCompatibilityPolicy.bypassesScan()) {
+                    PathWeaver.LOG.info("Mod '{}' config '{}' targets sensitive pathfinding code{}. "
+                            + "compatibilityTier=UNSAFE, so this is NOT being enforced and {} "
+                            + "famil{} still path off-thread: {}",
+                        config.modId(), config.configName(),
+                        config.pluginContributed() ? " (plugin-expanded)" : "",
+                        forced.size(), forced.size() == 1 ? "y" : "ies", String.join(", ", forced));
+                } else {
+                    PathWeaver.LOG.warn("Mod '{}' config '{}' targets sensitive pathfinding code{}; "
+                            + "forcing {} evaluator famil{} to sync pathing: {}",
+                        config.modId(), config.configName(),
+                        config.pluginContributed() ? " (plugin-expanded)" : "",
+                        forced.size(), forced.size() == 1 ? "y" : "ies", String.join(", ", forced));
+                }
             }
         }
         blockingModIds = List.copyOf(blockers);

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "id": "pathweaver_gametest",
+  "id": "pathweaver_gametest_cant_reach",
   "version": "1.0.0",
-  "name": "PathWeaver Game Tests",
+  "name": "PathWeaver CANT_REACH Transition Table Game Test",
   "environment": "*",
   "mixins": [
     "pathweaver-gametest.mixins.json"
@@ -12,10 +12,7 @@
       "dev.pathweaver.gametest.StartupConfigMigrationProbe"
     ],
     "fabric-gametest": [
-      "dev.pathweaver.gametest.PathNavigationRoutingGameTest"
-    ],
-    "fabric-client-gametest": [
-      "dev.pathweaver.gametest.ClientSingleplayerGameTest"
+      "dev.pathweaver.gametest.CantReachTransitionTableGameTest"
     ]
   },
   "depends": {
