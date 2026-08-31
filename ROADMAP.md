@@ -232,7 +232,7 @@ which is the whole point. Crowds of hostile mobs converging on a player is a mob
 narrower want.
 
 Feasible — `DESIGN.md` §10 rejected an idea it never actually evaluated, and is corrected. Blocked on
-0.7, which must land first. **Gate status:** written, not reliable — see DESIGN.md section 10. Gated on a game test asserting the whole `CANT_REACH_WALK_TARGET_SINCE` transition table: if that
+0.7, which must land first. **Gate status:** written, now meaningful, waived as blocking (it ran at AUDITED and had never dispatched; see DESIGN.md section 10) — see DESIGN.md section 10. Gated on a game test asserting the whole `CANT_REACH_WALK_TARGET_SINCE` transition table: if that
 test cannot be written, the feature does not ship. The failure mode is a villager **permanently losing
 its workstation or bed**, silently, and it is guarded by one line of reconciliation logic.
 
