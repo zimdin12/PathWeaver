@@ -6,7 +6,6 @@ import dev.pathweaver.config.PathWeaverConfig;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.WalkTarget;
@@ -82,7 +81,7 @@ public final class BrainSinkRoutingGameTest {
                         helper.setBlock(8, y, z, Blocks.BEDROCK);
                     }
                 }
-                mob[0] = helper.spawn(EntityType.VILLAGER, 3, 2, 3);
+                mob[0] = helper.spawn(VanillaTypes.mob(VanillaTypes.VILLAGER), 3, 2, 3);
                 mob[0].setOnGround(true);
                 return;
             }
@@ -165,7 +164,7 @@ public final class BrainSinkRoutingGameTest {
                         helper.setBlock(12, y, z, Blocks.BEDROCK);
                     }
                 }
-                mob[0] = helper.spawn(EntityType.VILLAGER, 2, 2, 3);
+                mob[0] = helper.spawn(VanillaTypes.mob(VanillaTypes.VILLAGER), 2, 2, 3);
                 mob[0].setOnGround(true);
                 return;
             }
@@ -285,7 +284,7 @@ public final class BrainSinkRoutingGameTest {
                     helper.setBlock(12, y, z, Blocks.BEDROCK);
                 }
             }
-            villager = helper.spawn(EntityType.VILLAGER, 2, 2, 3);
+            villager = helper.spawn(VanillaTypes.mob(VanillaTypes.VILLAGER), 2, 2, 3);
             villager.setOnGround(true);
             advance(1);
         }
