@@ -131,8 +131,11 @@ public class PathWeaverConfig implements ConfigData {
      * until the following tick. Nothing else changes — the landed path is handed to vanilla's own
      * reachability and memory logic untouched.
      */
+    // No @Gui.RequiresRestart: both read sites evaluate PathWeaverConfig.get().brainSinkAsync per
+    // call, and a settings save replaces the singleton immediately, so the toggle takes effect at
+    // once. Claiming a restart it does not need is the same defect as omitting one it does --
+    // compatibilityTier's restart is real, enforced by the scan-time freeze, and this one was not.
     @ConfigEntry.Gui.Tooltip(count = 3)
-    @ConfigEntry.Gui.RequiresRestart
     @ConfigEntry.Category("performance")
     public boolean brainSinkAsync = true;
 

@@ -218,12 +218,19 @@ public enum RequestOutcome {
         // computed, so nothing was thrown away. Counting a refusal as waste would make the waste
         // ratio -- which drives an operator warning -- rise precisely when the mod stopped doing work.
         // INSTALL_REJECTED is a discard: the search ran, produced a path, and it was thrown away.
-        // PARKED_FOR_BRAIN is NOT a discard. The search ran and its path is being held for the
-        // behaviour that asked; nothing was thrown away. Letting the chain default it to `true`
-        // would have put a successful outcome in the waste ratio that drives the operator warning.
-        return this != INSTALLED && this != NO_PATH && this != POOL_SATURATED
-            && this != SETUP_FAILED_PRE_DISPATCH && this != BREAKER_OPEN
-            && this != CANCELLED_BEFORE_START && this != PARKED_FOR_BRAIN;
+        // An exhaustive switch with NO default, for the same reason countsAgainstDispatched has one.
+        // This was the last of the four predicates still written as a `!=` chain, and a chain is
+        // exactly what let PARKED_FOR_BRAIN default to "discard" when it was added -- a successful
+        // outcome landing in the waste ratio that drives an operator warning. javac now refuses to
+        // compile when a constant is added, which is what forcing the decision actually is.
+        return switch (this) {
+            // Produced an answer, or never reached a worker: nothing was computed and thrown away.
+            case INSTALLED, NO_PATH, POOL_SATURATED, SETUP_FAILED_PRE_DISPATCH, BREAKER_OPEN,
+                 CANCELLED_BEFORE_START, PARKED_FOR_BRAIN -> false;
+            // Work was done and its result could not be used.
+            case SUPERSEDED, NAVIGATION_STOPPED, ARRIVED_STALE, SETUP_FAILED, SEARCH_FAILED,
+                 HANDOFF_FAILED, INSTALL_FAILED, SERVER_RESET, INSTALL_REJECTED -> true;
+        };
     }
 
     /**

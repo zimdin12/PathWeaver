@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.pathweaver.PathWeaverRuntime;
 import dev.pathweaver.async.EntityInstallSink;
+import dev.pathweaver.brain.BrainSinkPolicy;
 import dev.pathweaver.config.PathWeaverConfig;
 import dev.pathweaver.duck.PWNavigation;
 import net.minecraft.core.BlockPos;
@@ -73,41 +74,10 @@ public abstract class MoveToTargetSinkMixin {
     /** Vanilla calls {@code createPath(pos, 0)} here — offset 18 is {@code iconst_0}. */
     @Unique private static final int PATHWEAVER$VANILLA_REACH_RANGE = 0;
 
-    /**
-     * How many ticks in a row this behaviour may answer "not yet" before it must answer for real.
-     *
-     * <p>A LIVENESS BOUND, and without it the feature can stall a mob indefinitely. The slot is keyed
-     * on the exact destination asked for, and several vanilla behaviours rewrite that destination
-     * every tick. {@code AnimalPanic.tick} is the worst: it overwrites WALK_TARGET with a FRESH
-     * random position on every tick the navigation is idle, with no {@code absent(WALK_TARGET)} gate.
-     * A deferral leaves the mob with no path, so {@code isDone()} stays true, so the destination
-     * re-rolls, so the parked answer is never for the question being asked -- and the animal stands
-     * still for the whole 5-6 second panic while dispatching one full A* per tick. A burning goat
-     * never reaches water.
-     *
-     * <p>Two is enough to be useful and small enough to be safe: the common case lands in one tick,
-     * and anything that has not answered in two gets vanilla's synchronous answer instead. Progress
-     * is then guaranteed by construction rather than by hoping the destination holds still.
-     */
-    @Unique private static final int PATHWEAVER$MAX_CONSECUTIVE_DEFERRALS = 2;
 
     /** Consecutive ticks this behaviour has deferred without collecting anything. */
-    @Unique private int pathweaver$consecutiveDeferrals;
+    @Unique private final BrainSinkPolicy pathweaver$policy = new BrainSinkPolicy();
 
-    /**
-     * The tick on which this behaviour last deferred, so "consecutive" means what the name says.
-     *
-     * <p>Only the branches that END a decision reset the counter, so a deferral episode cut short by
-     * something else erasing WALK_TARGET left it at 1 or 2 and the NEXT, unrelated walk inherited a
-     * spent budget -- taking the bound on its first tick and running a synchronous A* while its async
-     * budget was untouched.
-     *
-     * <p>Keying the budget to the DESTINATION instead was tried and is wrong: {@code AnimalPanic}
-     * re-rolls the destination every tick, so the budget reset every tick, the bound never tripped,
-     * and the panicking-mob freeze came straight back. The tests caught it immediately. A gap in
-     * ticks is the thing that actually separates two episodes.
-     */
-    @Unique private long pathweaver$lastDeferralTick = Long.MIN_VALUE;
 
     /**
      * True while {@code checkExtraStartConditions} owns the decision for this call.
@@ -122,7 +92,16 @@ public abstract class MoveToTargetSinkMixin {
      * path deliberately supplies nothing. One decision per start attempt is the property that
      * matters, so it is stated directly.
      */
-    @Unique private boolean pathweaver$startCheckOwnsDecision;
+    /**
+     * The game tick on which the start check claimed the decision, or {@link Long#MIN_VALUE}.
+     *
+     * <p>A tick rather than a boolean, so a leaked claim cannot outlive the call it belongs to. As a
+     * boolean it was released on the cancel path, the throw path and at RETURN -- but a foreign mixin
+     * making VANILLA's body throw unwinds past all three, and the flag stayed set for the life of the
+     * behaviour instance, permanently and silently standing the tick-route hook down. Comparing
+     * against the current tick means the worst a leak can cost is the rest of one tick.
+     */
+    @Unique private long pathweaver$startCheckClaimTick = Long.MIN_VALUE;
 
     /**
      * Vanilla's throttle for a mob that cannot make progress: {@code stop()} sets it to
@@ -160,7 +139,9 @@ public abstract class MoveToTargetSinkMixin {
         method = "checkExtraStartConditions(Lnet/minecraft/server/level/ServerLevel;"
             + "Lnet/minecraft/world/entity/Mob;)Z",
         at = @At("HEAD"),
-        cancellable = true
+        cancellable = true,
+        require = 1,
+        expect = 1
     )
     private void pathweaver$deferBeforeVanillaCanForgetTheTarget(
             ServerLevel level, Mob mob, CallbackInfoReturnable<Boolean> cir) {
@@ -200,14 +181,14 @@ public abstract class MoveToTargetSinkMixin {
         if (remainingCooldown > 0) return;
         if (reachedTarget(mob, walkTarget.get())) return;
 
-        pathweaver$startCheckOwnsDecision = true;
+        pathweaver$startCheckClaimTick = level.getGameTime();
         boolean defer;
         try {
             defer = pathweaver$decideDefers(mob, navigation, duck, walkTarget.get(), asked,
                 level.getGameTime());
         } catch (Throwable failure) {
             // A throw is not a RETURN either, so the handler below will not run.
-            pathweaver$startCheckOwnsDecision = false;
+            pathweaver$startCheckClaimTick = Long.MIN_VALUE;
             throw failure;
         }
         if (defer) {
@@ -218,7 +199,7 @@ public abstract class MoveToTargetSinkMixin {
             // list. Leaving it set was harmless only by accident of control flow -- a cancelled start
             // check leaves the behaviour STOPPED so tick() cannot run -- and it was written down as a
             // guarantee.
-            pathweaver$startCheckOwnsDecision = false;
+            pathweaver$startCheckClaimTick = Long.MIN_VALUE;
         }
         // Not deferring: vanilla's body now runs tryComputePath, and the claim must still be held
         // across it so the second hook stands down. try/finally here was tried and is WRONG for
@@ -231,11 +212,12 @@ public abstract class MoveToTargetSinkMixin {
     @Inject(
         method = "checkExtraStartConditions(Lnet/minecraft/server/level/ServerLevel;"
             + "Lnet/minecraft/world/entity/Mob;)Z",
-        at = @At("RETURN")
+        at = @At("RETURN"),
+        require = 1
     )
     private void pathweaver$releaseDecisionClaim(ServerLevel level, Mob mob,
                                                  CallbackInfoReturnable<Boolean> cir) {
-        pathweaver$startCheckOwnsDecision = false;
+        pathweaver$startCheckClaimTick = Long.MIN_VALUE;
     }
 
     /**
@@ -251,69 +233,41 @@ public abstract class MoveToTargetSinkMixin {
         EntityInstallSink sink = PathWeaverRuntime.get().entitySink();
         int entityId = mob.getId();
 
-        // A break in the run of deferred ticks starts a fresh budget.
-        if (gameTime != pathweaver$lastDeferralTick + 1L) pathweaver$consecutiveDeferrals = 0;
+        BrainSinkPolicy.Decision decision = pathweaver$policy.decide(
+            entityId, asked, walkTarget.getSpeedModifier(), gameTime,
+            new BrainSinkPolicy.SearchPort() {
+                @Override public Path takeParked(int id, BlockPos at) {
+                    return sink.takeBrainSinkPath(id, at);
+                }
+                @Override public boolean hasPending(int id, BlockPos at) {
+                    return sink.hasPendingBrainSink(id, at);
+                }
+                @Override public boolean isRegistered(int id) {
+                    return sink.isRegistered(id);
+                }
+                @Override public BrainSinkPolicy.Probe probe(double speed, BlockPos at) {
+                    // A window already open on this navigation means something re-entered; the
+                    // navigation refuses and the policy leaves the call to vanilla.
+                    if (!duck.pathweaver$enterBrainSinkRequest(speed, at)) {
+                        return BrainSinkPolicy.Probe.refused();
+                    }
+                    try {
+                        return BrainSinkPolicy.Probe.ran(
+                            navigation.createPath(at, PATHWEAVER$VANILLA_REACH_RANGE));
+                    } finally {
+                        duck.pathweaver$exitBrainSinkRequest();
+                    }
+                }
+            });
 
-        Path landed = sink.takeBrainSinkPath(entityId, asked);
-        if (landed != null) {
-            pathweaver$consecutiveDeferrals = 0;
-            pathweaver$supply(landed, true);
-            return false;
+        switch (decision.action()) {
+            case DEFER -> {
+                return true;
+            }
+            case SUPPLY_FROM_PARK -> pathweaver$supply(decision.path(), true);
+            case SUPPLY_FROM_REFUSAL -> pathweaver$supply(decision.path(), false);
+            case RUN_VANILLA -> { }
         }
-
-        // Liveness. Checked after the collection attempt, so a landed answer is never refused, and
-        // before dispatch, so a mob that is about to be answered synchronously does not also start a
-        // search nobody will collect.
-        if (pathweaver$consecutiveDeferrals >= PATHWEAVER$MAX_CONSECUTIVE_DEFERRALS) {
-            pathweaver$consecutiveDeferrals = 0;
-            return false;
-        }
-
-        if (sink.hasPendingBrainSink(entityId, asked)) {
-            pathweaver$consecutiveDeferrals++;
-            pathweaver$lastDeferralTick = gameTime;
-            return true;
-        }
-
-        // Ask the navigation, then read what it did. Whether dispatch happens is decided behind the
-        // safety gate, the origin gate, admission and the breaker; MobEligibility exists for
-        // reporting and its own comment warns it can disagree with dispatch, so predicting is not an
-        // option. Dispatch records its own slot at the point it registers, which is the only place
-        // that knows a request was really admitted.
-        // A window already open on this navigation means something re-entered; the navigation refuses
-        // and we leave the whole call to vanilla rather than dispatch blind.
-        if (!duck.pathweaver$enterBrainSinkRequest(walkTarget.getSpeedModifier(), asked)) {
-            return false;
-        }
-        Path immediate;
-        try {
-            immediate = navigation.createPath(asked, PATHWEAVER$VANILLA_REACH_RANGE);
-        } finally {
-            duck.pathweaver$exitBrainSinkRequest();
-        }
-
-        if (sink.hasPendingBrainSink(entityId, asked)) {
-            pathweaver$consecutiveDeferrals++;
-            pathweaver$lastDeferralTick = gameTime;
-            return true;
-        }
-
-        // Still registered, but no slot of ours: another request for this mob is in flight and
-        // dispatch either preserved it or superseded it. `immediate` on those routes is the mob's
-        // CURRENTLY INSTALLED path, not a search result -- handing it back would answer this
-        // destination with the route to a different one. Waiting a tick costs nothing now that the
-        // deferral no longer erases the walk target.
-        if (sink.isRegistered(entityId)) {
-            pathweaver$consecutiveDeferrals++;
-            pathweaver$lastDeferralTick = gameTime;
-            return true;
-        }
-
-        // Dispatch was refused outright, so this really is vanilla's own synchronous answer -- a
-        // path, or null meaning no route exists. Either way it is the value vanilla would have had,
-        // so hand it to the real call site rather than searching for the same destination twice.
-        pathweaver$consecutiveDeferrals = 0;
-        pathweaver$supply(immediate, false);
         return false;
     }
 
@@ -331,13 +285,20 @@ public abstract class MoveToTargetSinkMixin {
      * the other: {@code tick()} simply does not restart the behaviour, and the mob keeps walking the
      * path it already has.
      */
-    @Inject(method = "tryComputePath", at = @At("HEAD"), cancellable = true)
+    @Inject(
+        method = "tryComputePath(Lnet/minecraft/world/entity/Mob;"
+            + "Lnet/minecraft/world/entity/ai/memory/WalkTarget;J)Z",
+        at = @At("HEAD"),
+        cancellable = true,
+        require = 1,
+        expect = 1
+    )
     private void pathweaver$deferRepath(Mob mob, WalkTarget walkTarget, long gameTime,
                                         CallbackInfoReturnable<Boolean> cir) {
         // The start check has already decided for this call -- either it supplied a path the wrap is
         // about to consume, or it deliberately fell through so vanilla could search. Deciding again
         // here would override that, and did.
-        if (pathweaver$startCheckOwnsDecision) return;
+        if (pathweaver$startCheckClaimTick == gameTime) return;
 
         PathWeaverConfig cfg = PathWeaverConfig.get();
         if (!cfg.enabled || !cfg.brainSinkAsync) return;
@@ -361,7 +322,8 @@ public abstract class MoveToTargetSinkMixin {
     }
 
     @WrapOperation(
-        method = "tryComputePath",
+        method = "tryComputePath(Lnet/minecraft/world/entity/Mob;"
+            + "Lnet/minecraft/world/entity/ai/memory/WalkTarget;J)Z",
         at = @At(
             value = "INVOKE",
             target = "Lnet/minecraft/world/entity/ai/navigation/PathNavigation;"

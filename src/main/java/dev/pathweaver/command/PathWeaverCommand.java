@@ -43,7 +43,12 @@ public final class PathWeaverCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("pathweaver")
-            .requires(source -> Commands.LEVEL_GAMEMASTERS.check(source.permissions()))
+            // No permission requirement on the root or on `status`. `mobs` keeps one below, because
+            // it constructs every registered mob type in one tick; `status` only reads counters.
+            //
+            // Level 2 on the root locked out every singleplayer player on a world without cheats --
+            // which is most of them -- leaving the log file as their only way to find out whether
+            // this mod is doing anything, on a mod whose README tells them to run this command.
             .then(Commands.literal("status").executes(context -> {
                 status(context.getSource());
                 return 1;
@@ -146,8 +151,15 @@ public final class PathWeaverCommand {
         out.add("  workers: " + runtime.pool().threads()
             + "   maxInFlight: " + runtime.pool().maxInFlight());
         long dispatched = runtime.dispatchedCount();
+        long parked = runtime.outcomeCount(RequestOutcome.PARKED_FOR_BRAIN);
+        // parked is named on the headline, not folded into installed and not left out. Brain-sink
+        // searches complete as PARKED_FOR_BRAIN and never INSTALLED, so on a villager-heavy world
+        // installed+discarded silently stopped adding up to dispatched, and the missing work looked
+        // like it had vanished. Folding it into installed would be the opposite error: the mob is
+        // not walking that path yet.
         out.add("  since server start: dispatched=" + dispatched
             + ", installed=" + runtime.installedCount()
+            + (parked > 0 ? ", parked=" + parked : "")
             + ", discarded=" + runtime.discardedCount());
         for (RequestOutcome outcome : RequestOutcome.values()) {
             long count = runtime.outcomeCount(outcome);
@@ -443,9 +455,10 @@ public final class PathWeaverCommand {
         // named here would have shipped the release's own headline as a caveat against itself.
         out.add("  " + eligible + " of " + types + " mob types are eligible");
         out.add("  §7Eligible means nothing blocks dispatch for this mob. It is not a promise "
-            + "that its AI routes through a dispatching call site — brain-driven movement "
-            + "(villagers, piglins, axolotls, allays, the warden) stays synchronous by design. "
-            + "Wall-climber chases did too until 0.6.0, and now dispatch.");
+            + "that its AI routes through a dispatching call site. Brain-driven movement "
+            + "(villagers, piglins, axolotls, allays) dispatches only when brainSinkAsync is on: "
+            + (PathWeaverConfig.get().brainSinkAsync ? "it is." : "it is off, so those stay sync.")
+            + " The warden never dispatches — its navigation builds a custom pathfinder.");
         verdicts.entrySet().stream()
             .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
             .forEach(entry -> out.add(

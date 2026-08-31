@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -38,47 +39,74 @@ class MoveToTargetSinkContractTest {
     private static final String WRAP_OPERATION =
         "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
 
-    /** Handler method name -> the annotation descriptors on it. */
-    private static Map<String, List<String>> handlerAnnotations() throws Exception {
-        Map<String, List<String>> found = new LinkedHashMap<>();
+    /** Annotation descriptor -> the `method` values declared on it, across the whole mixin. */
+    private static Map<String, List<String>> injectedTargets() throws Exception {
+        Map<String, List<String>> byAnnotation = new LinkedHashMap<>();
         try (InputStream in = MoveToTargetSinkContractTest.class
                 .getResourceAsStream("/dev/pathweaver/mixin/MoveToTargetSinkMixin.class")) {
             assertNotNull(in, "MoveToTargetSinkMixin.class not readable");
             new ClassReader(in.readAllBytes()).accept(new ClassVisitor(Opcodes.ASM9) {
                 @Override public MethodVisitor visitMethod(int access, String name, String desc,
                                                            String sig, String[] ex) {
-                    List<String> annotations =
-                        found.computeIfAbsent(name, key -> new ArrayList<>());
                     return new MethodVisitor(Opcodes.ASM9) {
                         @Override public org.objectweb.asm.AnnotationVisitor visitAnnotation(
                                 String annotationDesc, boolean visible) {
-                            annotations.add(annotationDesc);
-                            return null;
+                            List<String> targets = byAnnotation
+                                .computeIfAbsent(annotationDesc, k -> new ArrayList<>());
+                            return new org.objectweb.asm.AnnotationVisitor(Opcodes.ASM9) {
+                                @Override public org.objectweb.asm.AnnotationVisitor visitArray(
+                                        String arrayName) {
+                                    if (!"method".equals(arrayName)) return null;
+                                    return new org.objectweb.asm.AnnotationVisitor(Opcodes.ASM9) {
+                                        @Override public void visit(String n, Object value) {
+                                            targets.add(String.valueOf(value));
+                                        }
+                                    };
+                                }
+                            };
                         }
                     };
                 }
             }, 0);
         }
-        return found;
+        return byAnnotation;
     }
 
-    @Test void bothCallSitesAreStillHooked() throws Exception {
-        Map<String, List<String>> handlers = handlerAnnotations();
+    private static final String START_CHECK =
+        "checkExtraStartConditions(Lnet/minecraft/server/level/ServerLevel;"
+            + "Lnet/minecraft/world/entity/Mob;)Z";
+    private static final String TRY_COMPUTE_PATH =
+        "tryComputePath(Lnet/minecraft/world/entity/Mob;"
+            + "Lnet/minecraft/world/entity/ai/memory/WalkTarget;J)Z";
 
-        long injects = handlers.values().stream()
-            .filter(a -> a.contains(INJECT)).count();
-        long wraps = handlers.values().stream()
-            .filter(a -> a.contains(WRAP_OPERATION)).count();
+    /**
+     * Both seams, pinned by the METHOD THEY TARGET rather than by how many annotations exist.
+     *
+     * <p>The first version of this counted handlers -- {@code injects >= 3}, {@code wraps >= 1} --
+     * and two reviewers independently pointed out that it would stay green if the tryComputePath
+     * hook were deleted and any other {@code @Inject} added. Counting is not pinning. It also let the
+     * descriptor-less {@code method = "tryComputePath"} through, which would have bound to BOTH
+     * overloads if Mojang ever added one, while still satisfying {@code require = 1}.
+     */
+    @Test void bothCallSitesAreStillHookedByExactDescriptor() throws Exception {
+        Map<String, List<String>> targets = injectedTargets();
 
-        // Three @Inject: the start-check decision, its RETURN release, and the tick() re-path route.
-        assertTrue(injects >= 3,
-            "expected three @Inject handlers (start-check decision, its RETURN release, and the "
-                + "tick() re-path route) but found " + injects + ". Deleting the tryComputePath hook "
-                + "removes the offload from the route that dominates mobs following a moving entity, "
-                + "and no game test can see it: they all pin a stationary destination.");
-        assertTrue(wraps >= 1,
+        List<String> injected = targets.getOrDefault(INJECT, List.of());
+        List<String> wrapped = targets.getOrDefault(WRAP_OPERATION, List.of());
+
+        assertTrue(injected.contains(START_CHECK),
+            "the start-check deferral is gone or retargeted. It must be on "
+                + START_CHECK + "; found " + injected);
+        assertTrue(injected.contains(TRY_COMPUTE_PATH),
+            "the tick() re-path hook is gone or retargeted. Deleting it removes the offload from the "
+                + "route that dominates mobs following a moving entity, and no game test can see it: "
+                + "they all pin a stationary destination. Found " + injected);
+        assertTrue(wrapped.contains(TRY_COMPUTE_PATH),
             "the @WrapOperation that hands a landed path back to vanilla's own createPath call site "
-                + "is gone; without it the collected path is never delivered");
+                + "is gone; without it a collected path is never delivered. Found " + wrapped);
+        assertEquals(2, injected.stream().filter(START_CHECK::equals).count(),
+            "the start check needs exactly two @Injects -- the decision at HEAD and the claim "
+                + "release at RETURN; found " + injected);
     }
 
     /**

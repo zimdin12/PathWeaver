@@ -106,7 +106,13 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
 
     private record BrainSinkSlot(BlockPos asked, Path path, long expiryTick) {
         boolean answers(BlockPos question, long tick) {
-            return tick < expiryTick && asked.equals(question);
+            // Inclusive, to match isStale, which calls a result stale only at age > maxResultAgeTicks
+            // -- so age == max is still fresh there. Exclusive here made the slot expire a tick
+            // EARLIER than the result it holds. At the clamped minimum of 1 that is fatal and silent:
+            // a slot dispatched at T expires at T+1 and can never be collected at T+1, so every brain
+            // mob dispatches a search nobody reads, hits the liveness bound, and runs a synchronous
+            // one anyway. Strictly more work than vanilla, at a setting the config permits.
+            return tick <= expiryTick && asked.equals(question);
         }
     }
     private final AtomicBoolean callbackFailureLogged = new AtomicBoolean();
