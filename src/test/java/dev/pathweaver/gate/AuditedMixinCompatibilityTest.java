@@ -40,16 +40,19 @@ class AuditedMixinCompatibilityTest {
     @Test void theAuditCertifiesExactlyThePinnedServerCoreAndRefusesAnythingElse() throws Exception {
         var jar = jarContaining(SERVERCORE_MIXIN);
         var result = AuditedMixinCompatibility.verifyServerCore(serverCoreBundle());
-        if (AuditedMixinCompatibility.SERVERCORE_VERSION.equals(ResolvedArtifact.version(jar))) {
+        if (ResolvedArtifact.isPinnedAsExpected(AuditedMixinCompatibility.SERVERCORE_ID,
+                jar, AuditedMixinCompatibility.SERVERCORE_VERSION)) {
             assertTrue(result.valid(), () -> String.join("\n", result.diagnostics()));
             assertEquals(3, result.modifiedMethods().size());
             assertTrue(result.modifiedMethods().stream().allMatch(s -> s.startsWith("findPath(")));
         } else {
             assertFalse(result.valid(),
-                "an unpinned ServerCore must not be certified; this build resolved "
-                    + ResolvedArtifact.version(jar));
-            assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("hash mismatch")),
-                () -> "the refusal must name which pinned artifact drifted, not just fail: "
+                () -> "an unpinned ServerCore must not be certified; this build resolved "
+                    + resolvedVersionQuietly(jar));
+            assertTrue(result.diagnostics().stream()
+                    .anyMatch(d -> d.contains("module jar hash mismatch")),
+                () -> "the refusal must be the expected one -- the module jar drifting -- so "
+                    + "that an unrelated internal failure cannot impersonate it: "
                     + result.diagnostics());
         }
     }
@@ -73,27 +76,24 @@ class AuditedMixinCompatibilityTest {
     @Test void theAuditCertifiesExactlyThePinnedRabbitAndRefusesAnythingElse() throws Exception {
         var jar = jarContaining(RABBIT_MIXIN);
         var result = AuditedMixinCompatibility.verifyRabbit(rabbitBundle());
-        if (AuditedMixinCompatibility.RABBIT_VERSION.equals(ResolvedArtifact.version(jar))) {
+        if (ResolvedArtifact.isPinnedAsExpected(AuditedMixinCompatibility.RABBIT_ID,
+                jar, AuditedMixinCompatibility.RABBIT_VERSION)) {
             assertTrue(result.valid(), () -> String.join("\n", result.diagnostics()));
             assertEquals(java.util.Set.of(
                 "doStuckDetection(Lnet/minecraft/world/phys/Vec3;)V",
                 "resetStuckTimeout()V"), result.modifiedMethods());
         } else {
             assertFalse(result.valid(),
-                "an unpinned rabbit-pathfinding-fix must not be certified; this build resolved "
-                    + ResolvedArtifact.version(jar));
-            assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("hash mismatch")),
-                () -> "the refusal must name which pinned artifact drifted, not just fail: "
+                () -> "an unpinned rabbit-pathfinding-fix must not be certified; this build "
+                    + "resolved " + resolvedVersionQuietly(jar));
+            assertTrue(result.diagnostics().stream()
+                    .anyMatch(d -> d.contains("module jar hash mismatch")),
+                () -> "the refusal must be the expected one -- the module jar drifting -- so "
+                    + "that an unrelated internal failure cannot impersonate it: "
                     + result.diagnostics());
         }
     }
 
-    /**
-     * The version of the artifact this build actually resolved.
-     *
-     * <p>These tests read whatever jar is on the classpath, and the branches resolve different ones:
-     * 26.1.2 gets the pinned artifact, 26.2 gets a newer one the audit has never seen.
-     */
     @Test void pathWeaverWorkerCallableReachesOnlyThePinnedSearchClosure() throws Exception {
         ClassNode pool = new ClassNode();
         new ClassReader(classBytes(PathWorkerPool.class)).accept(pool, 0);
@@ -216,6 +216,12 @@ class AuditedMixinCompatibilityTest {
                 zipBytes(zip, RABBIT_MIXIN), classBytes(PathNavigation.class),
                 classBytes(PathFinder.class));
         }
+    }
+
+    /** Version lookup for a failure message, which must never throw over the real assertion. */
+    private static String resolvedVersionQuietly(Path jar) {
+        try { return ResolvedArtifact.version(jar); }
+        catch (Exception e) { return "<unreadable: " + e + ">"; }
     }
 
     private static Path jarContaining(String resource) throws Exception {

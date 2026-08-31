@@ -1,0 +1,17 @@
+# Which audited artifacts THIS BRANCH is expected to resolve.
+#
+# The audit tests assert the verdict that matches the artifact on the classpath: a pinned artifact
+# must certify with its exact shape proof, anything else must refuse. Deciding which arm to take
+# from the artifact ITSELF means a dependency bump silently swaps every audit test from "prove the
+# shape" to "prove it refuses", and the suite stays green over zero shape coverage. That is not
+# hypothetical: it is what the mc-26.2 branch was doing -- twelve green gate tests, nothing proved.
+#
+# So the expectation lives here, outside the thing being measured. Change a dependency version and
+# the tests go RED until someone edits this file deliberately and says why.
+#
+#   pinned   = this branch resolves the exact audited artifact; the shape proof must pass
+#   unpinned = this branch resolves something else; the audit must refuse and name the drift
+servercore=pinned
+rabbit-pathfinding-fix=pinned
+fabric-events-interaction-v0=pinned
+fabric-content-registries-v0=pinned

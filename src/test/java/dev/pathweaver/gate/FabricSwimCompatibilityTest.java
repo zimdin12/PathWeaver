@@ -23,8 +23,8 @@ class FabricSwimCompatibilityTest {
         FabricSwimCompatibility.Verification result =
             FabricSwimCompatibility.verifyBundle(exactBundle());
 
-        if (ResolvedArtifact.isPinned(LandPathTypeRegistry.class,
-                FabricSwimCompatibility.MOD_VERSION)) {
+        if (ResolvedArtifact.isPinnedAsExpected(FabricSwimCompatibility.MOD_ID,
+                LandPathTypeRegistry.class, FabricSwimCompatibility.MOD_VERSION)) {
             assertTrue(result.valid(), () -> String.join("\n", result.diagnostics()));
             assertTrue(result.landRegistryVerified(),
                 "exact mutation/lookup hook targets must be pinned");
@@ -35,11 +35,14 @@ class FabricSwimCompatibilityTest {
                 "getBlockState(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;",
                 "level()Lnet/minecraft/world/level/CollisionGetter;"), result.swimContextCalls());
         } else {
-            assertFalse(result.valid(), "an unpinned fabric-content-registries must not be "
+            assertFalse(result.valid(), () -> "an unpinned fabric-content-registries must not be "
                 + "certified; this build resolved "
-                + ResolvedArtifact.version(ResolvedArtifact.jarOf(LandPathTypeRegistry.class)));
-            assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("hash")),
-                () -> "the refusal must name which pinned artifact drifted: " + result.diagnostics());
+                + resolvedVersionQuietly(LandPathTypeRegistry.class));
+            assertTrue(result.diagnostics().stream()
+                    .anyMatch(d -> d.contains("module jar hash mismatch")),
+                () -> "the refusal must be the expected one -- the module jar drifting -- so that "
+                    + "an unrelated internal failure cannot impersonate it: "
+                    + result.diagnostics());
         }
     }
 
@@ -82,6 +85,12 @@ class FabricSwimCompatibilityTest {
                 classBytes(PathFinder.class), classBytes(PathfindingContext.class),
                 classBytes(BlockBehaviour.BlockStateBase.class));
         }
+    }
+
+    /** For a failure message only, so it can never throw over the real assertion. */
+    private static String resolvedVersionQuietly(Class<?> probe) {
+        try { return ResolvedArtifact.version(ResolvedArtifact.jarOf(probe)); }
+        catch (Exception e) { return "<unreadable: " + e + ">"; }
     }
 
     private static byte[] zipBytes(ZipFile zip, String entryName) throws Exception {
