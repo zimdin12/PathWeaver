@@ -53,6 +53,8 @@ public final class CantReachTransitionTableGameTest {
         private long enteredStage;
         private long stampedAt = Long.MIN_VALUE;
         private boolean restored;
+        /** Last few ticks of stage 2, dumped on the control failure so it can be diagnosed. */
+        private final java.util.ArrayDeque<String> trace = new java.util.ArrayDeque<>();
         private boolean oldBrainSink;
 
         void tick(GameTestHelper helper) {
@@ -152,6 +154,18 @@ public final class CantReachTransitionTableGameTest {
                                                   net.minecraft.world.entity.ai.Brain<?> brain,
                                                   boolean present, long tick) {
             aim(brain, walledOff);
+            if (!present) {
+                if (trace.size() >= 12) trace.removeFirst();
+                trace.addLast("t" + (tick - enteredStage)
+                    + " at=" + villager.blockPosition().getX()
+                    + " navPath=" + (villager.getNavigation().getPath() != null)
+                    + " brainPATH=" + brain.hasMemoryValue(MemoryModuleType.PATH)
+                    + " walkTgt=" + brain.hasMemoryValue(MemoryModuleType.WALK_TARGET)
+                    + " pend=" + dev.pathweaver.PathWeaverRuntime.get().entitySink()
+                        .hasPendingBrainSink(villager.getId(), walledOff)
+                    + " reg=" + dev.pathweaver.PathWeaverRuntime.get().entitySink()
+                        .isRegistered(villager.getId()));
+            }
             if (present) {
                 long since = brain.getMemory(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE)
                     .orElseThrow();
@@ -182,7 +196,8 @@ public final class CantReachTransitionTableGameTest {
                         + villager.blockPosition() + " target=" + walledOff
                         + " hasPath=" + (villager.getNavigation().getPath() != null)
                         + " walkTarget=" + brain.hasMemoryValue(MemoryModuleType.WALK_TARGET)
-                        + " brainPath=" + brain.hasMemoryValue(MemoryModuleType.PATH));
+                        + " brainPath=" + brain.hasMemoryValue(MemoryModuleType.PATH)
+                        + " | trace: " + String.join(" ;; ", trace));
             }
         }
 

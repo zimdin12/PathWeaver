@@ -94,30 +94,40 @@ public final class BrainSinkPolicy {
         public static Probe ran(Path path) { return new Probe(true, path); }
     }
 
-    private int consecutiveDeferrals;
-    private long lastDeferralTick = Long.MIN_VALUE;
+    /**
+     * Deferrals since the last decision that was not a deferral.
+     *
+     * <p>Counted per DECISION, not per tick, and that distinction is the whole fix. Keying it on
+     * consecutive ticks looked equivalent and is not: if the start check is not invoked on back-to-
+     * back ticks -- and a brain does not guarantee that -- the budget reset on every call, the bound
+     * never fired, and the deferral became unbounded. A game test caught a villager sitting seven
+     * blocks from its destination for seven hundred ticks with a walk target, no path, and no
+     * unreachable memory: the exact frozen mob this bound exists to prevent, produced by the bound
+     * itself.
+     *
+     * <p>Resetting only on a non-deferral does mean a walk that begins right after an abandoned one
+     * can inherit a spent budget and take vanilla's synchronous answer on its first tick. That costs
+     * one synchronous search and then self-corrects, which is a far cheaper wrong answer than a mob
+     * that never moves.
+     */
+    private int deferralsSinceProgress;
 
     /** Test seam: how much of the deferral budget is spent. */
-    public int consecutiveDeferrals() { return consecutiveDeferrals; }
+    public int consecutiveDeferrals() { return deferralsSinceProgress; }
 
     public Decision decide(int entityId, BlockPos asked, double speed, long gameTime,
                            SearchPort port) {
-        // A break in the run of deferred ticks starts a fresh budget. Keyed on a tick gap, not on
-        // the destination: AnimalPanic re-rolls the destination every tick, so a per-destination
-        // budget reset every tick and the bound never tripped at all.
-        if (gameTime != lastDeferralTick + 1L) consecutiveDeferrals = 0;
-
         Path landed = port.takeParked(entityId, asked);
         if (landed != null) {
-            consecutiveDeferrals = 0;
+            deferralsSinceProgress = 0;
             return new Decision(Action.SUPPLY_FROM_PARK, landed);
         }
 
         // Liveness, checked AFTER the collection attempt so a landed answer is never refused, and
         // BEFORE the probe so a mob about to be answered synchronously does not also start a search
         // nobody will collect.
-        if (consecutiveDeferrals >= MAX_CONSECUTIVE_DEFERRALS) {
-            consecutiveDeferrals = 0;
+        if (deferralsSinceProgress >= MAX_CONSECUTIVE_DEFERRALS) {
+            deferralsSinceProgress = 0;
             return Decision.of(Action.RUN_VANILLA);
         }
 
@@ -131,7 +141,10 @@ public final class BrainSinkPolicy {
         Probe probe = port.probe(speed, asked);
         // The window was already open, so nothing was searched and nothing was dispatched. Leave the
         // whole call to vanilla rather than hand back an answer we do not have.
-        if (!probe.ran()) return Decision.of(Action.RUN_VANILLA);
+        if (!probe.ran()) {
+            deferralsSinceProgress = 0;
+            return Decision.of(Action.RUN_VANILLA);
+        }
 
         if (port.hasPending(entityId, asked)) return defer(gameTime);
 
@@ -143,13 +156,12 @@ public final class BrainSinkPolicy {
 
         // Dispatch was refused outright, so this is vanilla's own synchronous answer: a path, or
         // null meaning no route exists. Either way it is the value vanilla would have had.
-        consecutiveDeferrals = 0;
+        deferralsSinceProgress = 0;
         return new Decision(Action.SUPPLY_FROM_REFUSAL, probe.path());
     }
 
     private Decision defer(long gameTime) {
-        consecutiveDeferrals++;
-        lastDeferralTick = gameTime;
+        deferralsSinceProgress++;
         return Decision.of(Action.DEFER);
     }
 }

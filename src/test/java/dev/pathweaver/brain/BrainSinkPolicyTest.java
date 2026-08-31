@@ -202,19 +202,29 @@ class BrainSinkPolicyTest {
             "a destination that changes every tick must not refresh the deferral budget");
     }
 
-    /** A gap in the run of deferred ticks is what separates two episodes. */
-    @Test void aGapInTicksStartsAFreshBudget() {
+    /**
+     * THE BOUND MUST FIRE EVEN WHEN THE CALLS ARE NOT ON CONSECUTIVE TICKS.
+     *
+     * <p>This replaces a test that asserted the opposite -- that a gap in ticks starts a fresh budget
+     * -- and that assertion was the defect, not the contract. Keyed on consecutive ticks, the budget
+     * reset on every call whenever the brain did not invoke the start check on back-to-back ticks,
+     * so the bound never fired and the deferral was unbounded. A game test caught the result: a
+     * villager seven blocks from its destination, for seven hundred ticks, holding a walk target with
+     * no path and no unreachable memory. The mob the bound exists to protect, frozen by the bound.
+     *
+     * <p>The budget is per decision now, so a gap changes nothing.
+     */
+    @Test void theBoundFiresEvenWhenTheCallsAreSpreadAcrossTicks() {
         BrainSinkPolicy policy = new BrainSinkPolicy();
         FakePort port = new FakePort();
         port.pendingBefore = true;
 
-        policy.decide(MOB, A, 1.0, 10L, port);
-        policy.decide(MOB, A, 1.0, 11L, port);
-        assertEquals(2, policy.consecutiveDeferrals(), "precondition: the budget is spent");
-
-        assertEquals(BrainSinkPolicy.Action.DEFER, policy.decide(MOB, A, 1.0, 40L, port).action(),
-            "a walk that begins long after the last deferral must start from a full budget, not "
-                + "inherit a spent one and be answered synchronously on its first tick");
+        assertEquals(BrainSinkPolicy.Action.DEFER, policy.decide(MOB, A, 1.0, 10L, port).action());
+        assertEquals(BrainSinkPolicy.Action.DEFER, policy.decide(MOB, A, 1.0, 55L, port).action());
+        assertEquals(BrainSinkPolicy.Action.RUN_VANILLA,
+            policy.decide(MOB, A, 1.0, 900L, port).action(),
+            "three deferrals with wide gaps between them must still hit the bound; keying it on "
+                + "consecutive ticks meant a brain that skipped a tick got an unbounded deferral");
     }
 
     @Test void collectingAnAnswerRefreshesTheBudget() {
