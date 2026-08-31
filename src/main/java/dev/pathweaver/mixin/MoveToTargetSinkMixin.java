@@ -373,6 +373,26 @@ public abstract class MoveToTargetSinkMixin {
             "start(navPath=" + (mob.getNavigation().getPath() != null) + ")");
     }
 
+    /**
+     * Diagnostic: is the behaviour still being evaluated, and what is it answering?
+     *
+     * <p>The freeze shows one start with no matching stop. Either canStillUse keeps saying "yes" --
+     * in which case it is lying about a navigation that is done -- or it is never called, in which
+     * case the brain has stopped ticking this behaviour while its status is still RUNNING. Those
+     * need opposite fixes, so the instrument distinguishes them rather than assuming.
+     */
+    @Inject(
+        method = "canStillUse(Lnet/minecraft/server/level/ServerLevel;"
+            + "Lnet/minecraft/world/entity/Mob;J)Z",
+        at = @At("RETURN"),
+        require = 1
+    )
+    private void pathweaver$traceCanStillUse(ServerLevel level, Mob mob, long gameTime,
+                                             CallbackInfoReturnable<Boolean> cir) {
+        BrainSinkDiagnostics.recordLifecycle(mob.getId(),
+            "csu=" + cir.getReturnValue() + "(done=" + mob.getNavigation().isDone() + ")");
+    }
+
     @Inject(
         method = "stop(Lnet/minecraft/server/level/ServerLevel;"
             + "Lnet/minecraft/world/entity/Mob;J)V",
