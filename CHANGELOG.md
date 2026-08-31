@@ -21,6 +21,31 @@ page measures the master switch, and its population contained no brain-mob pathf
 `Brain` frame totalling 4 ms and zero time in `MoveToTargetSink`. Those figures have been
 re-captioned rather than deleted.
 
+### The checked tier works on 26.2
+
+`compatibilityTier=AUDITED` did nothing at all on 26.2. Every audit pinned 26.1.2 artifacts, so all
+four refused on the version gate and all six movement families ran on the server thread. That had
+been true since the port branch was created, and 0.6.1+26.2 shipped that way.
+
+All four are re-derived against what 26.2 resolves. Three were pure hash drift whose shape proofs
+already passed on the new bytes. `rabbit-pathfinding-fix` 1.4.0 changed mechanism rather than
+drifting: `resetStuckTimeout` moved from an `@Inject` at TAIL to a `@ModifyConstant`. Its safety
+argument is unchanged, because that argument is non-reachability from the worker's search closure
+and is proved against the bytes either way.
+
+Two real defects came out of doing it:
+
+- **The audit enumerators silently skipped handlers they could not read.** They looked up one
+  annotation descriptor and passed over every method that did not carry it, so an artifact with the
+  pinned handlers plus an extra `@ModifyConstant`, `@ModifyVariable`, `@Overwrite` or MixinExtras
+  injector satisfied the "modifies exactly two methods" count. The extra modification never entered
+  the count meant to notice it. The class hash contained this for the artifacts pinned at the time;
+  it would have bitten whoever next re-pinned, which was this work.
+- **The scanner kept its own copy of an audited artifact's identity.** Re-pinning moved the pin and
+  not the copy, and the scan then denied all six families on a branch that declares that artifact
+  audited. It failed closed and was still wrong. On 26.1.2 the two spellings coincide, so nothing
+  caught it there.
+
 ### Villager brains now path off-thread (`brainSinkAsync`, on by default)
 
 Brain mobs — villagers, piglins, axolotls, frogs, allays, camels and about twenty other AI packages —
@@ -82,15 +107,23 @@ test asserted the predicate of, and nothing asserted were CALLED, are now pinned
 one of them guards a documented permanent corruption of a mob's pathfinding malus,
 and deleting it left the entire suite green.
 
-### Not done, and said here rather than discovered later
+### The shipping gate, and what was wrong with it
 
-The shipping gate this feature set itself — a game test covering the whole
-`CANT_REACH_WALK_TARGET_SINCE` transition table — is **written but not reliable**. It
-fails about 5 runs in 18, with a control at 3 in 18, so the flake is not
-attributable to the feature (Fisher p = 0.69). It runs opt-in under
-`-PcantReachHarness` and gates nothing. An earlier control suggested the feature was
-at fault; that measurement was taken on a materially different version of the test
-and did not survive re-measuring.
+This feature set itself a gate: a game test covering the whole
+`CANT_REACH_WALK_TARGET_SINCE` transition table. That test existed and had **never tested this
+feature**. Its harness ran at `compatibilityTier=AUDITED`, where the development classpath denies
+all six movement families, so the brain sink could not dispatch and every run recorded
+`dispatched=0`. It was timing a vanilla villager, which is why it was flaky and why mutations of the
+feature left it green.
+
+It runs at `UNSAFE` now, records `dispatched=6`, and kills a mutation that removes the liveness
+bound. The residual flake is measured, with the feature genuinely running for the first time, not to
+be the feature: 8 runs of 10 pass with the sink on against a control at 6 of 8 with it off, and
+doubling the tick budget did not change the rate.
+
+The gate is **waived as blocking** and kept as an on-demand reproducer under `-PcantReachHarness`.
+Waiving a gate this project wrote is a real cost, so the reasoning is recorded in `DESIGN.md` rather
+than dropped quietly.
 
 
 ## 0.7.0 — Fewer wrong answers, and fewer places to hide one
