@@ -210,6 +210,13 @@ memories. That is the same refactor §13 and roadmap 2a/2g need and have deliber
 Building this feature first would mean doing that refactor under feature pressure, which is exactly
 how 0.5.1 and 0.5.2 each shipped a half-covered fix to the recompute seam.
 
+**Prerequisite status (updated):** the test below is WRITTEN but NOT RELIABLE. It lives in
+`CantReachTransitionTableGameTest` under `-PcantReachHarness` and fails about 5 runs in 18, with a
+control at 3 in 18 (Fisher p = 0.69), so the flake is not attributable to the feature. The failing
+signature is that `MoveToTargetSink` is never evaluated at all for a live villager whose entry
+conditions are satisfied; that is not understood. Treat the gate as written-and-unmet rather than
+met. The original wording follows.
+
 **Prerequisite for shipping it:** a game test asserting the whole
 `CANT_REACH_WALK_TARGET_SINCE` transition table — erased on `canReach`, set once with the dispatch
 game time when unreachable, erased on arrival, never surviving a later successful search. If that

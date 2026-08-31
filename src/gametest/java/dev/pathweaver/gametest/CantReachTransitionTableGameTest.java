@@ -28,6 +28,26 @@ import net.minecraft.world.level.block.Blocks;
  * lost <em>permanently loses its workstation or bed</em>, silently, with no crash and no log line.
  * The project's own docs call that the worst-shaped bug this mod could ship.
  *
+ * <h2>STATUS: KNOWN FLAKY. This is a reproducer, not a release gate.</h2>
+ *
+ * <p>Measured in its own harness, 18 runs per arm: it fails 5/18 with {@code brainSinkAsync} ON and
+ * 3/18 with it OFF. Fisher exact two-tailed p = 0.69 — no significant difference, so the flake is
+ * NOT attributable to the feature. An earlier 0-of-8 control said otherwise and was quoted four
+ * times; it had been measured on a materially different version of this test and did not survive
+ * re-measuring.
+ *
+ * <p>The failing signature, from {@code BrainSinkDiagnostics}: the villager is alive, on the floor,
+ * with PATH absent and WALK_TARGET present — both entry conditions satisfied — and yet
+ * {@code MoveToTargetSink} is never evaluated at all across 800 ticks ({@code sc=0, life=none}).
+ * The instrument is sound; other runs record {@code sc=3} and a start/stop lifecycle. Why the brain
+ * skips this behaviour under those conditions is not established.
+ *
+ * <p>So this runs only under {@code -PcantReachHarness} and is deliberately NOT in any harness the
+ * release depends on. Keeping it opt-in rather than deleting it: it is the only reproducer of the
+ * signature, and a test kept out of the gate is honest where a deleted one is not. What it means for
+ * the shipping gate DESIGN.md and ROADMAP.md state is recorded there — the gate is written and is
+ * not yet reliable, which is not the same as met.
+ *
  * <p>The walk target is re-asserted each tick here, and that is deliberately NOT the compensation
  * that hid an earlier defect. The subject of this test is the memory's transitions, so the
  * destination has to be the one under test rather than whatever the villager's idle behaviours
@@ -169,7 +189,11 @@ public final class CantReachTransitionTableGameTest {
                     + " sc=" + dev.pathweaver.brain.BrainSinkDiagnostics.startChecks(villager.getId())
                     + " th=" + dev.pathweaver.brain.BrainSinkDiagnostics.tickHooks(villager.getId())
                     + " life=" + dev.pathweaver.brain.BrainSinkDiagnostics.lifecycle(
-                        villager.getId()));
+                        villager.getId())
+                    + " alive=" + villager.isAlive()
+                    + " removed=" + villager.isRemoved()
+                    + " hp=" + villager.getHealth()
+                    + " y=" + villager.blockPosition().getY());
             }
             if (present) {
                 long since = brain.getMemory(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE)

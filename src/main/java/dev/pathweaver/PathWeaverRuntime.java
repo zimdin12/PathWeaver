@@ -563,7 +563,7 @@ public final class PathWeaverRuntime {
         wasteReported = true;
         // Deliberately phrased as a likely cause rather than a diagnosis: this samples counters, it
         // does not attribute individual results, so it is a heuristic.
-        PathWeaver.LOG.warn("Only {} of {} async path searches were installed in the last {} ticks, "
+        PathWeaver.LOG.warn("Only {} of {} async path searches were installed or parked in the last {} ticks, "
                 + "for {} consecutive sampling windows. Results are most likely completing after the "
                 + "mob has already asked again, which wastes the work. maxInFlight={} may be too high "
                 + "for {} worker thread(s): a deeper queue adds latency rather than throughput. "
