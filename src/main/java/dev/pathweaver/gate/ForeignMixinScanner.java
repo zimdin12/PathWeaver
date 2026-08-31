@@ -119,7 +119,7 @@ public final class ForeignMixinScanner {
      * one exact mod version, config, concrete mixin class, and target before they can be added.
      */
     private static final String FABRIC_CONTENT_ID = "fabric-content-registries-v0";
-    private static final String FABRIC_CONTENT_VERSION = "11.2.1+76b0b6bb4c";
+    private static final String FABRIC_CONTENT_VERSION = FabricSwimCompatibility.MOD_VERSION;
     private static final String FABRIC_CONTENT_CONFIG = "fabric-content-registries-v0.mixins.json";
     private static final String FABRIC_CONTEXT_MIXIN =
         "net.fabricmc.fabric.mixin.content.registry.PathfindingContextMixin";
