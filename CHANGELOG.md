@@ -2,6 +2,25 @@
 
 ## 0.8.0 — The villager release, and what it cost to get right
 
+### Measured
+
+Three pairs of 60-second profiles on a 222-jar dedicated pack, alternating arms, every thread
+sampled. Server-thread pathfinding falls from **325 ms to 139 ms**, and every run with the setting
+on is below every run with it off (`120, 148, 148` against `288, 288, 400`).
+
+It costs about **12% more CPU in total** to do that: 365 ms of pathfinding across all threads with
+the sink on against 325 ms with it off. Moving work is not removing it. Earlier releases could not
+have reported this, because every published profile sampled the server thread alone, which is the
+one thread guaranteed to look better when the mod succeeds.
+
+MSPT moved 5.25 to 5.13 ms with overlapping ranges on a server sitting at a tenth of its tick
+budget, so this is a headroom result and not a throughput one.
+
+This is also the first measurement of `brainSinkAsync` that exists. The benchmark on the project
+page measures the master switch, and its population contained no brain-mob pathfinding at all: one
+`Brain` frame totalling 4 ms and zero time in `MoveToTargetSink`. Those figures have been
+re-captioned rather than deleted.
+
 ### Villager brains now path off-thread (`brainSinkAsync`, on by default)
 
 Brain mobs — villagers, piglins, axolotls, frogs, allays, camels and about twenty other AI packages —
