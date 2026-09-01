@@ -185,11 +185,15 @@ say "spark health"
 # one never was. The control below now requires a non-trivial count before the window opens, so the
 # instrument has to prove it can see the population before any run is trusted.
 say "execute if entity @e[type=!minecraft:player]"
+for t in villager goat frog cow bee spider squid axolotl item experience_orb; do
+  say "execute if entity @e[type=minecraft:$t]"
+  sleep 1
+done
 sleep 3
 say "pathweaver status"
 sleep 3
 BEFORE_DISPATCH="$(grep -aoE 'dispatched=[0-9]+' "$LOG" | tail -1 | cut -d= -f2)"
-BEFORE_ALIVE="$(grep -aoE 'Test passed. Count: [0-9]+' "$LOG" | tail -1 | grep -oE '[0-9]+$')"
+BEFORE_ALIVE="$(grep -aoE 'Test passed. Count: [0-9]+' "$LOG" | head -1 | grep -oE '[0-9]+$')"
 
 say "spark profiler start --thread * --not-combined"
 sleep 5
