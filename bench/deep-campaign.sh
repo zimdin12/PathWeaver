@@ -3,7 +3,7 @@
 # over the campaign cannot show up as an effect of the setting.
 set -u
 cd "$(dirname "$0")/.." || exit 1
-for round in 1 2; do
+for round in 1 2 3; do
   for arm in off sync async; do
     echo "### round $round arm $arm  $(date +%H:%M:%S)"
     bash bench/deep-bench.sh "${arm}-${round}" "$arm" 120 120 || echo "   ${arm}-${round} returned $?"
