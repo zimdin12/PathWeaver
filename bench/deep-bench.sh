@@ -106,7 +106,12 @@ for x in -24 -16 -8 0 8 16 24; do say "fill $x 201 -38 $x 204 38 minecraft:stone
 # gaps, so the corridors connect and a walk is a real search rather than a straight line
 for x in -24 -16 -8 0 8 16 24; do say "fill $x 201 -4 $x 202 4 minecraft:air"; done
 # water for the swim and amphibious families
-say "fill 34 200 -34 38 201 -20 minecraft:water"
+# A basin ON TOP of the floor. The first version filled water at y=200, which is the floor itself,
+# leaving water over open air at y=199: it drained and the squid and axolotls fell out of the world.
+# The census showed zero of both while the profile still reported amphibious time, which is exactly
+# the kind of contradiction an uncounted population produces.
+say "fill 32 201 -35 39 203 -20 minecraft:stone"
+say "fill 33 201 -34 38 202 -21 minecraft:water"
 sleep 6
 
 say "gamerule doMobSpawning false"
@@ -161,7 +166,10 @@ fill("villager", 60, -38, -26)   # brain + walk: the brainSinkAsync route
 fill("goat",     20, -22, -18)   # brain
 fill("frog",     20, -14, -10)   # brain + the frog evaluator
 fill("cow",      30,  -6,  -2)   # goal-driven walk
-fill("bee",      30,   2,   6)   # fly evaluator
+# Parrots, not bees. This pack ships Realistic Bees and Butterbee, and 30 summoned bees became 320
+# by the time the window opened: a tenfold drift in the most expensive evaluator family, varying
+# between runs, which is enough on its own to explain arms disagreeing in sign.
+fill("parrot",   30,   2,   6)   # fly evaluator
 fill("spider",   20,  10,  14)   # wall-climber navigation, sealed away from the villagers
 fill("squid",    10,  35,  37, -33, -21)   # swim evaluator
 fill("axolotl",  10,  35,  37, -33, -21)   # amphibious evaluator
@@ -171,6 +179,8 @@ echo "population summoned"
 sleep "$SETTLE"
 
 # ---- measurement
+say "kill @e[type=minecraft:item]"
+sleep 2
 say "spark profiler cancel"
 sleep 5
 say "spark health"
@@ -185,7 +195,7 @@ say "spark health"
 # one never was. The control below now requires a non-trivial count before the window opens, so the
 # instrument has to prove it can see the population before any run is trusted.
 say "execute if entity @e[type=!minecraft:player]"
-for t in villager goat frog cow bee spider squid axolotl item experience_orb; do
+for t in villager goat frog cow parrot spider squid axolotl item experience_orb; do
   say "execute if entity @e[type=minecraft:$t]"
   sleep 1
 done
