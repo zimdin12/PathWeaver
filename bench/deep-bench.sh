@@ -47,7 +47,9 @@ fi
   cp -f config/pathweaver.json config/pathweaver.json.pristine
 
 restore() {
-  [ -n "${TAILPID:-}" ] && kill "$TAILPID" 2>/dev/null
+  for pid in "${TAILPID:-}" "${SERVERPID:-}"; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null
+  done
   [ -f "$SERVER/server.properties.pristine" ] &&
     cp -f "$SERVER/server.properties.pristine" "$SERVER/server.properties"
   [ -f "$SERVER/config/pathweaver.json.pristine" ] &&
@@ -79,9 +81,12 @@ CFG
 echo "arm=$ARM enabled=$ENABLED brainSinkAsync=$SINK"
 
 : > "$IN"; : > "$LOG"; mkdir -p "$SPARKDIR"; rm -f "$SPARKDIR"/profile-*.sparkprofile
-tail -f "$IN" | "$JAVA" -Xmx12G -Xms4G -XX:+UseG1GC -XX:+ParallelRefProcEnabled \
+( tail -f "$IN" & echo $! > "$OUT/$LABEL.tailpid"; wait ) | "$JAVA" -Xmx12G -Xms4G -XX:+UseG1GC -XX:+ParallelRefProcEnabled \
     -jar fabric-server-mc.26.1.2-loader.0.19.3-launcher.jar nogui >> "$LOG" 2>&1 &
-TAILPID=$!
+SERVERPID=$!
+sleep 1
+TAILPID="$(cat "$OUT/$LABEL.tailpid" 2>/dev/null)"
+echo "  server pid $SERVERPID, feeder pid ${TAILPID:-unknown}"
 
 say() { echo "$1" >> "$IN"; }
 wait_for() { for _ in $(seq 1 "$2"); do grep -aq "$1" "$LOG" && return 0; sleep 1; done; return 1; }
@@ -215,7 +220,9 @@ AFTER_ALIVE="$(grep -aoE 'Test passed. Count: [0-9]+' "$LOG" | tail -1 | grep -o
 
 say "stop"
 sleep 50
-[ -n "${TAILPID:-}" ] && kill "$TAILPID" 2>/dev/null
+for pid in "${TAILPID:-}" "${SERVERPID:-}"; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null
+  done
 
 SUMMONED="$(grep -ac 'Summoned new' "$LOG")"
 DELTA=$(( ${AFTER_DISPATCH:-0} - ${BEFORE_DISPATCH:-0} ))
