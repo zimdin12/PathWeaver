@@ -114,6 +114,26 @@ say "time set day"
 say "kill @e[type=!minecraft:player]"
 sleep 3
 
+# A PLAYER MUST BE PRESENT, or the population is deleted before it is measured.
+#
+# This pack ships letmedespawn, whose whole job is removing mobs with no player nearby, and it does
+# not care that they were summoned with PersistenceRequired. Six runs of a three-arm campaign voided
+# on "no survivor count": 60 villagers summoned, zero deaths logged, and zero alive by the time the
+# window opened. An earlier run with a 90-second settle lost 38% the same way and still measured,
+# which is exactly the kind of partial loss that looks like noise instead of a broken scenario.
+#
+# Carpet's fake player is a real ServerPlayer to every mod that asks "is a player near", so the
+# population survives. Ticking is handled separately by pause-when-empty-seconds=0.
+say "carpet commandPlayer true"
+sleep 2
+# One fake player, because a real server has one and some mods behave differently without.
+#
+# NOT for despawn reasons. An earlier version of this file claimed four players were needed to keep
+# mobs inside letmedespawn's range, and that was a wrong diagnosis built on a broken control: the
+# population was never dying. See the counting note below.
+say "player Bench spawn at 0 202 0 facing 0 0 in minecraft:overworld"
+sleep 3
+
 # ---- one family per corridor, so a hostile family cannot eat the population being counted
 python - "$IN" <<'PY'
 import random, sys
@@ -149,7 +169,17 @@ sleep "$SETTLE"
 say "spark profiler cancel"
 sleep 5
 say "spark health"
-say "execute if entity @e[type=minecraft:villager]"
+# Count EVERY non-player entity, not minecraft:villager.
+#
+# This pack ships MCA, which replaces vanilla villagers with its own entity type, so a villager
+# selector correctly returns zero on a fully healthy arena. That zero was read as "the population
+# died" and produced two rounds of fixes for a problem that did not exist: a despawn theory, then a
+# distance theory, then four fake players. The mobs were alive and dispatching the whole time.
+#
+# A zero is only evidence when the probe has been shown capable of returning something else, and this
+# one never was. The control below now requires a non-trivial count before the window opens, so the
+# instrument has to prove it can see the population before any run is trusted.
+say "execute if entity @e[type=!minecraft:player]"
 sleep 3
 say "pathweaver status"
 sleep 3
@@ -166,7 +196,17 @@ SAVED="$(ls -1t "$SPARKDIR"/*.sparkprofile 2>/dev/null | head -1)"
 [ -n "$SAVED" ] && cp "$SAVED" "$OUT/$LABEL.sparkprofile"
 
 say "spark health"
-say "execute if entity @e[type=minecraft:villager]"
+# Count EVERY non-player entity, not minecraft:villager.
+#
+# This pack ships MCA, which replaces vanilla villagers with its own entity type, so a villager
+# selector correctly returns zero on a fully healthy arena. That zero was read as "the population
+# died" and produced two rounds of fixes for a problem that did not exist: a despawn theory, then a
+# distance theory, then four fake players. The mobs were alive and dispatching the whole time.
+#
+# A zero is only evidence when the probe has been shown capable of returning something else, and this
+# one never was. The control below now requires a non-trivial count before the window opens, so the
+# instrument has to prove it can see the population before any run is trusted.
+say "execute if entity @e[type=!minecraft:player]"
 sleep 3
 say "pathweaver status"
 sleep 5
@@ -183,6 +223,9 @@ echo "control: arm=$ARM summoned=$SUMMONED alive ${BEFORE_ALIVE:-?} -> ${AFTER_A
 
 void() { echo "VOID RUN: $1"; mv -f "$OUT/$LABEL.sparkprofile" "$OUT/$LABEL.VOID.sparkprofile" 2>/dev/null; exit 3; }
 [ "$SUMMONED" -lt 190 ] && void "only $SUMMONED mobs summoned"
+grep -aq 'Bench.*logged in with entity id' "$LOG" || void "the fake player never joined"
+[ "${BEFORE_ALIVE:-0}" -lt 150 ] &&
+  void "only ${BEFORE_ALIVE:-0} entities were alive when the window opened, of 200 summoned; the "       "counting probe cannot be trusted to report a real population"
 [ -z "${AFTER_ALIVE:-}" ] && void "no survivor count read"
 [ "$(( AFTER_ALIVE * 100 / ${BEFORE_ALIVE:-1} ))" -lt 90 ] &&
   void "population fell from $BEFORE_ALIVE to $AFTER_ALIVE during the window"
