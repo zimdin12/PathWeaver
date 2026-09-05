@@ -153,7 +153,14 @@ public class PathWeaverConfig implements ConfigData {
 
     @ConfigEntry.Gui.Tooltip(count = 3)
     @ConfigEntry.Category("repath")
-    public int repathToleranceBlocks = 0;
+    // Default 1, not 0.
+    //
+    // Zero meant the elision never ran at all, so the cheapest possible win was off unless someone
+    // found the setting. Measured on a 317-mod pack, total A* work rose 20% with the mod enabled,
+    // because mobs that get paths move more and re-path constantly; MCA villagers re-target almost
+    // every tick. One block is the smallest value that does anything, and it only ever reuses a
+    // path that is still valid for a target that has barely moved.
+    public int repathToleranceBlocks = 1;
 
     @ConfigEntry.Gui.Tooltip(count = 3)
     @ConfigEntry.Category("repath")
@@ -316,9 +323,20 @@ public class PathWeaverConfig implements ConfigData {
     }
 
     static int resolvePoolThreads(int configuredThreads, int availableProcessors) {
+        // FLOOR OF TWO, not one.
+        //
+        // cores/4 gave a single worker on a 4-thread machine, and one worker serialises every
+        // search behind the one in front. Results have a limited useful life (maxResultAgeTicks),
+        // so a queue that forms behind a single worker turns into discarded work rather than
+        // slower work. Two is the smallest size where a slow search does not block every other mob.
+        //
+        // NOT cores/2. On a 32-thread machine the pool already measured 99% idle at 8 threads
+        // (639,628 ms parked of 646,816 ms sampled), so doubling it adds idle threads, and every
+        // extra concurrent search is another thread reading live chunk data, which is the one
+        // unsafety this design already carries. Small machines were the real gap; big ones were not.
         int resolved = configuredThreads > 0
             ? configuredThreads
-            : Math.max(1, availableProcessors / 4);
+            : Math.max(2, availableProcessors / 4);
         return Math.clamp(resolved, 1, MAX_POOL_THREADS);
     }
 }
