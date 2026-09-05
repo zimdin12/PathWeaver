@@ -106,7 +106,19 @@ public class PathWeaverConfig implements ConfigData {
     public List<String> trustedMods = new ArrayList<>();
 
 
-    @ConfigEntry.Gui.Tooltip(count = 2)
+    /**
+     * Worker threads. 0 means one per four CPU threads.
+     *
+     * <p>Raising this is almost never the fix, and the profile says why: on a 32-thread machine
+     * running a 317-mod pack in a busy village, the pool was parked for 639,628 ms of 646,816 ms
+     * sampled. 99% idle. Threads are not the constraint; searches are admitted against
+     * {@link #maxInFlight} and arrive in bursts that a handful of workers absorb.
+     *
+     * <p>The ceiling stays high because a genuinely saturated pool is possible and refusing to let
+     * an operator try is worse than letting them measure it. But the tooltip now tells them what to
+     * look at first rather than implying the number is a performance dial.
+     */
+    @ConfigEntry.Gui.Tooltip(count = 3)
     @ConfigEntry.Gui.RequiresRestart
     @ConfigEntry.Category("performance")
     public int poolThreads = 0;          // 0 = auto (cores/4)

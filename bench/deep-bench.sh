@@ -24,10 +24,11 @@ SAMPLE="${4:-120}"
 OUT="/c/Users/Administrator/AppData/Roaming/.minecraft/modding/PathWeaver/bench/deep"
 
 case "$ARM" in
-  off)   ENABLED=false; SINK=false ;;
-  sync)  ENABLED=true;  SINK=false ;;
-  async) ENABLED=true;  SINK=true  ;;
-  *) echo "unknown arm: $ARM (off|sync|async)"; exit 1 ;;
+  vanilla) ENABLED=false; SINK=false ;;   # jar removed entirely, see below
+  off)     ENABLED=false; SINK=false ;;
+  sync)    ENABLED=true;  SINK=false ;;
+  async)   ENABLED=true;  SINK=true  ;;
+  *) echo "unknown arm: $ARM (vanilla|off|sync|async)"; exit 1 ;;
 esac
 
 mkdir -p "$OUT"
@@ -50,6 +51,12 @@ restore() {
   for pid in "${TAILPID:-}" "${SERVERPID:-}"; do
     [ -n "$pid" ] && kill "$pid" 2>/dev/null
   done
+  # Put the mod back before anything else. This runs on every exit path including a kill, because
+  # leaving the operator's server without a jar it is meant to have is a worse failure than any
+  # measurement being lost.
+  if [ -f "$SERVER/.pw-held/$(basename "${HELD_JAR:-none}")" ] 2>/dev/null; then
+    mv -f "$SERVER/.pw-held/$(basename "$HELD_JAR")" "$HELD_JAR" && rmdir "$SERVER/.pw-held" 2>/dev/null
+  fi
   [ -f "$SERVER/server.properties.pristine" ] &&
     cp -f "$SERVER/server.properties.pristine" "$SERVER/server.properties"
   [ -f "$SERVER/config/pathweaver.json.pristine" ] &&
@@ -78,6 +85,20 @@ mkdir -p config
 cat > config/pathweaver.json <<CFG
 {"configVersion":2,"enabled":${ENABLED},"compatibilityTier":"UNSAFE","brainSinkAsync":${SINK}}
 CFG
+# THE VANILLA ARM REMOVES THE JAR.
+#
+# "off" is enabled=false with the mod still loaded: every createPath still enters the mixin wrapper
+# and falls through a flag check, so it prices the feature being disabled, NOT the mod being absent.
+# It carried ~592 ms of PathWeaver frames with the feature switched off. Only pulling the jar
+# measures what the pack costs without this mod at all.
+HELD_JAR=""
+if [ "$ARM" = "vanilla" ]; then
+  HELD_JAR="$(ls -1 "$SERVER"/mods/pathweaver-*.jar 2>/dev/null | head -1)"
+  [ -z "$HELD_JAR" ] && { echo "REFUSING: no pathweaver jar found to remove"; exit 8; }
+  mkdir -p "$SERVER/.pw-held"
+  mv -f "$HELD_JAR" "$SERVER/.pw-held/" || { echo "REFUSING: could not move the jar aside"; exit 8; }
+  echo "vanilla arm: held $(basename "$HELD_JAR") out of mods/"
+fi
 echo "arm=$ARM enabled=$ENABLED brainSinkAsync=$SINK"
 
 : > "$IN"; : > "$LOG"; mkdir -p "$SPARKDIR"; rm -f "$SPARKDIR"/profile-*.sparkprofile
@@ -251,6 +272,17 @@ grep -aq 'Bench.*logged in with entity id' "$LOG" || void "the fake player never
 [ "$(( AFTER_ALIVE * 100 / ${BEFORE_ALIVE:-1} ))" -lt 90 ] &&
   void "population fell from $BEFORE_ALIVE to $AFTER_ALIVE during the window"
 case "$ARM" in
+  vanilla)
+    # Check the LOADED MOD LIST, not any mention of the string.
+    #
+    # The first version grepped the whole log for "pathweaver" and so matched this harness's own
+    # "pathweaver status" command, which the server echoes back as an unknown command precisely
+    # BECAUSE the mod is absent. The control could never pass, and it voided three valid runs whose
+    # own failure text was proof the removal had worked.
+    grep -aqE "^\s+- pathweaver [0-9]" "$LOG" &&
+      void "the vanilla arm still loaded pathweaver; the jar was not actually removed"
+    grep -aq "Done (" "$LOG" ||
+      void "vanilla server never started, so its absence proves nothing" ;;
   off)   [ "$DELTA" -gt 5 ]  && void "the mod is disabled but dispatched $DELTA searches" ;;
   async) [ "$DELTA" -le 0 ]  && void "brain sink on but nothing dispatched in the window" ;;
 esac
