@@ -47,7 +47,9 @@ fi
   cp -f config/pathweaver.json config/pathweaver.json.pristine
 
 restore() {
-  [ -n "${TAILPID:-}" ] && kill "$TAILPID" 2>/dev/null
+  for pid in "${TAILPID:-}" "${SERVERPID:-}"; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null
+  done
   [ -f "$SERVER/server.properties.pristine" ] &&
     cp -f "$SERVER/server.properties.pristine" "$SERVER/server.properties"
   [ -f "$SERVER/config/pathweaver.json.pristine" ] &&
@@ -79,9 +81,12 @@ CFG
 echo "arm=$ARM enabled=$ENABLED brainSinkAsync=$SINK"
 
 : > "$IN"; : > "$LOG"; mkdir -p "$SPARKDIR"; rm -f "$SPARKDIR"/profile-*.sparkprofile
-tail -f "$IN" | "$JAVA" -Xmx12G -Xms4G -XX:+UseG1GC -XX:+ParallelRefProcEnabled \
+( tail -f "$IN" & echo $! > "$OUT/$LABEL.tailpid"; wait ) | "$JAVA" -Xmx12G -Xms4G -XX:+UseG1GC -XX:+ParallelRefProcEnabled \
     -jar fabric-server-mc.26.1.2-loader.0.19.3-launcher.jar nogui >> "$LOG" 2>&1 &
-TAILPID=$!
+SERVERPID=$!
+sleep 1
+TAILPID="$(cat "$OUT/$LABEL.tailpid" 2>/dev/null)"
+echo "  server pid $SERVERPID, feeder pid ${TAILPID:-unknown}"
 
 say() { echo "$1" >> "$IN"; }
 wait_for() { for _ in $(seq 1 "$2"); do grep -aq "$1" "$LOG" && return 0; sleep 1; done; return 1; }
@@ -101,7 +106,12 @@ for x in -24 -16 -8 0 8 16 24; do say "fill $x 201 -38 $x 204 38 minecraft:stone
 # gaps, so the corridors connect and a walk is a real search rather than a straight line
 for x in -24 -16 -8 0 8 16 24; do say "fill $x 201 -4 $x 202 4 minecraft:air"; done
 # water for the swim and amphibious families
-say "fill 34 200 -34 38 201 -20 minecraft:water"
+# A basin ON TOP of the floor. The first version filled water at y=200, which is the floor itself,
+# leaving water over open air at y=199: it drained and the squid and axolotls fell out of the world.
+# The census showed zero of both while the profile still reported amphibious time, which is exactly
+# the kind of contradiction an uncounted population produces.
+say "fill 32 201 -35 39 203 -20 minecraft:stone"
+say "fill 33 201 -34 38 202 -21 minecraft:water"
 sleep 6
 
 say "gamerule doMobSpawning false"
@@ -112,6 +122,26 @@ say "gamerule doFireTick false"
 say "gamerule doMobLoot false"
 say "time set day"
 say "kill @e[type=!minecraft:player]"
+sleep 3
+
+# A PLAYER MUST BE PRESENT, or the population is deleted before it is measured.
+#
+# This pack ships letmedespawn, whose whole job is removing mobs with no player nearby, and it does
+# not care that they were summoned with PersistenceRequired. Six runs of a three-arm campaign voided
+# on "no survivor count": 60 villagers summoned, zero deaths logged, and zero alive by the time the
+# window opened. An earlier run with a 90-second settle lost 38% the same way and still measured,
+# which is exactly the kind of partial loss that looks like noise instead of a broken scenario.
+#
+# Carpet's fake player is a real ServerPlayer to every mod that asks "is a player near", so the
+# population survives. Ticking is handled separately by pause-when-empty-seconds=0.
+say "carpet commandPlayer true"
+sleep 2
+# One fake player, because a real server has one and some mods behave differently without.
+#
+# NOT for despawn reasons. An earlier version of this file claimed four players were needed to keep
+# mobs inside letmedespawn's range, and that was a wrong diagnosis built on a broken control: the
+# population was never dying. See the counting note below.
+say "player Bench spawn at 0 202 0 facing 0 0 in minecraft:overworld"
 sleep 3
 
 # ---- one family per corridor, so a hostile family cannot eat the population being counted
@@ -136,7 +166,10 @@ fill("villager", 60, -38, -26)   # brain + walk: the brainSinkAsync route
 fill("goat",     20, -22, -18)   # brain
 fill("frog",     20, -14, -10)   # brain + the frog evaluator
 fill("cow",      30,  -6,  -2)   # goal-driven walk
-fill("bee",      30,   2,   6)   # fly evaluator
+# Parrots, not bees. This pack ships Realistic Bees and Butterbee, and 30 summoned bees became 320
+# by the time the window opened: a tenfold drift in the most expensive evaluator family, varying
+# between runs, which is enough on its own to explain arms disagreeing in sign.
+fill("parrot",   30,   2,   6)   # fly evaluator
 fill("spider",   20,  10,  14)   # wall-climber navigation, sealed away from the villagers
 fill("squid",    10,  35,  37, -33, -21)   # swim evaluator
 fill("axolotl",  10,  35,  37, -33, -21)   # amphibious evaluator
@@ -146,15 +179,31 @@ echo "population summoned"
 sleep "$SETTLE"
 
 # ---- measurement
+say "kill @e[type=minecraft:item]"
+sleep 2
 say "spark profiler cancel"
 sleep 5
 say "spark health"
-say "execute if entity @e[type=minecraft:villager]"
+# Count EVERY non-player entity, not minecraft:villager.
+#
+# This pack ships MCA, which replaces vanilla villagers with its own entity type, so a villager
+# selector correctly returns zero on a fully healthy arena. That zero was read as "the population
+# died" and produced two rounds of fixes for a problem that did not exist: a despawn theory, then a
+# distance theory, then four fake players. The mobs were alive and dispatching the whole time.
+#
+# A zero is only evidence when the probe has been shown capable of returning something else, and this
+# one never was. The control below now requires a non-trivial count before the window opens, so the
+# instrument has to prove it can see the population before any run is trusted.
+say "execute if entity @e[type=!minecraft:player]"
+for t in villager goat frog cow parrot spider squid axolotl item experience_orb; do
+  say "execute if entity @e[type=minecraft:$t]"
+  sleep 1
+done
 sleep 3
 say "pathweaver status"
 sleep 3
 BEFORE_DISPATCH="$(grep -aoE 'dispatched=[0-9]+' "$LOG" | tail -1 | cut -d= -f2)"
-BEFORE_ALIVE="$(grep -aoE 'Test passed. Count: [0-9]+' "$LOG" | tail -1 | grep -oE '[0-9]+$')"
+BEFORE_ALIVE="$(grep -aoE 'Test passed. Count: [0-9]+' "$LOG" | head -1 | grep -oE '[0-9]+$')"
 
 say "spark profiler start --thread * --not-combined"
 sleep 5
@@ -166,7 +215,17 @@ SAVED="$(ls -1t "$SPARKDIR"/*.sparkprofile 2>/dev/null | head -1)"
 [ -n "$SAVED" ] && cp "$SAVED" "$OUT/$LABEL.sparkprofile"
 
 say "spark health"
-say "execute if entity @e[type=minecraft:villager]"
+# Count EVERY non-player entity, not minecraft:villager.
+#
+# This pack ships MCA, which replaces vanilla villagers with its own entity type, so a villager
+# selector correctly returns zero on a fully healthy arena. That zero was read as "the population
+# died" and produced two rounds of fixes for a problem that did not exist: a despawn theory, then a
+# distance theory, then four fake players. The mobs were alive and dispatching the whole time.
+#
+# A zero is only evidence when the probe has been shown capable of returning something else, and this
+# one never was. The control below now requires a non-trivial count before the window opens, so the
+# instrument has to prove it can see the population before any run is trusted.
+say "execute if entity @e[type=!minecraft:player]"
 sleep 3
 say "pathweaver status"
 sleep 5
@@ -175,7 +234,9 @@ AFTER_ALIVE="$(grep -aoE 'Test passed. Count: [0-9]+' "$LOG" | tail -1 | grep -o
 
 say "stop"
 sleep 50
-[ -n "${TAILPID:-}" ] && kill "$TAILPID" 2>/dev/null
+for pid in "${TAILPID:-}" "${SERVERPID:-}"; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null
+  done
 
 SUMMONED="$(grep -ac 'Summoned new' "$LOG")"
 DELTA=$(( ${AFTER_DISPATCH:-0} - ${BEFORE_DISPATCH:-0} ))
@@ -183,6 +244,9 @@ echo "control: arm=$ARM summoned=$SUMMONED alive ${BEFORE_ALIVE:-?} -> ${AFTER_A
 
 void() { echo "VOID RUN: $1"; mv -f "$OUT/$LABEL.sparkprofile" "$OUT/$LABEL.VOID.sparkprofile" 2>/dev/null; exit 3; }
 [ "$SUMMONED" -lt 190 ] && void "only $SUMMONED mobs summoned"
+grep -aq 'Bench.*logged in with entity id' "$LOG" || void "the fake player never joined"
+[ "${BEFORE_ALIVE:-0}" -lt 150 ] &&
+  void "only ${BEFORE_ALIVE:-0} entities were alive when the window opened, of 200 summoned; the "       "counting probe cannot be trusted to report a real population"
 [ -z "${AFTER_ALIVE:-}" ] && void "no survivor count read"
 [ "$(( AFTER_ALIVE * 100 / ${BEFORE_ALIVE:-1} ))" -lt 90 ] &&
   void "population fell from $BEFORE_ALIVE to $AFTER_ALIVE during the window"

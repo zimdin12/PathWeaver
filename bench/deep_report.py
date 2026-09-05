@@ -99,10 +99,18 @@ for tag, d in arms.items():
           f"{tick_ms:>12.0f}{mspt:>8.2f}{pw_ms:>12.0f}")
 
 print("\nper family, total across every thread (ms):")
-fams = sorted({f for d in arms.values() for f in d["families"]})
+# EVERY declared family is printed, including ones that matched nothing. The first version
+# listed only families that appeared, so a marker that never fired was dropped from the table.
+# Two were: climber and swim showed nothing across nine runs while 17 spiders and 2 squid were
+# alive, and the result was presented as 'per family' with four rows. A real zero and a broken
+# marker look identical unless the probe is made to say which it is.
+fams = sorted(FAMILIES)
 print(f"  {'family':<12}" + "".join(f"{t:>10}" for t in arms))
 for f in fams:
-    print(f"  {f:<12}" + "".join(f"{arms[t]['families'].get(f, 0.0):>10.0f}" for t in arms))
+    row = "".join(f"{arms[t]['families'].get(f, 0.0):>10.0f}" for t in arms)
+    fired = any(arms[t]["families"].get(f, 0.0) > 0 for t in arms)
+    note = "" if fired else "   <-- MARKER NEVER FIRED: absent or mismatched, unknown which"
+    print(f"  {f:<12}{row}{note}")
 
 if "off" in arms:
     print("\nagainst the mod being disabled (off):")

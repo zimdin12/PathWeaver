@@ -109,7 +109,7 @@ public enum RequestOutcome {
      * is entitled to conclude a mob is walking a path we produced. For this row that is not yet true:
      * it becomes true when the behaviour next asks, and never, if the walk target moved first.
      */
-    PARKED_FOR_BRAIN("parked for a villager brain");
+    PARKED_FOR_BRAIN("parked for a mob brain");
 
     private final String description;
 
