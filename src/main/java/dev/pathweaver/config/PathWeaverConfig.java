@@ -118,7 +118,7 @@ public class PathWeaverConfig implements ConfigData {
      * an operator try is worse than letting them measure it. But the tooltip now tells them what to
      * look at first rather than implying the number is a performance dial.
      */
-    @ConfigEntry.Gui.Tooltip(count = 3)
+    @ConfigEntry.Gui.Tooltip(count = 4)
     @ConfigEntry.Gui.RequiresRestart
     @ConfigEntry.Category("performance")
     public int poolThreads = 0;          // 0 = auto (cores/4)
