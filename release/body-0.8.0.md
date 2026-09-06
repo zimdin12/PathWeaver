@@ -19,9 +19,9 @@ PathWeaver moves those searches onto **spare CPU cores** instead. Same paths, sa
 |  |  |
 |---|---|
 | **Mob farm and crowd stutters** | Cut roughly in half |
-| **Crowds of mobs pathing at once** | Server thread does 45 to 60% less pathfinding work |
+| **Crowds of mobs pathing at once** | Server thread does about 45% less pathfinding work |
 | **Villages** | Villager brain pathing moves off the tick too, measured at half the server-thread cost |
-| **Mob behaviour** | Unchanged. The paths are identical, they just arrive off-thread |
+| **Mob behaviour** | Paths are identical. One change: villager-type mobs set off a tick later |
 | **Quiet server** | No measurable difference. This does nothing until mobs are actually pathing |
 
 **It is spike reduction, not free TPS.** A server sitting at "20 TPS" still stutters when one tick in a hundred takes 80 ms. That is the number this moves. Average throughput only rises when pathfinding alone is already blowing the 50 ms tick budget and you have spare cores.
@@ -29,6 +29,11 @@ PathWeaver moves those searches onto **spare CPU cores** instead. Same paths, sa
 ---
 
 ## Benchmarks
+
+Three sets, on different packs and different releases, so each says which. The 0.8.0 set is the
+current one and the one to read first if you only read one.
+
+### The master switch, 0.6.1, 221-jar pack
 
 **1024 zombies in a walled maze, all retargeting every 6 ticks.** Shipped limits, Lithium loaded, tier set to `AUDITED`, which on a lean pack is what the default gives you anyway. The only difference between the two arms is the master switch.
 
@@ -43,7 +48,7 @@ Every async run beat every sync run. No overlap between the two sets.
 
 \* Effective TPS is *derived* from mean tick interval, and 20.0 is the pacing ceiling rather than a measurement of headroom, so "tick time halved" and "tick rate doubled" are one fact stated twice. The independent signals here are the p99 and the main-thread cost.
 
-### On a real 221-jar pack, profiled with spark
+### The master switch again, 0.6.1, profiled with spark
 
 220 mixed mobs, zombies and skeletons and spiders and bees and drowned, retargeting every 6 ticks. Two 45-second profiles.
 
@@ -56,13 +61,14 @@ Every async run beat every sync run. No overlap between the two sets.
 
 Two limits on that pair, because they are worth knowing. Only the server thread was sampled, so it shows the work leaving the tick but not what the worker threads then spend on it: moving work is not the same as removing it, and this measurement cannot tell you which happened. And the denominator is the whole sampled thread, most of which is idle at that load, so the share of *real* work is several times larger than 12.38% suggests.
 
-### Read the spread, not the headline
+### Read the spread, not the headline (0.6.1)
 
 Every async run across three separate sweeps landed between **50.0 and 50.3 ms**, so the mod is the stable half. The *vanilla* baseline swings from 87 to 108 ms with ambient machine load, so almost all the variation in that percentage comes from the baseline rather than from the mod. One flattering pair would have let us print "66% faster". We are quoting the range instead.
 
-### Every setting measured on its own, 0.8.0
+### Every setting measured on its own, 0.8.0, 231-jar pack
 
-Twenty-one runs on a 231-jar dedicated server, 200 mobs covering every movement family, three rounds per arm, arms interleaved so a machine that drifts warmer cannot look like an effect. All 21 passed their controls; the mob population was counted at both ends of every window and the mod-fault scan came back at zero exceptions, zero mixin failures and zero worker failures across the 11 mods that modify pathfinding.
+This is the current set, and unlike the two above it isolates each setting rather than the master
+switch. Twenty-one runs on a 231-jar dedicated server, 200 mobs covering every movement family, three rounds per arm, arms interleaved so a machine that drifts warmer cannot look like an effect. All 21 passed their controls; the mob population was counted at both ends of every window and the mod-fault scan came back at zero exceptions, zero mixin failures and zero worker failures across the 11 mods that modify pathfinding.
 
 **Villager brains off the tick** (`brainSinkAsync`, on by default). The only thing that moves between arms is this setting.
 
@@ -97,6 +103,8 @@ That is deliberate, and the reasoning is in the open. The checked tier (`AUDITED
 
 **So decide for yourself, on a copy.** Run it on a world you can throw away. If mobs path normally and nothing looks off after a few sessions, keep the default. If anything does look off, switch to `compatibilityTier=AUDITED` and say so. That report is evidence this project cannot generate on its own.
 
+**On 26.2, that escape hatch is not available yet** for the reason at the top of this page: Lithium and Diagonal Blocks fall outside their own audits there, and either one present makes `AUDITED` refuse everything, which is indistinguishable from switching the mod off. If something looks wrong on 26.2, set `enabled=false`. It is the same outcome and it is honest about being one.
+
 Be clear about what that switch does on a heavy pack: it turns the speed-up **off entirely**. That is the right move if something looks wrong, and it is the tier working as designed rather than failing. `trustedMods` is the middle option, where you name the specific mods you have decided about and the scan keeps checking the rest. It is not a way back to full coverage either: on the reference pack, trusting all nine blockers still only reaches **86 of 187**, because the remainder are mob classes added by mods, which need `allowModdedMobAsync=true`, a second unsafe opt-in. The [README](https://github.com/zimdin12/PathWeaver/blob/master/README.md) sets out both.
 
 ---
@@ -108,6 +116,12 @@ camels and about twenty other AI packages, never call `moveTo`. Every path they 
 one method that asks for a route and reads the answer on the next line, so the mod could not see
 them at all. They were not being refused; they were invisible. `brainSinkAsync` covers that route
 and is on by default.
+
+**That one tick is a real behaviour change, and it is why this is a setting rather than something
+you get regardless.** A brain mob sets off one tick after it otherwise would, because on the tick its
+search is dispatched the behaviour is told "no path yet". Nothing else differs: the route it walks is
+handed to the game's own reachability and memory handling untouched. Set `brainSinkAsync=false` if
+you would rather not have it.
 
 Measured twice, and both are above under "Every setting measured on its own": on the shipping build
 it takes **half** the server-thread pathfinding cost and **27%** off tick time, with every run
