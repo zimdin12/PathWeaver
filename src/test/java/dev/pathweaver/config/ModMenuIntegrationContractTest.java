@@ -6,6 +6,7 @@ import me.shedaniel.autoconfig.ConfigHolder;
 import me.shedaniel.autoconfig.annotation.ConfigEntry;
 import me.shedaniel.autoconfig.event.ConfigSerializeEvent;
 import me.shedaniel.autoconfig.serializer.ConfigSerializer;
+import me.shedaniel.clothconfig2.gui.entries.SelectionListEntry;
 import net.minecraft.world.InteractionResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -57,20 +58,35 @@ class ModMenuIntegrationContractTest {
     /**
      * Cloth labels an enum option by calling {@code Component.translatable} on the key the constant
      * supplies, so a constant whose key has no language entry renders as the raw key in the settings
-     * screen. That exact failure has shipped once already, so every tier is checked rather than
-     * assuming the three that exist today are all there will ever be.
+     * screen. That exact failure has shipped once already.
+     *
+     * <p>The enums and their constants are DISCOVERED from the config class rather than listed here.
+     * The listed version passed for the whole life of a second enum option it had never heard of,
+     * which is the defect this style of test exists to prevent, arriving through the test itself.
      */
     @Test
-    void everyCompatibilityTierHasATranslatedLabel() throws Exception {
+    void everyEnumOptionConstantHasATranslatedLabel() throws Exception {
         JsonObject lang = JsonParser.parseString(Files.readString(
             RESOURCES.resolve(Path.of("assets", "pathweaver", "lang", "en_us.json"))))
             .getAsJsonObject();
-        for (CompatibilityTier tier : CompatibilityTier.values()) {
-            String key = tier.getKey();
-            assertTrue(key.startsWith(CompatibilityTier.TRANSLATION_PREFIX),
-                "tier key format drifted: " + key);
-            assertTrue(lang.has(key), "missing language entry for " + key);
-            assertFalse(lang.get(key).getAsString().isBlank(), key);
+        List<Class<?>> enums = Arrays.stream(PathWeaverConfig.class.getDeclaredFields())
+            .filter(field -> !Modifier.isStatic(field.getModifiers()))
+            .map(java.lang.reflect.Field::getType)
+            .filter(Class::isEnum)
+            .distinct()
+            .toList();
+        // Positive control on the discovery itself: a zero here would pass every assertion below
+        // while proving nothing at all, and this file has already shipped one test that did exactly
+        // that. Two enum options exist; fewer means the walk stopped finding them.
+        assertTrue(enums.size() >= 2, "expected at least two enum options, found " + enums);
+        for (Class<?> type : enums) {
+            for (Object constant : type.getEnumConstants()) {
+                String key = ((SelectionListEntry.Translatable) constant).getKey();
+                assertTrue(key.startsWith("text.autoconfig.pathweaver.option."),
+                    "enum key format drifted: " + key);
+                assertTrue(lang.has(key), "missing language entry for " + key);
+                assertFalse(lang.get(key).getAsString().isBlank(), key);
+            }
         }
     }
 
@@ -247,6 +263,14 @@ class ModMenuIntegrationContractTest {
         // cost -- one tick before a brain mob sets off -- and that is stated in its tooltip
         // rather than by filing it beside the safety switches.
         expectedCategories.put("brainSinkAsync", "performance");
+        // All three cache options together under performance, including the age limit, even though
+        // "repath" also holds a maxResultAgeTicks. They are different limits on different things --
+        // one bounds an in-flight result, the other a stored route -- and splitting the cache across
+        // two screens to put its age limit next to a similarly named setting would invite exactly
+        // the confusion between them that the tooltips have to work to prevent.
+        expectedCategories.put("resultCacheMode", "performance");
+        expectedCategories.put("resultCacheMaxAgeTicks", "performance");
+        expectedCategories.put("resultCacheMaxEntries", "performance");
         expectedCategories.put("repathToleranceBlocks", "repath");
         expectedCategories.put("stalenessMoveThreshold", "repath");
         expectedCategories.put("maxResultAgeTicks", "repath");

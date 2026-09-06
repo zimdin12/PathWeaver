@@ -56,5 +56,20 @@
   "text.autoconfig.pathweaver.option.poolThreads.@Tooltip[3]": "Raise it only if status shows requests waiting for a free worker. Restart to apply.",
   "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip[0]": "Reuses the current path when the target moved less than this many blocks. 0 turns reuse off.",
   "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip[1]": "Default 1. This avoids searches outright rather than moving them to a worker.",
-  "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip[2]": "Raise it if mobs re-target constantly; lower it if they walk to slightly stale destinations."
+  "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip[2]": "Raise it if mobs re-target constantly; lower it if they walk to slightly stale destinations.",
+  "text.autoconfig.pathweaver.option.resultCacheMode": "Share routes between mobs",
+  "text.autoconfig.pathweaver.option.resultCacheMode.@Tooltip[0]": "Lets one mob reuse a route another already computed, when every input to the search is identical.",
+  "text.autoconfig.pathweaver.option.resultCacheMode.@Tooltip[1]": "A route is dropped the moment a block changes along it, so a reused route is never a stale one.",
+  "text.autoconfig.pathweaver.option.resultCacheMode.@Tooltip[2]": "Shadow (default) counts the hits without spending them, so you can see what Serve would be worth.",
+  "text.autoconfig.pathweaver.option.resultCacheMode.@Tooltip[3]": "/pathweaver status prints the count. Switching modes takes effect at once, no restart.",
+  "text.autoconfig.pathweaver.option.resultCacheMode.OFF": "Off",
+  "text.autoconfig.pathweaver.option.resultCacheMode.SHADOW": "Shadow (default): measure only",
+  "text.autoconfig.pathweaver.option.resultCacheMode.SERVE": "Serve: reuse the route",
+  "text.autoconfig.pathweaver.option.resultCacheMaxAgeTicks": "Drop a shared route after (ticks)",
+  "text.autoconfig.pathweaver.option.resultCacheMaxAgeTicks.@Tooltip[0]": "How long a route stays offerable. Default 40, which is two seconds.",
+  "text.autoconfig.pathweaver.option.resultCacheMaxAgeTicks.@Tooltip[1]": "Not the safety limit: a block change along the route drops it whatever this says.",
+  "text.autoconfig.pathweaver.option.resultCacheMaxAgeTicks.@Tooltip[2]": "It bounds drift the cache cannot see, such as a door another mob has opened since.",
+  "text.autoconfig.pathweaver.option.resultCacheMaxEntries": "Shared routes kept",
+  "text.autoconfig.pathweaver.option.resultCacheMaxEntries.@Tooltip[0]": "How many routes to hold before the least recently used one is dropped. Default 4096.",
+  "text.autoconfig.pathweaver.option.resultCacheMaxEntries.@Tooltip[1]": "Each entry is one route plus its list of world sections. Raise it on worlds with many mobs."
 }

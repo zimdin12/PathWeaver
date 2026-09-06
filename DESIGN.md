@@ -373,3 +373,75 @@ Not every terminal outcome qualifies. `SUPERSEDED` means a newer request will in
 means vanilla would have reached the identical state on its own; `POOL_SATURATED` and
 `BREAKER_OPEN` never cancelled anything. `RequestOutcome.strandsRecompute()` derives the set with an
 exhaustive switch, so a new constant is a compile error rather than a silent "not stranded".
+
+## 14. Shared route cache: the strict-equivalence half of crowd pathfinding
+
+`ROADMAP` 0.9 describes sharing work between mobs as a change of promise: a mob gets a **good** path
+rather than **its own** path, crowds move in lanes, and that has to be chosen rather than inherited.
+This is not that. This is the subset where the promise is unchanged.
+
+If two searches agree on every input, they compute the same route. Running the second one is not
+caution, it is repetition. So the cache serves a stored route only when every input agrees, which
+means the mob receives exactly what its own search would have produced.
+
+### What "every input" is
+
+Not a judgement. `PathCacheKey` carries the reads the vanilla evaluators actually make from the mob
+during a search, enumerated from 26.1.2 bytecode: the malus for every `PathType`, the position, the
+bounding box, the level, `maxUpStep`, `getMaxFallDistance`, `onGround`, `isInWater`, and the mob's own
+class, because that is what overrides `canStandOnFluid`. The request scalars come from the existing
+`RequestTarget`, so "the same request" has one definition rather than two that can drift.
+
+Position is held twice, and deliberately. The key compares the block; the entry records the exact
+coordinates. One lookup then answers two questions: was an exactly-right reuse available, and would a
+block-granular key have found one. Only the first is ever served. The second is the evidence for
+whether loosening the key is worth designing, which is otherwise a matter of opinion.
+
+### What the blocks are doing meanwhile
+
+A route is a claim about terrain, and terrain changes. `SectionChangeClock` records the last tick a
+block changed in each world section, written from `ServerLevel.sendBlockUpdated`, the same call
+vanilla uses to invalidate its own `PathTypeCache` and to ask navigating mobs whether to recompute.
+An entry is refused at store time if anything along the route changed while the search was in flight,
+and withdrawn at lookup time if anything has changed since.
+
+The table is fixed at 65,536 slots rather than a growing map, so two sections can share one. A
+collision reads a change in one as a change in the other, which discards a valid entry and can never
+admit an invalid one.
+
+What it cannot see: a block changed away from the route can open a shorter way through, and a served
+route will not take it. Vanilla does not react to that either, so this is not new staleness, but it
+is real.
+
+### Copying, and why vanilla's own copy will not do
+
+`Path.copy()` is shallow. The constructor stores the node list by reference and `copy()` passes the
+same reference on. `GroundPathNavigation.trimPath` then calls `truncateNodes`, which is
+`subList(n, size).clear()`, and `PathNavigation.trimPath` calls `replaceNode`. Both are on the
+ordinary ground path. Worse, the truncation is conditional on the navigation's own `avoidSun`, so a
+skeleton in daylight would cut a villager's route short. Every hit therefore gets a real copy: a new
+list, a node per entry via vanilla's `cloneAndMove`, and `cameFrom` remapped onto the copy.
+
+`debugData` is dropped. That is a state vanilla itself produces, and its only reader null-checks it
+first; the cost is that the pathfinding debug renderer shows no open/closed set for a reused route,
+and the benefit is that the cache does not retain the thousands of nodes a search visited.
+
+### Shipped measuring, not serving
+
+`resultCacheMode` defaults to `SHADOW`. Whether sharing pays is a property of the pack, not of this
+code: a village of villagers standing at work sites is a different population from a plain of
+wandering cows, and this project has no measurement of either. Shadow mode fills the cache, runs
+every check, counts what serving would have returned, and gives the mob nothing. `/pathweaver status`
+prints the number.
+
+That is the whole argument for the default. A feature whose value is unmeasured should ship producing
+the measurement, not assuming the answer.
+
+### Not cached: routes that do not exist
+
+A `NO_PATH` answer depends on the entire searched region rather than on a corridor through it, so its
+invalidation state is a few hundred sections instead of a few dozen. It is also the most expensive
+search there is, because failing to reach a target means exhausting the node budget, which makes it
+the most attractive thing to cache and the most expensive to get wrong. The `NO_PATH` row in
+`/pathweaver status` already says how much of a session it is; that number should decide it, and it
+does not exist yet for any real pack.

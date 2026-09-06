@@ -33,6 +33,9 @@ public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Gui.Excluded
     @ConfigEntry.Category("general")
     public static final double MAX_STALENESS_MOVE_THRESHOLD = 1024.0;
+    @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
+    public static final int MAX_RESULT_CACHE_ENTRIES = 65_536;
 
     @ConfigEntry.Gui.Tooltip(count = 2)
     @ConfigEntry.Category("general")
@@ -151,6 +154,37 @@ public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Category("performance")
     public boolean brainSinkAsync = true;
 
+    /**
+     * Whether a route one mob computed may answer another mob's identical request.
+     *
+     * <p>Ships on {@link PathCacheMode#SHADOW}: measured, never served. Sharing only pays if mobs
+     * really do repeat the same search from the same block, and that is a property of the pack
+     * rather than of this code, so the shipped default is the one that produces the number instead
+     * of the one that assumes it. {@code /pathweaver status} reports what serving would have
+     * returned.
+     */
+    @ConfigEntry.Gui.Tooltip(count = 4)
+    @ConfigEntry.Category("performance")
+    @ConfigEntry.Gui.EnumHandler(option = ConfigEntry.Gui.EnumHandler.EnumDisplayOption.DROPDOWN)
+    public PathCacheMode resultCacheMode = PathCacheMode.SHADOW;
+
+    /**
+     * How long a cached route stays offerable, in ticks. Two seconds by default.
+     *
+     * <p>This is not the safety limit; terrain changes along the route invalidate it whatever this
+     * says. It is a bound on how far the world can drift in ways the cache cannot see, such as a
+     * door another mob has since opened or a shorter way that has appeared off the route.
+     */
+    @ConfigEntry.Gui.Tooltip(count = 3)
+    @ConfigEntry.Category("performance")
+    public int resultCacheMaxAgeTicks = 40;
+
+    /** Routes kept before the least recently used is dropped. */
+    @ConfigEntry.Gui.Tooltip(count = 2)
+    @ConfigEntry.Gui.RequiresRestart
+    @ConfigEntry.Category("performance")
+    public int resultCacheMaxEntries = 4096;
+
     @ConfigEntry.Gui.Tooltip(count = 3)
     @ConfigEntry.Category("repath")
     // Default 1, not 0.
@@ -264,6 +298,22 @@ public class PathWeaverConfig implements ConfigData {
         return allowModdedMobAsync || dev.pathweaver.gate.ActiveCompatibilityPolicy.bypassesScan();
     }
 
+    /**
+     * True when the shared result cache should be consulted at all.
+     *
+     * <p>Primitive for the same reason as {@link #bypassesCompatibilityScan()}: the caller is a
+     * mixin applied during early transformation, and naming {@link PathCacheMode} in its bytecode
+     * would resolve the Cloth settings-screen interface that enum implements at that moment.
+     */
+    public boolean resultCacheActive() {
+        return resultCacheMode != PathCacheMode.OFF;
+    }
+
+    /** True when a cache hit may actually be given to a mob rather than only counted. */
+    public boolean resultCacheServes() {
+        return resultCacheMode == PathCacheMode.SERVE;
+    }
+
     public static InteractionResult onSave(
             ConfigHolder<PathWeaverConfig> holder, PathWeaverConfig config) {
         set(config);
@@ -296,6 +346,9 @@ public class PathWeaverConfig implements ConfigData {
         repathToleranceBlocks = Math.clamp(
             repathToleranceBlocks, 0, MAX_REPATH_TOLERANCE_BLOCKS);
         maxResultAgeTicks = Math.clamp(maxResultAgeTicks, 1, MAX_RESULT_AGE_TICKS);
+        if (resultCacheMode == null) resultCacheMode = PathCacheMode.SHADOW;
+        resultCacheMaxAgeTicks = Math.clamp(resultCacheMaxAgeTicks, 1, MAX_RESULT_AGE_TICKS);
+        resultCacheMaxEntries = Math.clamp(resultCacheMaxEntries, 1, MAX_RESULT_CACHE_ENTRIES);
         // Clamped here with every other int, because a hand-edited negative limit would otherwise
         // read as "off" through one code path and "trip immediately" through another.
         // Zero is a documented choice: never switch a family off. A NEGATIVE is not a choice, and

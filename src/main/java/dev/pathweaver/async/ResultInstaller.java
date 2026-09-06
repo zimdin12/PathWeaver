@@ -68,6 +68,19 @@ public class ResultInstaller {
     }
 
     private void deliver(InstallSink sink, Result result) {
+            // Offer the answer to the shared route cache before deciding what to do with it here.
+            //
+            // A SUCCESS is offered even when it turns out to be stale for THIS mob. Staleness is a
+            // fact about the mob -- it walked too far while the search ran -- not about the answer.
+            // The cached question already fixes the position the search started from, so the route
+            // is still the correct reply to that question for whoever asks it next. Discarding it
+            // would throw away precisely the searches a busy server produces most of.
+            dev.pathweaver.cache.PathCache cache = dev.pathweaver.PathWeaverRuntime.get().resultCache();
+            if (result.discardOnly() || result.outcome().status() != PathOutcome.Status.SUCCESS) {
+                cache.forget(result.key());
+            } else {
+                cache.completed(result.key(), result.outcome().path());
+            }
             if (result.discardOnly()) {
                 sink.discard(result.key(), RequestOutcome.HANDOFF_FAILED);
                 return;
