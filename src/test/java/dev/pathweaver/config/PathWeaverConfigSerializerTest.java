@@ -45,7 +45,7 @@ class PathWeaverConfigSerializerTest {
         serializer.serialize(second);
         assertEquals(once, Files.readString(path));
         assertFalse(second.enabled);
-        assertEquals(2, second.configVersion);
+        assertEquals(PathWeaverConfig.CURRENT_CONFIG_VERSION, second.configVersion);
     }
 
     @Test void migratedSaveRemovesLegacyKeysAndWritesV2() throws Exception {
@@ -54,7 +54,8 @@ class PathWeaverConfigSerializerTest {
         PathWeaverConfigSerializer serializer = new PathWeaverConfigSerializer(path);
         serializer.serialize(serializer.deserialize());
         JsonObject saved = JsonParser.parseString(Files.readString(path)).getAsJsonObject();
-        assertEquals(2, saved.get("configVersion").getAsInt());
+        assertEquals(PathWeaverConfig.CURRENT_CONFIG_VERSION,
+            saved.get("configVersion").getAsInt());
         assertTrue(saved.get("enabled").getAsBoolean());
         assertFalse(saved.has("asyncEnabled"));
         assertFalse(saved.has("syncFallbackOnly"));
@@ -93,9 +94,58 @@ class PathWeaverConfigSerializerTest {
         } finally { PathWeaverConfig.set(previous); }
     }
 
+    /**
+     * The whole point of the version 3 bump. Without it the new default reaches nobody who has ever
+     * opened the settings screen, because a saved config wins over a field initializer and Cloth
+     * writes every field, so every file on disk carries a repathToleranceBlocks.
+     */
+    @Test void aStoredZeroRepathToleranceBecomesTheOneThatShips() throws Exception {
+        Path path = configPath();
+        Files.writeString(path,
+            "{\"configVersion\":2,\"enabled\":true,\"repathToleranceBlocks\":0}");
+        PathWeaverConfig migrated = new PathWeaverConfigSerializer(path).deserialize();
+        assertEquals(1, migrated.repathToleranceBlocks);
+        assertEquals(PathWeaverConfig.CURRENT_CONFIG_VERSION, migrated.configVersion);
+    }
+
+    /**
+     * A value the default never wrote is a real choice and must survive. This is the assertion that
+     * stops the migration from becoming "overwrite whatever is there".
+     */
+    @Test void anyOtherStoredToleranceIsLeftExactlyAlone() throws Exception {
+        for (int stored : new int[] {1, 2, 7, 64}) {
+            Path path = configPath();
+            Files.writeString(path, "{\"configVersion\":2,\"enabled\":true,"
+                + "\"repathToleranceBlocks\":" + stored + "}");
+            assertEquals(stored,
+                new PathWeaverConfigSerializer(path).deserialize().repathToleranceBlocks,
+                "a deliberate tolerance of " + stored + " was overwritten");
+        }
+    }
+
+    /**
+     * Migrating once must not become migrating forever. A file already at 3 records a chosen 0, so
+     * re-reading it has to leave it at 0 or the setting becomes unreachable.
+     */
+    @Test void aZeroDeliberatelySavedAtTheCurrentVersionSurvivesReload() throws Exception {
+        Path path = configPath();
+        Files.writeString(path,
+            "{\"configVersion\":" + PathWeaverConfig.CURRENT_CONFIG_VERSION
+                + ",\"enabled\":true,\"repathToleranceBlocks\":0}");
+        assertEquals(0, new PathWeaverConfigSerializer(path).deserialize().repathToleranceBlocks);
+    }
+
+    /** A legacy file that never had the key must not have one invented for it. */
+    @Test void anAbsentToleranceIsNotMigratedButTakesTheNewDefault() throws Exception {
+        Path path = configPath();
+        Files.writeString(path, "{\"configVersion\":2,\"enabled\":true}");
+        assertEquals(1, new PathWeaverConfigSerializer(path).deserialize().repathToleranceBlocks);
+    }
+
     @Test void futureSchemaFailsClosedRatherThanGuessing() throws Exception {
         Path path = configPath();
-        Files.writeString(path, "{\"configVersion\":3,\"enabled\":true}");
+        Files.writeString(path, "{\"configVersion\":"
+            + (PathWeaverConfig.CURRENT_CONFIG_VERSION + 1) + ",\"enabled\":true}");
         assertThrows(ConfigSerializer.SerializationException.class,
             () -> new PathWeaverConfigSerializer(path).deserialize());
     }
@@ -255,7 +305,11 @@ class PathWeaverConfigSerializerTest {
         Files.writeString(path, json);
         PathWeaverConfig c = new PathWeaverConfigSerializer(path).deserialize();
         assertEquals(expected, c.enabled, json);
-        assertEquals(2, c.configVersion, json);
+        // Derived, not the literal it used to be. Eight tests pinned "2" by hand and every one of
+        // them had to be edited by the version-3 bump, which is a list you must remember to update:
+        // a defect with a delay on it. What these prove is that a migrated config lands on the
+        // CURRENT schema, whichever that is.
+        assertEquals(PathWeaverConfig.CURRENT_CONFIG_VERSION, c.configVersion, json);
     }
 
     private Path configPath() throws Exception {

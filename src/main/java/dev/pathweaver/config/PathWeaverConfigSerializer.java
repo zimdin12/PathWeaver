@@ -63,7 +63,10 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
             int version = readVersion(raw);
             JsonObject current = raw.deepCopy();
             boolean enabled;
-            if (version == PathWeaverConfig.CURRENT_CONFIG_VERSION) {
+            // 2 and 3 share this branch because the schema did not change between them: v3 exists
+            // to migrate a stored VALUE, not a shape. Both always write "enabled", so its absence is
+            // unambiguous damage in either.
+            if (version == PathWeaverConfig.CURRENT_CONFIG_VERSION || version == 2) {
                 rejectLegacyKeys(raw);
                 enabled = strictBoolean(raw, "enabled", null);
             } else if (version == 0 || version == 1) {
@@ -89,6 +92,9 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
             migrateRenamedTier(current);
             validateCurrentFieldTypes(current);
             migrateCompatibilityTier(current, version);
+            // After the type check, so a hand-edited non-integer is still rejected rather than
+            // migrated.
+            migrateRepathTolerance(current, version);
             current.remove("asyncEnabled");
             current.remove("syncFallbackOnly");
             current.addProperty("configVersion", PathWeaverConfig.CURRENT_CONFIG_VERSION);
@@ -279,6 +285,47 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
             } catch (Throwable ignored) {
                 // Migrating must not depend on a logging backend being healthy.
             }
+        }
+    }
+
+    /**
+     * Turn a stored {@code repathToleranceBlocks: 0} into the 1 that 0.8.0 ships.
+     *
+     * <p>Zero meant the path reuse never ran, so the cheapest win this mod has was off unless
+     * someone found the setting. It was zero because a retired {@code repathElisionEnabled} flag
+     * defaulted true while this defaulted 0: the feature was advertised as working and was inert.
+     * Changing the field initializer fixes that for new installs only, because a saved config wins
+     * over a code default and Cloth writes every field, so every config file on disk carries a 0.
+     * Without this, the fix reaches nobody who has ever opened the settings screen.
+     *
+     * <p>This is the uncomfortable part and it is worth stating rather than burying: a stored 0 is
+     * indistinguishable from a deliberate 0, because the shipped default was 0 and the file records
+     * the value rather than where it came from. Someone who chose to switch reuse off will have it
+     * switched back on. That is why it is logged at WARN, names the setting, and says how to put it
+     * back. The alternative was leaving a defect in place for every existing install to avoid
+     * overriding a choice almost nobody made.
+     *
+     * <p>Only 0 moves. A config holding any other value recorded something the default never wrote,
+     * so it is a real choice and is left exactly alone.
+     */
+    private static void migrateRepathTolerance(JsonObject raw, int version) {
+        if (version >= PathWeaverConfig.CURRENT_CONFIG_VERSION) return;
+        // One guard, not two. An absent key reads back as null and fails the type check below, so a
+        // separate has() test could never fire -- mutation testing removed it and no assertion in the
+        // suite noticed, which is the definition of a guard that is decoration.
+        JsonElement element = raw.get("repathToleranceBlocks");
+        if (!(element instanceof JsonPrimitive primitive) || !primitive.isNumber()) return;
+        if (primitive.getAsBigDecimal().intValueExact() != 0) return;
+        raw.addProperty("repathToleranceBlocks", 1);
+        try {
+            dev.pathweaver.PathWeaver.LOG.warn("Your config had repathToleranceBlocks=0, which meant "
+                + "path reuse never ran at all. That was never a safety setting -- it was left over "
+                + "from a retired flag, so the feature was advertised as working and did nothing. It "
+                + "has been migrated to 1, the smallest value that does anything, and reuse still "
+                + "only fires for a path that is still valid, still reaching, unfinished and not "
+                + "invalidated. If you set 0 on purpose, set it again and it will be respected.");
+        } catch (Throwable ignored) {
+            // Migrating must not depend on a logging backend being healthy.
         }
     }
 

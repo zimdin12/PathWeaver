@@ -17,7 +17,14 @@ import net.minecraft.world.InteractionResult;
 public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Gui.Excluded
     @ConfigEntry.Category("general")
-    public static final int CURRENT_CONFIG_VERSION = 2;
+    /**
+     * 3 since the repath-tolerance migration. A bump is not free: the serializer fails closed on any
+     * version it does not know, and failing closed sets {@code enabled=false}, so an older jar
+     * reading a config this one wrote will switch itself off rather than guess. That is the correct
+     * direction to fail and it is the reason a bump only happens when a stored VALUE has to change,
+     * never merely because a field was added.
+     */
+    public static final int CURRENT_CONFIG_VERSION = 3;
     @ConfigEntry.Gui.Excluded
     @ConfigEntry.Category("general")
     public static final int MAX_POOL_THREADS = 64;
