@@ -33,9 +33,9 @@ DRY = os.environ.get("PATHWEAVER_DRY_RUN") == "1"
 # the record of what was published, and a script that reads HEAD would happily publish whatever the
 # tree happened to be at the moment someone ran it.
 ARTIFACTS = [
-    ("../PathWeaver", "95c5c0acd064b506bd9233079f5e664d3a8577a3",
+    ("../pw-080", "7b02646405a96b17b68215aacfee3eea1c459839",
      "build/libs/pathweaver-0.8.0+26.1.2.jar", ["26.1.1", "26.1.2"], "26.1.2"),
-    ("../pw-262", "00de72aa0534cda750b2cf94d210eec7fe33ce3b",
+    ("../pw-080-262", "00de72aa0534cda750b2cf94d210eec7fe33ce3b",
      "build/libs/pathweaver-0.8.0+26.2.jar", ["26.2"], "26.2"),
 ]
 
