@@ -19,7 +19,8 @@ PathWeaver moves those searches onto **spare CPU cores** instead. Same paths, sa
 |  |  |
 |---|---|
 | **Mob farm and crowd stutters** | Cut roughly in half |
-| **Crowds of mobs pathing at once** | Server thread does about 60% less pathfinding work |
+| **Crowds of mobs pathing at once** | Server thread does 45 to 60% less pathfinding work |
+| **Villages** | Villager brain pathing moves off the tick too, measured at half the server-thread cost |
 | **Mob behaviour** | Unchanged. The paths are identical, they just arrive off-thread |
 | **Quiet server** | No measurable difference. This does nothing until mobs are actually pathing |
 
@@ -59,6 +60,31 @@ Two limits on that pair, because they are worth knowing. Only the server thread 
 
 Every async run across three separate sweeps landed between **50.0 and 50.3 ms**, so the mod is the stable half. The *vanilla* baseline swings from 87 to 108 ms with ambient machine load, so almost all the variation in that percentage comes from the baseline rather than from the mod. One flattering pair would have let us print "66% faster". We are quoting the range instead.
 
+### Every setting measured on its own, 0.8.0
+
+Twenty-one runs on a 231-jar dedicated server, 200 mobs covering every movement family, three rounds per arm, arms interleaved so a machine that drifts warmer cannot look like an effect. All 21 passed their controls; the mob population was counted at both ends of every window and the mod-fault scan came back at zero exceptions, zero mixin failures and zero worker failures across the 11 mods that modify pathfinding.
+
+**Villager brains off the tick** (`brainSinkAsync`, on by default). The only thing that moves between arms is this setting.
+
+|  | off | on |  |
+|---|---|---|---|
+| Server-thread pathfinding | 4244, 3536, 7328 ms | **2160, 1984, 2140 ms** | down 50% |
+| Tick time | 9.05, 6.86, 15.83 ms | **6.82, 5.68, 6.62 ms** | down 27% |
+
+Every run with it on beats every run with it off, on both. The per-run numbers are printed rather than averaged because the spread is the point: without it the arena ran between 6.9 and 15.8 ms per tick, with it between 5.7 and 6.8. Fewer spikes is the claim, and an unstable column beside a tight one is what that looks like.
+
+**Route sharing** (`resultCacheMode`, measuring by default). Measured against the mod not being installed at all:
+
+|  | Server-thread pathfinding | Total pathfinding CPU, all threads | Tick time |
+|---|---|---|---|
+| Installed but disabled | -2.1% | -2.1% | +1.4% |
+| On, sharing off | -45.2% | +8.9% | -9.9% |
+| **On, sharing on** | **-46.4%** | **+5.7%** | **-9.8%** |
+
+Sharing dispatched 11% fewer searches than the same build with it off, at a **12 to 16% hit rate**.
+
+And the part that is smaller than it sounds, because you should hear it from us: measured against the cache being *off* rather than absent, sharing bought 2.9% of total pathfinding CPU and the run ranges overlap. That arena is 200 mobs walking corridors without stopping, which is close to the worst case for this feature. Mobs that stand still and re-ask are what it is for, and that is not what we measured. This is why it ships measuring rather than serving: run it, look at `/pathweaver status`, and switch it on if your world's number justifies it.
+
 ---
 
 ## Read this before installing
@@ -83,22 +109,40 @@ one method that asks for a route and reads the answer on the next line, so the m
 them at all. They were not being refused; they were invisible. `brainSinkAsync` covers that route
 and is on by default.
 
-Measured on the 222-jar pack, three pairs of 60-second profiles, every thread sampled:
+Measured twice, and both are above under "Every setting measured on its own": on the shipping build
+it takes **half** the server-thread pathfinding cost and **27%** off tick time, with every run
+beating every run without it. The earlier 0.7.0 measurement on a different pack put server-thread
+pathfinding at 139 ms against 325 ms. Different pack, different arena, different build, so they are
+recorded separately rather than blended into one flattering figure.
 
-|  | on | off |
-|---|---|---|
-| **Pathfinding on the server thread** | **139 ms** | **325 ms** |
-| Pathfinding on worker threads | 227 ms | 0 ms |
-| Total pathfinding, all threads | 365 ms | 325 ms |
-| MSPT | 5.13 ms | 5.25 ms |
+It costs more CPU in total to do that. Moving work is not removing it: the hand-off and install are
+real, and they show up because every thread is sampled rather than only the one guaranteed to look
+better. The honest claim is headroom, not throughput.
 
-**57% of brain-mob pathfinding comes off the tick**, and every run with it on was below every run
-with it off (`120, 148, 148` against `288, 288, 400` ms).
+**Mobs can reuse each other's routes.** Two searches that agree on every input compute the same
+route, so running the second one is repetition rather than caution. A finished route is now kept and
+an identical later request is answered from it.
 
-It costs about **12% more CPU in total** to do that. Moving work is not removing it: the snapshot,
-hand-off and install are real, and they show up here because every thread was sampled rather than
-only the one guaranteed to look better. MSPT barely moved and its ranges overlap, because that server
-sat at 5 ms against a 50 ms budget. The honest claim is headroom, not throughput.
+"Identical" is strict, and it has to be. The key carries every read the game's own path evaluators
+make from a mob during a search: terrain cost for each path type, exact position, bounding box, step
+height, fall distance, whether it is on the ground or in water, and the mob's own class. A route is
+thrown away if any block changes along it. What a mob gets back is exactly what its own search would
+have returned.
+
+**It ships measuring rather than serving.** How often mobs really repeat a search depends on your
+world, not on this code, so the default fills the cache, runs every check, and tells you what serving
+would have saved while every mob still searches for itself. Run it, read `/pathweaver status`, and
+turn it on if the number is worth it. Measuring costs essentially nothing: an earlier build copied
+every route it was never going to hand out and cost 6.6% more CPU for the privilege, which the
+benchmark caught and which is fixed.
+
+**Two settings that were conservative by accident.** Path reuse shipped switched off, because
+`repathToleranceBlocks` defaulted to 0 and 0 means the reuse never runs. It was inherited from a
+retired flag, so the feature was advertised as working and did nothing. It is 1 now, and **upgrading
+migrates an existing config** rather than leaving the fix for new installs only, because a saved
+settings file wins over a default. Any value other than 0 is left alone, and the migration says so in
+the log. Automatic worker sizing could also produce a single worker on a four-thread machine, which
+serialises every search behind the one in front; the floor is two.
 
 **The checked tier works on 26.2, for four of six audited mods.** `compatibilityTier=AUDITED` previously did nothing at all there:
 every audit pinned 26.1.2 artifacts, so all four refused and all six movement families ran on the
@@ -152,7 +196,7 @@ Run **`/pathweaver mobs`** to see this for your own pack, and **`/pathweaver sta
 
 How many of those searches actually get installed depends entirely on load, so here are all three rather than the flattering one: **99%** in a light validation run, **96%** under the spark profile above, and **about 82%** in the saturated 1024-mob benchmark, where admission deliberately refuses about half of all requests rather than queue them.
 
-**Eligible is not the same as covered.** It means nothing blocks dispatch for that mob, not that every movement it makes goes off-thread. Brain-driven movement, which is villagers, piglins, axolotls, frogs, allays and the warden, calls the search directly and stays synchronous by design. That is next on the roadmap, not in this release.
+**Eligible is not the same as covered.** It means nothing blocks dispatch for that mob, not that every movement it makes goes off-thread. Brain-driven movement, which is villagers, piglins, axolotls, frogs and allays, used to be invisible to the mod entirely; `brainSinkAsync` covers it as of this release and is on by default. The warden is still out, because its navigation builds a custom pathfinder and dispatch requires the stock one.
 
 The three held back entirely navigate with a `PathFinder` subclass rather than the stock one, which dispatch declines: the warden, whose subclass **vanilla itself** builds, and two spiders, on *this* pack, where a mod replaces spider navigation wholesale.
 
@@ -164,8 +208,8 @@ PathWeaver does not make pathfinding cheaper. It moves the same work onto anothe
 
 ## Testing
 
-402 unit tests, five in-game harnesses, four in-game server harnesses, a client harness driving a real singleplayer world, and verification on a real 221-jar modded server across four configurations. With the world held still, **all six evaluator families produced node-for-node identical paths to a synchronous oracle**, one scenario per family, which is evidence rather than proof. Flying is the exception worth naming: a worker draws its start candidate from thread-confined randomness, so it is not guaranteed to match by construction. It happened to.
+428 unit tests, eight in-game server harnesses, a client harness driving a real singleplayer world, and 21 measured runs on a real 231-jar modded server across six configurations. With the world held still, **all six evaluator families produced node-for-node identical paths to a synchronous oracle**, one scenario per family, which is evidence rather than proof. Flying is the exception worth naming: a worker draws its start candidate from thread-confined randomness, so it is not guaranteed to match by construction. It happened to.
 
 The 0.6 and 0.7 lines have been through twenty-odd rounds of independent code review. Later rounds executed mutations against the test suite rather than reading the code, which repeatedly found defects that reading had missed, including live bugs in the headline features of both releases. The [changelog](https://github.com/zimdin12/PathWeaver/blob/master/CHANGELOG.md) and the [roadmap](https://github.com/zimdin12/PathWeaver/blob/master/ROADMAP.md) record what was rejected and reverted as well as what shipped: an entire compatibility-gate rewrite was built, measured, reviewed and **thrown away** because the review found it loosened a safety gate on an analysis that was wrong in four independent ways.
 
-**What is still unproven** is listed in full in the [README](https://github.com/zimdin12/PathWeaver/blob/master/README.md): realistic mob counts, mixed workloads, path quality while blocks are changing, and behaviour at a thousand mobs are all unmeasured.
+**What is still unproven** is listed in full in the [README](https://github.com/zimdin12/PathWeaver/blob/master/README.md): path quality while blocks are changing, and behaviour at a thousand mobs, are unmeasured. One 26.2 gap is known and named above: `AUDITED` does not cover Lithium or Diagonal Blocks there.

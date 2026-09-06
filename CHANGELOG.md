@@ -4,9 +4,28 @@
 
 ### Measured
 
-Three pairs of 60-second profiles on a 222-jar dedicated pack, alternating arms, every thread
-sampled. Server-thread pathfinding falls from **325 ms to 139 ms**, and every run with the setting
-on is below every run with it off (`120, 148, 148` against `288, 288, 400`).
+Re-measured on the build that ships, after the route cache and the default changes landed: three
+rounds of `brainSinkAsync=false` against `brainSinkAsync=true`, cache off in both, so the sink is the
+only thing that moves. 231-jar dedicated server, 200 mobs across every evaluator family.
+
+| | brainSinkAsync=false | brainSinkAsync=true |
+|---|---|---|
+| server-thread A\*, per run | 4244, 3536, 7328 ms | 2160, 1984, 2140 ms |
+| MSPT, per run | 9.05, 6.86, 15.83 | 6.82, 5.68, 6.62 |
+
+Medians: server-thread pathfinding **-49.6%**, MSPT **-26.9%**, and every run with the sink on beats
+every run without it on both. Total pathfinding CPU across all threads falls 18% at the median, but
+those ranges overlap, so treat that one as unproven.
+
+The per-run spread is the more useful number and it is why it is printed rather than averaged away.
+Without the sink the arena ran 6.86, 9.05 and 15.83 ms per tick; with it, 5.68, 6.82 and 6.62. The
+claim this project makes is fewer spikes rather than a higher average, and that is what an unstable
+column next to a tight one looks like.
+
+Two rounds of numbers exist for this feature and they are not comparable to each other. The original
+0.7.0 measurement, on a 222-jar pack before the cache and the default changes, put server-thread
+pathfinding at **325 ms against 139 ms** (`120, 148, 148` against `288, 288, 400`). Different pack,
+different arena, different build. Both are recorded rather than the flattering one.
 
 It costs about **12% more CPU in total** to do that: 365 ms of pathfinding across all threads with
 the sink on against 325 ms with it off. Moving work is not removing it. Earlier releases could not
