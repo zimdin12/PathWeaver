@@ -70,6 +70,51 @@ had already abandoned. A collected path arrived without the bookkeeping that say
 an unbounded deferral froze panicking animals — the way a burning animal reaches water is by
 panicking — so the deferral is now capped at two ticks, after which vanilla answers immediately.
 
+### Mobs can reuse each other's routes (`resultCacheMode`, measuring by default)
+
+Two searches that agree on every input compute the same route. Running the second one is repetition,
+not caution. So a finished route is now kept, and an identical later request is answered from it
+instead of searching again.
+
+"Identical" is the whole feature and it is strict. The key carries every read the vanilla evaluators
+make from a mob during a search: the terrain cost for each path type, the exact position, the
+bounding box, step height, fall distance, whether it is on the ground or in water, and the mob's own
+class. It also carries the target set and the search's own limits. A route is refused if any block changed
+along it while the search was running, and withdrawn if any block changes along it afterwards. The
+mob gets exactly what its own search would have returned.
+
+**It ships measuring rather than serving.** How often mobs really do repeat a search is a property of
+your world, not of this code. A village of villagers standing at work sites is nothing like a plain
+of wandering cows, and there is no measurement of either. On the default setting the cache is filled,
+every check runs, and `/pathweaver status` prints how many searches could have been skipped, while
+every mob still searches for itself. Set `resultCacheMode` to Serve to spend that number. It takes
+effect immediately.
+
+The status block also counts near-misses: requests that matched on everything except the mob's exact
+position, agreeing only on the block. That is the one loosening of the key worth considering, and now
+there is a number for it rather than an opinion.
+
+Two things it does not do. It does not remember that a target was unreachable, which is the most
+expensive kind of search and the one worth caching next. The `no path exists` row in
+`/pathweaver status` is what should decide that. And a block change away from a route can open a
+shorter way through that a reused route will not take; vanilla does not notice that either, but it is
+a real difference and not worth hiding.
+
+### Two defaults that were conservative by accident
+
+- **Path reuse was switched off.** `repathToleranceBlocks` shipped at 0, which means the reuse never
+  ran, so the cheapest available win was off unless you found the setting. It was 0 because a retired
+  flag used to default it on elsewhere; the feature was advertised as working and was inert. It is 1
+  now, which is the smallest value that does anything, and the reuse still only fires for a path that
+  is valid, reaching, unfinished and not invalidated. This matters because the mod raises total A\*
+  work by about 20% on a heavy pack: mobs that get paths move more, and re-path constantly.
+- **Automatic worker sizing could produce a single worker.** `poolThreads` at 0 resolved to one
+  quarter of your CPU threads, which is one worker on a four-thread machine, and one worker
+  serialises every search behind the one in front. Results expire, so that queue becomes discarded
+  work rather than slower work. The floor is two now. It is deliberately **not** half your cores: on
+  a 32-thread machine the pool measured 99% idle at eight workers, and every extra concurrent search
+  is another thread reading live chunk data.
+
 ### Also in this release
 
 Seven parallel reviews — features, consistency, usability, architecture, wiring,

@@ -34,10 +34,17 @@ class PathWeaverConfigTest {
         assertEquals(2, c.configVersion);
         assertTrue(c.enabled);
         assertFalse(c.allowModdedMobAsync);
-        // Path reuse is a single control now, and 0 keeps it off exactly as before: the retired
-        // repathElisionEnabled flag defaulted to true while this defaulted to 0, so the feature was
-        // advertised as on and was in fact inert.
-        assertEquals(0, c.repathToleranceBlocks);
+        // Path reuse defaults ON at one block, and this pins that it is not zero.
+        //
+        // It was 0 for historical reasons rather than chosen ones: a retired repathElisionEnabled
+        // flag defaulted true while this defaulted 0, so the feature was advertised as on and was
+        // inert. Zero was never a safety position -- the elision has its own guards, reusing only a
+        // path that is still valid, still reaches, is not done and was not invalidated.
+        //
+        // One block is the smallest value that does anything. It exists because total A* work rose
+        // 20% with the mod enabled on a 317-mod pack: mobs that get paths move more and re-path
+        // constantly, and MCA villagers re-target almost every tick.
+        assertEquals(1, c.repathToleranceBlocks);
         assertEquals(40, c.maxResultAgeTicks);
     }
     @Test void failedLoadSignalOverridesClothDefaultWithSynchronousFailClosedRuntime() {

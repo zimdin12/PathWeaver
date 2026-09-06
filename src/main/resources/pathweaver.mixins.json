@@ -12,7 +12,8 @@
     "WallClimberNavigationMixin",
     "FlyNodeEvaluatorMixin",
     "WalkNodeEvaluatorMixin",
-    "AmphibiousNodeEvaluatorMixin"
+    "AmphibiousNodeEvaluatorMixin",
+    "ServerLevelBlockChangeMixin"
   ],
   "client": [],
   "injectors": {

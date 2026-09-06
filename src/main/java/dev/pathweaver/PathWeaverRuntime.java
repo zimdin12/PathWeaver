@@ -25,6 +25,13 @@ public final class PathWeaverRuntime {
     private final PathWorkerPool pool = new PathWorkerPool();
     private final ResultInstaller installer = new ResultInstaller();
     private final EntityInstallSink entitySink = new EntityInstallSink();
+    /**
+     * Rebuilt at every server start because its size is a restart-scoped setting, and because a
+     * route learned in one world says nothing about the next. Volatile: the field is replaced on the
+     * main thread while worker-adjacent code may be reading it.
+     */
+    private volatile dev.pathweaver.cache.PathCache resultCache =
+        new dev.pathweaver.cache.PathCache(new PathWeaverConfig().resultCacheMaxEntries);
     private volatile boolean running;
 
     private final java.util.concurrent.atomic.AtomicLong dispatched = new java.util.concurrent.atomic.AtomicLong();
@@ -111,6 +118,7 @@ public final class PathWeaverRuntime {
     public PathWorkerPool pool() { return pool; }
     public ResultInstaller installer() { return installer; }
     public EntityInstallSink entitySink() { return entitySink; }
+    public dev.pathweaver.cache.PathCache resultCache() { return resultCache; }
     public boolean isRunning() { return running; }
     public long currentServerEpoch() { return serverEpoch.get(); }
 
@@ -149,6 +157,7 @@ public final class PathWeaverRuntime {
         dev.pathweaver.gate.WorkerFailureBreaker.reset(epoch);
         entitySink.clear(false);
         installer.clear();
+        resultCache = new dev.pathweaver.cache.PathCache(c.resultCacheMaxEntries);
         pool.start(c.resolvedPoolThreads(), c.maxInFlight);
         resetWasteReportingForTests();
         long leftovers = outcomeCount(dev.pathweaver.async.RequestOutcome.SERVER_RESET);
@@ -351,6 +360,7 @@ public final class PathWeaverRuntime {
         boolean workersQuiesced = pool.shutdown();
         entitySink.clear(workersQuiesced);
         installer.clear();
+        resultCache.clear();
         PathWeaver.LOG.info("PathWeaver stats: dispatched={}, installed={}, discarded={}{}.",
             dispatched.get(), installedCount(), discardedCount(), outcomeBreakdown());
     }

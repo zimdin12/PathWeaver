@@ -619,7 +619,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
         // Everything below can fail on unusual mods/data; degrade to sync rather than escape
         // into the entity tick. If we have already registered in the sink, unwind that.
         pathweaver$dispatchSearch(targets, regionOffset, offsetUpward, reachRange, followRange,
-            requestTarget, tick, requiresEmptyLandRegistry, intentAdvanced, cir);
+            requestTarget, tick, requiresEmptyLandRegistry, intentAdvanced, cfg, cir);
     }
 
     /**
@@ -633,12 +633,20 @@ public abstract class PathNavigationMixin implements PWNavigation {
      * <p>Extracted verbatim. The four locals it used from the caller that are pure accessors are
      * re-derived here rather than threaded through the signature, which keeps the body identical
      * to the one that was inline and the parameter list to the values the caller actually decided.
+     *
+     * <p>{@code cacheConfig} is the ONE exception, and it is passed rather than re-read for a reason
+     * a routing contract enforces: the orchestrator's guard order is asserted against the position of
+     * the last {@code PathWeaverConfig.get()} in this pair of methods. A second read down here moves
+     * that marker past every gate and the contract fails on code that is perfectly correct. Reusing
+     * the caller's instance also means the two halves of one dispatch decide against the same
+     * settings snapshot, which a second read does not guarantee.
      */
     @Unique
     private void pathweaver$dispatchSearch(
             Set<BlockPos> targets, int regionOffset, boolean offsetUpward, int reachRange,
             float followRange, RequestTarget requestTarget, long tick,
             boolean requiresEmptyLandRegistry, boolean intentAdvanced,
+            dev.pathweaver.config.PathWeaverConfig cacheConfig,
             CallbackInfoReturnable<Path> cir) {
         final PathWeaverRuntime rt = PathWeaverRuntime.get();
         final EntityInstallSink sink = rt.entitySink();
@@ -673,6 +681,38 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // inside the A* loop via findAcceptedNode -> tryFindFirstGroundNodeBelow.
             final int capturedMaxFall = theMob.getMaxFallDistance();
 
+            // Feature C: a route some earlier request already computed for this exact question.
+            //
+            // Placed before the evaluator clone and the region, which are the expensive part of
+            // setting a search up, and after the safety gates, so the population that fills the
+            // cache and the population that reads it are the same one.
+            //
+            // A served route is returned exactly as vanilla returns one: synchronously, with the
+            // createPath tail replayed, no registration, no optimistic target and nothing owed. The
+            // mob cannot tell it apart from a search, which is the point.
+            final int maxNodes =
+                ((PathFinderAccessor) (Object) this.pathFinder).pathweaver$getMaxVisitedNodes();
+            dev.pathweaver.cache.PathCacheKey cacheKey = null;
+            long cacheX = 0L;
+            long cacheY = 0L;
+            long cacheZ = 0L;
+            if (cacheConfig.resultCacheActive()) {
+                cacheKey = dev.pathweaver.cache.PathCacheKeys.of(theMob, this.nodeEvaluator,
+                    requestTarget, ((ServerLevel) this.level).dimension(), maxNodes,
+                    this.maxVisitedNodesMultiplier, capturedStepHeight, capturedMaxFall);
+                cacheX = Double.doubleToLongBits(theMob.getX());
+                cacheY = Double.doubleToLongBits(theMob.getY());
+                cacheZ = Double.doubleToLongBits(theMob.getZ());
+                dev.pathweaver.cache.CacheLookup reuse = rt.resultCache().lookup(cacheKey,
+                    cacheX, cacheY, cacheZ, tick, cacheConfig.resultCacheMaxAgeTicks,
+                    cacheConfig.resultCacheServes());
+                if (reuse.isServed()) {
+                    pathweaver$replayCreatePathTail(reuse.path(), reachRange);
+                    cir.setReturnValue(reuse.path());
+                    return;
+                }
+            }
+
             // Use vanilla's bounds formula. The region is still backed by live chunks, so matching
             // construction does not guarantee a temporally identical result.
             BlockPos mobPos = offsetUpward ? theMob.blockPosition().above() : theMob.blockPosition();
@@ -684,7 +724,6 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // PathfindingContext) and are not reusable across threads. A fresh pair isolates that
             // scratch state; it does not isolate the live region/mob inputs. Copy the supported flags.
             NodeEvaluator freshEval = dev.pathweaver.async.EvaluatorCloner.cloneWithConfig(this.nodeEvaluator);
-            int maxNodes = ((PathFinderAccessor) (Object) this.pathFinder).pathweaver$getMaxVisitedNodes();
             final PathFinder finder = new PathFinder(freshEval, maxNodes);
 
             // Copy request scalars/targets. The search still reads live chunks plus the live mob's
@@ -804,6 +843,13 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // the result drains. Returning the pre-null path was tried and is worse: a non-null
             // this.path re-enables the vanilla reuse short-circuit and Feature B elision on a seam
             // where neither may fire, which broke the exact-Swim witness in the routing game test.
+            // Last, once the search is provably on its way and every step that could still unwind it
+            // has run. Remembering earlier would leave an entry behind for a request that never
+            // reaches the drain, which is the one way the pending map can grow without bound.
+            if (cacheKey != null) {
+                rt.resultCache().remember(submittedKey, cacheKey, tick, cacheX, cacheY, cacheZ);
+            }
+
             this.pathweaver$acceptedDeferred = true;
             cir.setReturnValue(this.path);
             authorizeSearch = true;

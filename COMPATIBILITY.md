@@ -318,12 +318,15 @@ previously dispatched 0, and `STRICT` still refused to run.
 
 ## The performance settings, measured
 
-Five of the seventeen fields are not in the table below and never were: `brainSinkAsync`,
-`workerFailureLimit`, `workerFailureWindowTicks`, `trustedMods` and `compatibilityTier`. The heading
-used to say "Every setting, measured", which was not true of any version of this table. The first
-three change behaviour rather than throughput and the last two are safety choices, so measuring them
-against tick time would answer a question nobody asked -- but the heading implied coverage the table
-does not have.
+Eight of the twenty fields are not in the table below. `brainSinkAsync`, `workerFailureLimit` and
+`workerFailureWindowTicks` change behaviour rather than throughput; `trustedMods` and
+`compatibilityTier` are safety choices; and the three `resultCache*` fields are new in 0.8.0 and ship
+on a setting that measures without serving, so there is nothing to sweep yet. The heading used to say
+"Every setting, measured", which was not true of any version of this table.
+
+The cache is the one gap worth closing, and it closes itself: run a session on
+`resultCacheMode = SHADOW` and `/pathweaver status` reports how many searches serving would have
+skipped, on your world rather than on a maze full of zombies.
 
 Single-variable sweep: one option moves per run, everything else stays at the shipped default.
 Fabric API + Cloth + Lithium + Farmer's Delight + PathWeaver, `AUDITED`, 1024 zombies in a maze

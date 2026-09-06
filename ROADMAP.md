@@ -256,6 +256,17 @@ results.
 Fifty zombies converging on one player currently run fifty independent A\* searches over nearly
 identical terrain. Sharing that work is the largest remaining lever.
 
+**The strict half of this landed early, in 0.8.0.** The route cache serves a stored route only when
+every input to the search agrees, so the mob receives exactly what its own search would have produced
+and the equivalence promise is untouched. It ships measuring rather than serving, because how often
+mobs actually repeat a search is a property of the pack and nobody has measured it. See DESIGN.md 14.
+
+What is left for 0.9 is the part that genuinely changes the promise: sharing between searches that do
+**not** agree, by reusing a route computed from a nearby block or for a nearby target. That is where
+crowds start moving in lanes, and it is also where the cache's own `BLOCK_ONLY` counter is the
+evidence — it says, on a real world, how much a looser key would actually be worth. Do not design it
+before reading that number.
+
 **This is a deliberate change of promise, and must be labelled as one.** PathWeaver's claim to date is
 *identical results, just off the main thread* — that is what the safety story rests on. Shared routing
 gives a mob a **good** path rather than **its own** path: crowds move in lanes instead of each picking
