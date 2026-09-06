@@ -46,6 +46,48 @@ class ResultInstallerTest {
         assertTrue(sink.failures.isEmpty());
     }
 
+    /**
+     * The seam between the two halves of the cache.
+     *
+     * <p>Dispatch remembers a key; the drain is the only place on the main thread that sees every
+     * finished search with its result, so it is the only place that can fill the entry. Every
+     * assertion in {@code PathCacheTest} drives the cache directly, so all of them stay green if
+     * this call is deleted and nothing is ever cached in a running game. That is the shape of defect
+     * this project has been bitten by before: a predicate everything asserts and a call site nothing
+     * does.
+     */
+    @Test void aDrainedRouteReachesTheSharedCacheAndAFailedOneClearsItsSlot() {
+        dev.pathweaver.cache.PathCache cache = dev.pathweaver.PathWeaverRuntime.get().resultCache();
+        cache.clear();
+        dev.pathweaver.cache.PathCacheKey cacheKey = new dev.pathweaver.cache.PathCacheKey(
+            "overworld", 1, 2, 3,
+            RequestTarget.of(Set.of(new net.minecraft.core.BlockPos(4, 5, 6)), 8, false, 1, 16.0f),
+            String.class, Integer.class, 0, 4096, 0, 0, 0, 0, 0, 0, new int[] {1});
+
+        ResultInstaller installer = new ResultInstaller();
+        RequestKey landed = key(1L, 20L, 20);
+        cache.remember(landed, cacheKey, 0L, 0L, 0L, 0L);
+        installer.enqueue(landed, 0L, PathOutcome.success(realPath()), 0, 0, 0);
+        installer.drain(new FakeSink(Set.of()));
+        assertEquals(1, cache.size(), "a finished route never reached the cache");
+
+        // And the other direction: a search that produced nothing must not leave its slot behind.
+        RequestKey empty = key(1L, 21L, 21);
+        cache.remember(empty, cacheKey, 0L, 0L, 0L, 0L);
+        installer.enqueue(empty, 0L, PathOutcome.noPath(), 0, 0, 0);
+        installer.drain(new FakeSink(Set.of()));
+        assertEquals(1, cache.size(), "a no-path result was cached as if it were a route");
+        cache.clear();
+    }
+
+    /** A real path, because the cache reads its nodes; {@code DUMMY} is an unconstructed shell. */
+    private static Path realPath() {
+        java.util.List<net.minecraft.world.level.pathfinder.Node> nodes = new ArrayList<>();
+        nodes.add(new net.minecraft.world.level.pathfinder.Node(1, 2, 3));
+        nodes.add(new net.minecraft.world.level.pathfinder.Node(2, 2, 3));
+        return new Path(nodes, new net.minecraft.core.BlockPos(2, 2, 3), true);
+    }
+
     @Test void vanillaNullRoutesToNoPathNotFailureOrCooldownPath() {
         ResultInstaller installer = new ResultInstaller();
         RequestKey noPath = key(1L, 5L, 5);

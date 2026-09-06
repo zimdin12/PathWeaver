@@ -40,11 +40,26 @@ public final class SectionChangeClock {
     private static final int MASK = SLOTS - 1;
 
     /**
+     * "Nothing has ever changed here", and it cannot be zero.
+     *
+     * <p>An {@code AtomicLongArray} starts at zero, and zero is also a real game tick: the first one.
+     * With zero as the sentinel, a search dispatched on tick 0 asks "did anything change at or after
+     * tick 0" and every untouched slot answers yes, so nothing computed at world start is ever
+     * cacheable. Caught by the test that drives a result through the installer with a dispatch tick
+     * of zero, which is what a fixture naturally uses and what a fresh world actually runs.
+     */
+    private static final long NEVER = -1L;
+
+    /**
      * Atomic because the writer is not provably alone. Vanilla calls {@code sendBlockUpdated} on the
      * server thread, but chunk-generation mods move world writes onto their own threads, and a torn
      * long read here would answer a safety question with a value that was never written.
      */
     private final AtomicLongArray lastChangedTick = new AtomicLongArray(SLOTS);
+
+    public SectionChangeClock() {
+        clear();
+    }
 
     /** Section coordinates repeat across dimensions, so the dimension has to be part of the slot. */
     private static int slot(int dimensionHash, long sectionKey) {
@@ -75,6 +90,6 @@ public final class SectionChangeClock {
 
     /** Forget every recorded change. Called when a server starts, so a new world starts clean. */
     public void clear() {
-        for (int i = 0; i < SLOTS; i++) lastChangedTick.set(i, 0L);
+        for (int i = 0; i < SLOTS; i++) lastChangedTick.set(i, NEVER);
     }
 }

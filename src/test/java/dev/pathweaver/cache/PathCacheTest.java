@@ -116,6 +116,21 @@ class PathCacheTest {
         assertNotSame(nodes.get(0), copy.getNode(1).cameFrom);
     }
 
+    /**
+     * Tick zero is a real tick, and an untouched section must not claim a change on it.
+     *
+     * <p>The section clock is an array of longs, which starts at zero, and zero was also the value
+     * meaning "changed at tick 0". Every slot therefore answered "yes, changed" to any search
+     * dispatched on the first tick of a world, so nothing computed then could be cached. This is the
+     * assertion that would go red if the sentinel goes back to zero.
+     */
+    @Test
+    void aRouteComputedOnTheFirstTickOfTheWorldIsStillCacheable() {
+        PathCache cache = cacheHolding(straightPath(5), 0L);
+        assertEquals(1L, cache.counters().stored);
+        assertTrue(cache.lookup(key(), X, Y, Z, 1L, 40, true).isServed());
+    }
+
     @Test
     void aBlockChangedAlongTheRouteWithdrawsIt() {
         PathCache cache = cacheHolding(straightPath(5), 100L);
