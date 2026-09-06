@@ -79,26 +79,41 @@ instead of searching again.
 "Identical" is the whole feature and it is strict. The key carries every read the vanilla evaluators
 make from a mob during a search: the terrain cost for each path type, the exact position, the
 bounding box, step height, fall distance, whether it is on the ground or in water, and the mob's own
-class. It also carries the target set and the search's own limits. A route is refused if any block changed
-along it while the search was running, and withdrawn if any block changes along it afterwards. The
-mob gets exactly what its own search would have returned.
+class. It also carries the target set and the search's own limits. A route is refused if any block
+changed along it while the search was running, and withdrawn if any block changes along it
+afterwards. The mob gets exactly what its own search would have returned.
 
-**It ships measuring rather than serving.** How often mobs really do repeat a search is a property of
-your world, not of this code. A village of villagers standing at work sites is nothing like a plain
-of wandering cows, and there is no measurement of either. On the default setting the cache is filled,
-every check runs, and `/pathweaver status` prints how many searches could have been skipped, while
-every mob still searches for itself. Set `resultCacheMode` to Serve to spend that number. It takes
-effect immediately.
+**Measured, on a 231-jar dedicated server, 200 mobs, fifteen runs across five arms.** Serving hits
+took **46% off the server thread** against not having the mod installed at all (3024 ms to 1620 ms,
+median of three) and dispatched **11% fewer searches** than the same build with the cache switched
+off. Total pathfinding CPU across every thread rose 5.7% against not having the mod, which is the
+price of moving work rather than removing it.
 
-The status block also counts near-misses: requests that matched on everything except the mob's exact
-position, agreeing only on the block. That is the one loosening of the key worth considering, and now
-there is a number for it rather than an opinion.
+Being straight about the size of it: against the cache being off rather than absent, serving bought
+2.9% of total pathfinding CPU and the run ranges overlap. That arena is 200 mobs walking corridors
+continuously, which is close to the worst case for a key that includes the mob's exact position. A
+world where mobs stand still more, at work sites or in a village, is the case this helps and it has
+not been measured.
+
+**It ships measuring rather than serving.** How often mobs really do repeat a search is a property
+of your world, not of this code. On the default setting the cache is filled, every check runs, and
+`/pathweaver status` prints how many searches could have been skipped, while every mob still searches
+for itself. Measured hit rate on the benchmark population: **12 to 16%**, plus another 14% that
+matched on everything except the mob's exact coordinates. Set `resultCacheMode` to Serve to spend
+that; it takes effect immediately, no restart.
+
+Measuring is nearly free, and it took a benchmark to make that true. The first version copied every
+finished route into the cache whatever the mode, so the measuring arm ran **6.6% more total
+pathfinding CPU** than the same build with the cache off, on three runs against three with no overlap
+between them, and discarded every copy unused. Measuring now keeps the evidence and not the route:
+the key, the tick, the position and the sections the route depended on, so a measured hit is checked
+against the same terrain and age limit a served one would be. Re-measured against the fixed build,
+the same comparison is **+0.6% with the ranges overlapping**.
 
 Two things it does not do. It does not remember that a target was unreachable, which is the most
-expensive kind of search and the one worth caching next. The `no path exists` row in
-`/pathweaver status` is what should decide that. And a block change away from a route can open a
-shorter way through that a reused route will not take; vanilla does not notice that either, but it is
-a real difference and not worth hiding.
+expensive kind of search and the one worth caching next. And a block change away from a route can
+open a shorter way through that a reused route will not take; vanilla does not notice that either,
+but it is a real difference and not worth hiding.
 
 ### Two defaults that were conservative by accident
 
