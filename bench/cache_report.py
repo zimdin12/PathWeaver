@@ -11,6 +11,7 @@ cache on a world where mobs genuinely never repeat a search both report no hits;
 
 Usage: python bench/cache_report.py shadow serve
 """
+import datetime
 import re
 import statistics
 import sys
@@ -43,14 +44,46 @@ def read(path):
     return out
 
 
-def main(arms):
-    print("ROUTE CACHE, from /pathweaver status at the end of each measured window\n")
+# A campaign's runs land within an hour or two of each other. Anything much older than the newest
+# log in the directory belongs to a previous campaign that happened to use the same arm names.
+STALE_AFTER_SECONDS = 6 * 3600
+
+
+def campaign_logs(arms):
+    """The logs belonging to the most recent campaign, and the ones that do not."""
+    candidates = []
     for arm in arms:
-        runs = []
         for round_number in (1, 2, 3):
             log = Path(f"bench/deep/{arm}-{round_number}.log")
             if log.exists():
-                runs.append(read(log))
+                candidates.append((arm, round_number, log, log.stat().st_mtime))
+    if not candidates:
+        return {}, []
+    newest = max(mtime for _, _, _, mtime in candidates)
+    fresh, stale = {}, []
+    for arm, round_number, log, mtime in candidates:
+        if newest - mtime > STALE_AFTER_SECONDS:
+            stale.append((arm, round_number, mtime))
+        else:
+            fresh.setdefault(arm, []).append(log)
+    return fresh, stale
+
+
+def main(arms):
+    print("ROUTE CACHE, from /pathweaver status at the end of each measured window" + chr(10))
+    # This report once read three "async" runs when one had happened: two were logs from a campaign
+    # five days earlier, under the same arm name, from a build that had no cache in it. They reported
+    # every cache field as absent, which is exactly what a broken probe reports. Which campaign a
+    # number came from is not a detail to leave to whoever remembers to clean the directory.
+    fresh, stale = campaign_logs(arms)
+    if stale:
+        print(f"  EXCLUDED {len(stale)} log(s) from an earlier campaign:")
+        for arm, round_number, mtime in stale:
+            when = datetime.datetime.fromtimestamp(mtime).strftime("%m-%d %H:%M")
+            print(f"     {arm}-{round_number}  {when}")
+        print()
+    for arm in arms:
+        runs = [read(log) for log in fresh.get(arm, [])]
         if not runs:
             print(f"  {arm}: NO LOGS FOUND -- this arm did not run, which is not the same as zero")
             continue
