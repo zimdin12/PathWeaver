@@ -47,7 +47,7 @@ class PathCacheTest {
     private static PathCache cacheHolding(Path path, long tick) {
         PathCache cache = new PathCache(64);
         cache.remember(request(1L), key(), tick, X, Y, Z);
-        cache.completed(request(1L), path);
+        cache.completed(request(1L), path, true);
         return cache;
     }
 
@@ -172,10 +172,51 @@ class PathCacheTest {
         cache.remember(request(1L), key(), 100L, X, Y, Z);
         cache.noteBlockChange(DIMENSION.hashCode(),
             SectionPos.asLong(new BlockPos(12, 64, 10)), 101L);
-        cache.completed(request(1L), straightPath(5));
+        cache.completed(request(1L), straightPath(5), true);
         assertEquals(0L, cache.counters().stored);
         assertEquals(1L, cache.counters().refusedTerrainMoved);
         assertFalse(cache.lookup(key(), X, Y, Z, 102L, 40, true).isServed());
+    }
+
+    /**
+     * Measuring must not pay for a copy of a route it will never hand out.
+     *
+     * <p>The first version copied every finished route into the cache whatever the mode, and the
+     * shadow arm of the benchmark duly ran 6.6% more total pathfinding CPU than the same build with
+     * the cache switched off -- three runs against three, no overlap. Every one of those copies was
+     * discarded unused. This is the assertion that would go red if the copy comes back.
+     */
+    @Test
+    void measuringKeepsTheEvidenceAndNotTheRoute() {
+        PathCache cache = new PathCache(64);
+        cache.remember(request(1L), key(), 100L, X, Y, Z);
+        cache.completed(request(1L), straightPath(5), false);
+        assertEquals(1L, cache.counters().stored, "the measurement itself was thrown away");
+
+        // Still a hit, still checked against terrain and age: the count has to predict what serving
+        // would do, or it is not a measurement of anything.
+        assertEquals(CacheLookup.Kind.WOULD_SERVE,
+            cache.lookup(key(), X, Y, Z, 110L, 40, false).kind());
+        cache.noteBlockChange(DIMENSION.hashCode(),
+            SectionPos.asLong(new BlockPos(12, 64, 10)), 105L);
+        assertEquals(CacheLookup.Kind.MISS, cache.lookup(key(), X, Y, Z, 110L, 40, false).kind(),
+            "a measured hit was not checked against the terrain a served one would be");
+    }
+
+    /**
+     * Switching to SERVE takes effect without a restart, so entries stored while measuring are
+     * briefly present with no route. One must never be served, and must still be counted as the hit
+     * it is, or the switch would show up as a dip that is really a mode change.
+     */
+    @Test
+    void anEntryStoredWhileMeasuringIsCountedButNotServed() {
+        PathCache cache = new PathCache(64);
+        cache.remember(request(1L), key(), 100L, X, Y, Z);
+        cache.completed(request(1L), straightPath(5), false);
+        CacheLookup found = cache.lookup(key(), X, Y, Z, 110L, 40, true);
+        assertEquals(CacheLookup.Kind.WOULD_SERVE, found.kind());
+        assertEquals(0L, cache.counters().served);
+        assertEquals(1L, cache.counters().wouldServe);
     }
 
     @Test
@@ -206,13 +247,13 @@ class PathCacheTest {
     void theLeastRecentlyUsedRouteIsDroppedOnceTheCacheIsFull() {
         PathCache cache = new PathCache(1);
         cache.remember(request(1L), key(), 100L, X, Y, Z);
-        cache.completed(request(1L), straightPath(3));
+        cache.completed(request(1L), straightPath(3), true);
         PathCacheKey other = new PathCacheKey(DIMENSION, 99, 64, 10, key().target(),
             String.class, Integer.class, 0, 4096, Float.floatToIntBits(1.0f),
             Float.floatToIntBits(0.6f), 3, Float.floatToIntBits(0.6f),
             Float.floatToIntBits(1.95f), 0, new int[] {1});
         cache.remember(request(2L), other, 100L, X, Y, Z);
-        cache.completed(request(2L), straightPath(3));
+        cache.completed(request(2L), straightPath(3), true);
         assertEquals(1, cache.size());
         assertFalse(cache.lookup(key(), X, Y, Z, 101L, 40, true).isServed());
     }
@@ -222,7 +263,7 @@ class PathCacheTest {
         PathCache cache = new PathCache(64);
         cache.remember(request(1L), key(), 100L, X, Y, Z);
         cache.forget(request(1L));
-        cache.completed(request(1L), straightPath(5));
+        cache.completed(request(1L), straightPath(5), true);
         assertEquals(0, cache.size());
     }
 }

@@ -1,0 +1,450 @@
+forceload add -40 -40 40 40
+fill -40 200 -40 40 200 40 minecraft:stone
+fill -40 201 -40 40 201 40 minecraft:air
+fill -40 202 -40 40 202 40 minecraft:air
+fill -40 203 -40 40 203 40 minecraft:air
+fill -40 204 -40 40 204 40 minecraft:air
+fill -40 205 -40 40 205 40 minecraft:air
+fill -40 201 -40 40 204 -40 minecraft:stone
+fill -40 201 40 40 204 40 minecraft:stone
+fill -40 201 -40 -40 204 40 minecraft:stone
+fill 40 201 -40 40 204 40 minecraft:stone
+fill -24 201 -38 -24 204 38 minecraft:stone
+fill -16 201 -38 -16 204 38 minecraft:stone
+fill -8 201 -38 -8 204 38 minecraft:stone
+fill 0 201 -38 0 204 38 minecraft:stone
+fill 8 201 -38 8 204 38 minecraft:stone
+fill 16 201 -38 16 204 38 minecraft:stone
+fill 24 201 -38 24 204 38 minecraft:stone
+fill -24 201 -4 -24 202 4 minecraft:air
+fill -16 201 -4 -16 202 4 minecraft:air
+fill -8 201 -4 -8 202 4 minecraft:air
+fill 0 201 -4 0 202 4 minecraft:air
+fill 8 201 -4 8 202 4 minecraft:air
+fill 16 201 -4 16 202 4 minecraft:air
+fill 24 201 -4 24 202 4 minecraft:air
+fill 32 201 -35 39 203 -20 minecraft:stone
+fill 33 201 -34 38 202 -21 minecraft:water
+gamerule doMobSpawning false
+gamerule randomTickSpeed 0
+gamerule doDaylightCycle false
+gamerule doWeatherCycle false
+gamerule doFireTick false
+gamerule doMobLoot false
+time set day
+kill @e[type=!minecraft:player]
+carpet commandPlayer true
+player Bench spawn at 0 202 0 facing 0 0 in minecraft:overworld
+setblock -36 201 -30 minecraft:white_bed[facing=east,part=foot]
+setblock -35 201 -30 minecraft:white_bed[facing=east,part=head]
+setblock -34 201 -30 minecraft:white_bed[facing=east,part=foot]
+setblock -33 201 -30 minecraft:white_bed[facing=east,part=head]
+setblock -32 201 -30 minecraft:white_bed[facing=east,part=foot]
+setblock -31 201 -30 minecraft:white_bed[facing=east,part=head]
+setblock -30 201 -30 minecraft:white_bed[facing=east,part=foot]
+setblock -29 201 -30 minecraft:white_bed[facing=east,part=head]
+setblock -28 201 -30 minecraft:white_bed[facing=east,part=foot]
+setblock -27 201 -30 minecraft:white_bed[facing=east,part=head]
+setblock -26 201 -30 minecraft:white_bed[facing=east,part=foot]
+setblock -25 201 -30 minecraft:white_bed[facing=east,part=head]
+setblock -24 201 -30 minecraft:white_bed[facing=east,part=foot]
+setblock -23 201 -30 minecraft:white_bed[facing=east,part=head]
+setblock -22 201 -30 minecraft:white_bed[facing=east,part=foot]
+setblock -21 201 -30 minecraft:white_bed[facing=east,part=head]
+setblock -36 201 -16 minecraft:white_bed[facing=east,part=foot]
+setblock -35 201 -16 minecraft:white_bed[facing=east,part=head]
+setblock -34 201 -16 minecraft:white_bed[facing=east,part=foot]
+setblock -33 201 -16 minecraft:white_bed[facing=east,part=head]
+setblock -32 201 -16 minecraft:white_bed[facing=east,part=foot]
+setblock -31 201 -16 minecraft:white_bed[facing=east,part=head]
+setblock -30 201 -16 minecraft:white_bed[facing=east,part=foot]
+setblock -29 201 -16 minecraft:white_bed[facing=east,part=head]
+setblock -28 201 -16 minecraft:white_bed[facing=east,part=foot]
+setblock -27 201 -16 minecraft:white_bed[facing=east,part=head]
+setblock -26 201 -16 minecraft:white_bed[facing=east,part=foot]
+setblock -25 201 -16 minecraft:white_bed[facing=east,part=head]
+setblock -24 201 -16 minecraft:white_bed[facing=east,part=foot]
+setblock -23 201 -16 minecraft:white_bed[facing=east,part=head]
+setblock -22 201 -16 minecraft:white_bed[facing=east,part=foot]
+setblock -21 201 -16 minecraft:white_bed[facing=east,part=head]
+setblock -36 201 -2 minecraft:white_bed[facing=east,part=foot]
+setblock -35 201 -2 minecraft:white_bed[facing=east,part=head]
+setblock -34 201 -2 minecraft:white_bed[facing=east,part=foot]
+setblock -33 201 -2 minecraft:white_bed[facing=east,part=head]
+setblock -32 201 -2 minecraft:white_bed[facing=east,part=foot]
+setblock -31 201 -2 minecraft:white_bed[facing=east,part=head]
+setblock -30 201 -2 minecraft:white_bed[facing=east,part=foot]
+setblock -29 201 -2 minecraft:white_bed[facing=east,part=head]
+setblock -28 201 -2 minecraft:white_bed[facing=east,part=foot]
+setblock -27 201 -2 minecraft:white_bed[facing=east,part=head]
+setblock -26 201 -2 minecraft:white_bed[facing=east,part=foot]
+setblock -25 201 -2 minecraft:white_bed[facing=east,part=head]
+setblock -24 201 -2 minecraft:white_bed[facing=east,part=foot]
+setblock -23 201 -2 minecraft:white_bed[facing=east,part=head]
+setblock -22 201 -2 minecraft:white_bed[facing=east,part=foot]
+setblock -21 201 -2 minecraft:white_bed[facing=east,part=head]
+setblock -36 201 12 minecraft:white_bed[facing=east,part=foot]
+setblock -35 201 12 minecraft:white_bed[facing=east,part=head]
+setblock -34 201 12 minecraft:white_bed[facing=east,part=foot]
+setblock -33 201 12 minecraft:white_bed[facing=east,part=head]
+setblock -32 201 12 minecraft:white_bed[facing=east,part=foot]
+setblock -31 201 12 minecraft:white_bed[facing=east,part=head]
+setblock -30 201 12 minecraft:white_bed[facing=east,part=foot]
+setblock -29 201 12 minecraft:white_bed[facing=east,part=head]
+setblock -28 201 12 minecraft:white_bed[facing=east,part=foot]
+setblock -27 201 12 minecraft:white_bed[facing=east,part=head]
+setblock -26 201 12 minecraft:white_bed[facing=east,part=foot]
+setblock -25 201 12 minecraft:white_bed[facing=east,part=head]
+setblock -24 201 12 minecraft:white_bed[facing=east,part=foot]
+setblock -23 201 12 minecraft:white_bed[facing=east,part=head]
+setblock -22 201 12 minecraft:white_bed[facing=east,part=foot]
+setblock -21 201 12 minecraft:white_bed[facing=east,part=head]
+setblock -36 201 26 minecraft:white_bed[facing=east,part=foot]
+setblock -35 201 26 minecraft:white_bed[facing=east,part=head]
+setblock -34 201 26 minecraft:white_bed[facing=east,part=foot]
+setblock -33 201 26 minecraft:white_bed[facing=east,part=head]
+setblock -32 201 26 minecraft:white_bed[facing=east,part=foot]
+setblock -31 201 26 minecraft:white_bed[facing=east,part=head]
+setblock -30 201 26 minecraft:white_bed[facing=east,part=foot]
+setblock -29 201 26 minecraft:white_bed[facing=east,part=head]
+setblock -28 201 26 minecraft:white_bed[facing=east,part=foot]
+setblock -27 201 26 minecraft:white_bed[facing=east,part=head]
+setblock -26 201 26 minecraft:white_bed[facing=east,part=foot]
+setblock -25 201 26 minecraft:white_bed[facing=east,part=head]
+setblock -24 201 26 minecraft:white_bed[facing=east,part=foot]
+setblock -23 201 26 minecraft:white_bed[facing=east,part=head]
+setblock -22 201 26 minecraft:white_bed[facing=east,part=foot]
+setblock -21 201 26 minecraft:white_bed[facing=east,part=head]
+summon minecraft:villager -35 201 -10 {PersistenceRequired:1b}
+summon minecraft:villager -30 201 3 {PersistenceRequired:1b}
+summon minecraft:villager -31 201 -24 {PersistenceRequired:1b}
+summon minecraft:villager -31 201 18 {PersistenceRequired:1b}
+summon minecraft:villager -26 201 -24 {PersistenceRequired:1b}
+summon minecraft:villager -26 201 12 {PersistenceRequired:1b}
+summon minecraft:villager -26 201 6 {PersistenceRequired:1b}
+summon minecraft:villager -30 201 -5 {PersistenceRequired:1b}
+summon minecraft:villager -26 201 19 {PersistenceRequired:1b}
+summon minecraft:villager -34 201 31 {PersistenceRequired:1b}
+summon minecraft:villager -36 201 0 {PersistenceRequired:1b}
+summon minecraft:villager -27 201 14 {PersistenceRequired:1b}
+summon minecraft:villager -38 201 -18 {PersistenceRequired:1b}
+summon minecraft:villager -37 201 -6 {PersistenceRequired:1b}
+summon minecraft:villager -26 201 -31 {PersistenceRequired:1b}
+summon minecraft:villager -35 201 8 {PersistenceRequired:1b}
+summon minecraft:villager -37 201 24 {PersistenceRequired:1b}
+summon minecraft:villager -26 201 17 {PersistenceRequired:1b}
+summon minecraft:villager -27 201 -22 {PersistenceRequired:1b}
+summon minecraft:villager -34 201 14 {PersistenceRequired:1b}
+summon minecraft:villager -30 201 9 {PersistenceRequired:1b}
+summon minecraft:villager -31 201 34 {PersistenceRequired:1b}
+summon minecraft:villager -35 201 27 {PersistenceRequired:1b}
+summon minecraft:villager -32 201 7 {PersistenceRequired:1b}
+summon minecraft:villager -27 201 6 {PersistenceRequired:1b}
+summon minecraft:villager -35 201 23 {PersistenceRequired:1b}
+summon minecraft:villager -26 201 0 {PersistenceRequired:1b}
+summon minecraft:villager -37 201 -17 {PersistenceRequired:1b}
+summon minecraft:villager -34 201 10 {PersistenceRequired:1b}
+summon minecraft:villager -33 201 -24 {PersistenceRequired:1b}
+summon minecraft:villager -38 201 8 {PersistenceRequired:1b}
+summon minecraft:villager -32 201 31 {PersistenceRequired:1b}
+summon minecraft:villager -36 201 31 {PersistenceRequired:1b}
+summon minecraft:villager -30 201 -19 {PersistenceRequired:1b}
+summon minecraft:villager -28 201 -6 {PersistenceRequired:1b}
+summon minecraft:villager -36 201 23 {PersistenceRequired:1b}
+summon minecraft:villager -30 201 -29 {PersistenceRequired:1b}
+summon minecraft:villager -29 201 5 {PersistenceRequired:1b}
+summon minecraft:villager -30 201 19 {PersistenceRequired:1b}
+summon minecraft:villager -36 201 13 {PersistenceRequired:1b}
+summon minecraft:villager -31 201 -26 {PersistenceRequired:1b}
+summon minecraft:villager -33 201 -20 {PersistenceRequired:1b}
+summon minecraft:villager -32 201 34 {PersistenceRequired:1b}
+summon minecraft:villager -26 201 -33 {PersistenceRequired:1b}
+summon minecraft:villager -27 201 -13 {PersistenceRequired:1b}
+summon minecraft:villager -27 201 -22 {PersistenceRequired:1b}
+summon minecraft:villager -30 201 -32 {PersistenceRequired:1b}
+summon minecraft:villager -32 201 -31 {PersistenceRequired:1b}
+summon minecraft:villager -38 201 -19 {PersistenceRequired:1b}
+summon minecraft:villager -35 201 27 {PersistenceRequired:1b}
+summon minecraft:villager -32 201 26 {PersistenceRequired:1b}
+summon minecraft:villager -34 201 -29 {PersistenceRequired:1b}
+summon minecraft:villager -29 201 31 {PersistenceRequired:1b}
+summon minecraft:villager -33 201 -24 {PersistenceRequired:1b}
+summon minecraft:villager -31 201 -6 {PersistenceRequired:1b}
+summon minecraft:villager -37 201 28 {PersistenceRequired:1b}
+summon minecraft:villager -29 201 32 {PersistenceRequired:1b}
+summon minecraft:villager -34 201 -26 {PersistenceRequired:1b}
+summon minecraft:villager -29 201 -10 {PersistenceRequired:1b}
+summon minecraft:villager -38 201 12 {PersistenceRequired:1b}
+summon minecraft:goat -22 201 7 {PersistenceRequired:1b}
+summon minecraft:goat -21 201 -25 {PersistenceRequired:1b}
+summon minecraft:goat -21 201 27 {PersistenceRequired:1b}
+summon minecraft:goat -18 201 21 {PersistenceRequired:1b}
+summon minecraft:goat -20 201 9 {PersistenceRequired:1b}
+summon minecraft:goat -20 201 30 {PersistenceRequired:1b}
+summon minecraft:goat -19 201 22 {PersistenceRequired:1b}
+summon minecraft:goat -19 201 14 {PersistenceRequired:1b}
+summon minecraft:goat -19 201 -5 {PersistenceRequired:1b}
+summon minecraft:goat -20 201 17 {PersistenceRequired:1b}
+summon minecraft:goat -20 201 12 {PersistenceRequired:1b}
+summon minecraft:goat -21 201 27 {PersistenceRequired:1b}
+summon minecraft:goat -19 201 15 {PersistenceRequired:1b}
+summon minecraft:goat -22 201 -33 {PersistenceRequired:1b}
+summon minecraft:goat -19 201 3 {PersistenceRequired:1b}
+summon minecraft:goat -22 201 26 {PersistenceRequired:1b}
+summon minecraft:goat -19 201 -24 {PersistenceRequired:1b}
+summon minecraft:goat -18 201 32 {PersistenceRequired:1b}
+summon minecraft:goat -20 201 5 {PersistenceRequired:1b}
+summon minecraft:goat -22 201 3 {PersistenceRequired:1b}
+summon minecraft:frog -13 201 -2 {PersistenceRequired:1b}
+summon minecraft:frog -10 201 -34 {PersistenceRequired:1b}
+summon minecraft:frog -14 201 -20 {PersistenceRequired:1b}
+summon minecraft:frog -10 201 -28 {PersistenceRequired:1b}
+summon minecraft:frog -11 201 -15 {PersistenceRequired:1b}
+summon minecraft:frog -11 201 15 {PersistenceRequired:1b}
+summon minecraft:frog -14 201 -15 {PersistenceRequired:1b}
+summon minecraft:frog -11 201 -7 {PersistenceRequired:1b}
+summon minecraft:frog -12 201 -7 {PersistenceRequired:1b}
+summon minecraft:frog -10 201 29 {PersistenceRequired:1b}
+summon minecraft:frog -10 201 1 {PersistenceRequired:1b}
+summon minecraft:frog -12 201 25 {PersistenceRequired:1b}
+summon minecraft:frog -13 201 20 {PersistenceRequired:1b}
+summon minecraft:frog -11 201 3 {PersistenceRequired:1b}
+summon minecraft:frog -12 201 -25 {PersistenceRequired:1b}
+summon minecraft:frog -10 201 -10 {PersistenceRequired:1b}
+summon minecraft:frog -12 201 -19 {PersistenceRequired:1b}
+summon minecraft:frog -13 201 -25 {PersistenceRequired:1b}
+summon minecraft:frog -13 201 33 {PersistenceRequired:1b}
+summon minecraft:frog -11 201 20 {PersistenceRequired:1b}
+summon minecraft:cow -5 201 -23 {PersistenceRequired:1b}
+summon minecraft:cow -2 201 -18 {PersistenceRequired:1b}
+summon minecraft:cow -4 201 -6 {PersistenceRequired:1b}
+summon minecraft:cow -4 201 27 {PersistenceRequired:1b}
+summon minecraft:cow -5 201 -6 {PersistenceRequired:1b}
+summon minecraft:cow -2 201 13 {PersistenceRequired:1b}
+summon minecraft:cow -4 201 -15 {PersistenceRequired:1b}
+summon minecraft:cow -3 201 14 {PersistenceRequired:1b}
+summon minecraft:cow -6 201 7 {PersistenceRequired:1b}
+summon minecraft:cow -2 201 17 {PersistenceRequired:1b}
+summon minecraft:cow -6 201 5 {PersistenceRequired:1b}
+summon minecraft:cow -6 201 -9 {PersistenceRequired:1b}
+summon minecraft:cow -6 201 -27 {PersistenceRequired:1b}
+summon minecraft:cow -6 201 16 {PersistenceRequired:1b}
+summon minecraft:cow -2 201 11 {PersistenceRequired:1b}
+summon minecraft:cow -4 201 -3 {PersistenceRequired:1b}
+summon minecraft:cow -3 201 -26 {PersistenceRequired:1b}
+summon minecraft:cow -4 201 -21 {PersistenceRequired:1b}
+summon minecraft:cow -6 201 26 {PersistenceRequired:1b}
+summon minecraft:cow -5 201 13 {PersistenceRequired:1b}
+summon minecraft:cow -5 201 19 {PersistenceRequired:1b}
+summon minecraft:cow -4 201 -13 {PersistenceRequired:1b}
+summon minecraft:cow -6 201 -30 {PersistenceRequired:1b}
+summon minecraft:cow -4 201 -31 {PersistenceRequired:1b}
+summon minecraft:cow -5 201 -17 {PersistenceRequired:1b}
+summon minecraft:cow -3 201 4 {PersistenceRequired:1b}
+summon minecraft:cow -4 201 -4 {PersistenceRequired:1b}
+summon minecraft:cow -6 201 -15 {PersistenceRequired:1b}
+summon minecraft:cow -3 201 18 {PersistenceRequired:1b}
+summon minecraft:cow -3 201 30 {PersistenceRequired:1b}
+summon minecraft:parrot 6 201 12 {PersistenceRequired:1b}
+summon minecraft:parrot 2 201 27 {PersistenceRequired:1b}
+summon minecraft:parrot 3 201 -19 {PersistenceRequired:1b}
+summon minecraft:parrot 5 201 -16 {PersistenceRequired:1b}
+summon minecraft:parrot 4 201 22 {PersistenceRequired:1b}
+summon minecraft:parrot 4 201 -16 {PersistenceRequired:1b}
+summon minecraft:parrot 2 201 -28 {PersistenceRequired:1b}
+summon minecraft:parrot 5 201 -8 {PersistenceRequired:1b}
+summon minecraft:parrot 4 201 15 {PersistenceRequired:1b}
+summon minecraft:parrot 5 201 -16 {PersistenceRequired:1b}
+summon minecraft:parrot 2 201 5 {PersistenceRequired:1b}
+summon minecraft:parrot 4 201 9 {PersistenceRequired:1b}
+summon minecraft:parrot 3 201 -7 {PersistenceRequired:1b}
+summon minecraft:parrot 5 201 -20 {PersistenceRequired:1b}
+summon minecraft:parrot 3 201 26 {PersistenceRequired:1b}
+summon minecraft:parrot 2 201 -30 {PersistenceRequired:1b}
+summon minecraft:parrot 2 201 -14 {PersistenceRequired:1b}
+summon minecraft:parrot 6 201 19 {PersistenceRequired:1b}
+summon minecraft:parrot 3 201 10 {PersistenceRequired:1b}
+summon minecraft:parrot 5 201 26 {PersistenceRequired:1b}
+summon minecraft:parrot 3 201 -29 {PersistenceRequired:1b}
+summon minecraft:parrot 2 201 -15 {PersistenceRequired:1b}
+summon minecraft:parrot 6 201 -19 {PersistenceRequired:1b}
+summon minecraft:parrot 4 201 -29 {PersistenceRequired:1b}
+summon minecraft:parrot 3 201 1 {PersistenceRequired:1b}
+summon minecraft:parrot 4 201 8 {PersistenceRequired:1b}
+summon minecraft:parrot 3 201 18 {PersistenceRequired:1b}
+summon minecraft:parrot 2 201 33 {PersistenceRequired:1b}
+summon minecraft:parrot 4 201 -29 {PersistenceRequired:1b}
+summon minecraft:parrot 4 201 -3 {PersistenceRequired:1b}
+summon minecraft:spider 14 201 20 {PersistenceRequired:1b}
+summon minecraft:spider 11 201 -4 {PersistenceRequired:1b}
+summon minecraft:spider 12 201 -4 {PersistenceRequired:1b}
+summon minecraft:spider 11 201 4 {PersistenceRequired:1b}
+summon minecraft:spider 12 201 24 {PersistenceRequired:1b}
+summon minecraft:spider 13 201 -33 {PersistenceRequired:1b}
+summon minecraft:spider 14 201 21 {PersistenceRequired:1b}
+summon minecraft:spider 14 201 -13 {PersistenceRequired:1b}
+summon minecraft:spider 13 201 23 {PersistenceRequired:1b}
+summon minecraft:spider 12 201 20 {PersistenceRequired:1b}
+summon minecraft:spider 13 201 23 {PersistenceRequired:1b}
+summon minecraft:spider 10 201 -13 {PersistenceRequired:1b}
+summon minecraft:spider 13 201 31 {PersistenceRequired:1b}
+summon minecraft:spider 14 201 22 {PersistenceRequired:1b}
+summon minecraft:spider 12 201 8 {PersistenceRequired:1b}
+summon minecraft:spider 13 201 -10 {PersistenceRequired:1b}
+summon minecraft:spider 12 201 -25 {PersistenceRequired:1b}
+summon minecraft:spider 13 201 -7 {PersistenceRequired:1b}
+summon minecraft:spider 14 201 -1 {PersistenceRequired:1b}
+summon minecraft:spider 12 201 9 {PersistenceRequired:1b}
+summon minecraft:squid 36 201 -27 {PersistenceRequired:1b}
+summon minecraft:squid 36 201 -27 {PersistenceRequired:1b}
+summon minecraft:squid 35 201 -32 {PersistenceRequired:1b}
+summon minecraft:squid 37 201 -33 {PersistenceRequired:1b}
+summon minecraft:squid 36 201 -24 {PersistenceRequired:1b}
+summon minecraft:squid 37 201 -22 {PersistenceRequired:1b}
+summon minecraft:squid 37 201 -30 {PersistenceRequired:1b}
+summon minecraft:squid 35 201 -31 {PersistenceRequired:1b}
+summon minecraft:squid 36 201 -33 {PersistenceRequired:1b}
+summon minecraft:squid 35 201 -23 {PersistenceRequired:1b}
+summon minecraft:axolotl 37 201 -30 {PersistenceRequired:1b}
+summon minecraft:axolotl 37 201 -26 {PersistenceRequired:1b}
+summon minecraft:axolotl 36 201 -25 {PersistenceRequired:1b}
+summon minecraft:axolotl 37 201 -26 {PersistenceRequired:1b}
+summon minecraft:axolotl 36 201 -21 {PersistenceRequired:1b}
+summon minecraft:axolotl 35 201 -30 {PersistenceRequired:1b}
+summon minecraft:axolotl 35 201 -26 {PersistenceRequired:1b}
+summon minecraft:axolotl 36 201 -22 {PersistenceRequired:1b}
+summon minecraft:axolotl 35 201 -24 {PersistenceRequired:1b}
+summon minecraft:axolotl 36 201 -32 {PersistenceRequired:1b}
+kill @e[type=minecraft:item]
+spark profiler cancel
+spark health
+execute if entity @e[type=!minecraft:player]
+execute if entity @e[type=minecraft:villager]
+execute if entity @e[type=minecraft:goat]
+execute if entity @e[type=minecraft:frog]
+execute if entity @e[type=minecraft:cow]
+execute if entity @e[type=minecraft:parrot]
+execute if entity @e[type=minecraft:spider]
+execute if entity @e[type=minecraft:squid]
+execute if entity @e[type=minecraft:axolotl]
+execute if entity @e[type=minecraft:item]
+execute if entity @e[type=minecraft:experience_orb]
+pathweaver status
+spark profiler start --thread * --not-combined
+fill -24 201 -4 -24 202 4 minecraft:stone
+fill -16 201 -4 -16 202 4 minecraft:stone
+fill -8 201 -4 -8 202 4 minecraft:stone
+fill 0 201 -4 0 202 4 minecraft:stone
+fill 8 201 -4 8 202 4 minecraft:stone
+fill 16 201 -4 16 202 4 minecraft:stone
+fill 24 201 -4 24 202 4 minecraft:stone
+fill -24 201 -4 -24 202 4 minecraft:air
+fill -16 201 -4 -16 202 4 minecraft:air
+fill -8 201 -4 -8 202 4 minecraft:air
+fill 0 201 -4 0 202 4 minecraft:air
+fill 8 201 -4 8 202 4 minecraft:air
+fill 16 201 -4 16 202 4 minecraft:air
+fill 24 201 -4 24 202 4 minecraft:air
+fill -24 201 -4 -24 202 4 minecraft:stone
+fill -16 201 -4 -16 202 4 minecraft:stone
+fill -8 201 -4 -8 202 4 minecraft:stone
+fill 0 201 -4 0 202 4 minecraft:stone
+fill 8 201 -4 8 202 4 minecraft:stone
+fill 16 201 -4 16 202 4 minecraft:stone
+fill 24 201 -4 24 202 4 minecraft:stone
+fill -24 201 -4 -24 202 4 minecraft:air
+fill -16 201 -4 -16 202 4 minecraft:air
+fill -8 201 -4 -8 202 4 minecraft:air
+fill 0 201 -4 0 202 4 minecraft:air
+fill 8 201 -4 8 202 4 minecraft:air
+fill 16 201 -4 16 202 4 minecraft:air
+fill 24 201 -4 24 202 4 minecraft:air
+fill -24 201 -4 -24 202 4 minecraft:stone
+fill -16 201 -4 -16 202 4 minecraft:stone
+fill -8 201 -4 -8 202 4 minecraft:stone
+fill 0 201 -4 0 202 4 minecraft:stone
+fill 8 201 -4 8 202 4 minecraft:stone
+fill 16 201 -4 16 202 4 minecraft:stone
+fill 24 201 -4 24 202 4 minecraft:stone
+fill -24 201 -4 -24 202 4 minecraft:air
+fill -16 201 -4 -16 202 4 minecraft:air
+fill -8 201 -4 -8 202 4 minecraft:air
+fill 0 201 -4 0 202 4 minecraft:air
+fill 8 201 -4 8 202 4 minecraft:air
+fill 16 201 -4 16 202 4 minecraft:air
+fill 24 201 -4 24 202 4 minecraft:air
+fill -24 201 -4 -24 202 4 minecraft:stone
+fill -16 201 -4 -16 202 4 minecraft:stone
+fill -8 201 -4 -8 202 4 minecraft:stone
+fill 0 201 -4 0 202 4 minecraft:stone
+fill 8 201 -4 8 202 4 minecraft:stone
+fill 16 201 -4 16 202 4 minecraft:stone
+fill 24 201 -4 24 202 4 minecraft:stone
+fill -24 201 -4 -24 202 4 minecraft:air
+fill -16 201 -4 -16 202 4 minecraft:air
+fill -8 201 -4 -8 202 4 minecraft:air
+fill 0 201 -4 0 202 4 minecraft:air
+fill 8 201 -4 8 202 4 minecraft:air
+fill 16 201 -4 16 202 4 minecraft:air
+fill 24 201 -4 24 202 4 minecraft:air
+fill -24 201 -4 -24 202 4 minecraft:stone
+fill -16 201 -4 -16 202 4 minecraft:stone
+fill -8 201 -4 -8 202 4 minecraft:stone
+fill 0 201 -4 0 202 4 minecraft:stone
+fill 8 201 -4 8 202 4 minecraft:stone
+fill 16 201 -4 16 202 4 minecraft:stone
+fill 24 201 -4 24 202 4 minecraft:stone
+fill -24 201 -4 -24 202 4 minecraft:air
+fill -16 201 -4 -16 202 4 minecraft:air
+fill -8 201 -4 -8 202 4 minecraft:air
+fill 0 201 -4 0 202 4 minecraft:air
+fill 8 201 -4 8 202 4 minecraft:air
+fill 16 201 -4 16 202 4 minecraft:air
+fill 24 201 -4 24 202 4 minecraft:air
+fill -24 201 -4 -24 202 4 minecraft:stone
+fill -16 201 -4 -16 202 4 minecraft:stone
+fill -8 201 -4 -8 202 4 minecraft:stone
+fill 0 201 -4 0 202 4 minecraft:stone
+fill 8 201 -4 8 202 4 minecraft:stone
+fill 16 201 -4 16 202 4 minecraft:stone
+fill 24 201 -4 24 202 4 minecraft:stone
+fill -24 201 -4 -24 202 4 minecraft:air
+fill -16 201 -4 -16 202 4 minecraft:air
+fill -8 201 -4 -8 202 4 minecraft:air
+fill 0 201 -4 0 202 4 minecraft:air
+fill 8 201 -4 8 202 4 minecraft:air
+fill 16 201 -4 16 202 4 minecraft:air
+fill 24 201 -4 24 202 4 minecraft:air
+fill -24 201 -4 -24 202 4 minecraft:stone
+fill -16 201 -4 -16 202 4 minecraft:stone
+fill -8 201 -4 -8 202 4 minecraft:stone
+fill 0 201 -4 0 202 4 minecraft:stone
+fill 8 201 -4 8 202 4 minecraft:stone
+fill 16 201 -4 16 202 4 minecraft:stone
+fill 24 201 -4 24 202 4 minecraft:stone
+fill -24 201 -4 -24 202 4 minecraft:air
+fill -16 201 -4 -16 202 4 minecraft:air
+fill -8 201 -4 -8 202 4 minecraft:air
+fill 0 201 -4 0 202 4 minecraft:air
+fill 8 201 -4 8 202 4 minecraft:air
+fill 16 201 -4 16 202 4 minecraft:air
+fill 24 201 -4 24 202 4 minecraft:air
+fill -24 201 -4 -24 202 4 minecraft:stone
+fill -16 201 -4 -16 202 4 minecraft:stone
+fill -8 201 -4 -8 202 4 minecraft:stone
+fill 0 201 -4 0 202 4 minecraft:stone
+fill 8 201 -4 8 202 4 minecraft:stone
+fill 16 201 -4 16 202 4 minecraft:stone
+fill 24 201 -4 24 202 4 minecraft:stone
+fill -24 201 -4 -24 202 4 minecraft:air
+fill -16 201 -4 -16 202 4 minecraft:air
+fill -8 201 -4 -8 202 4 minecraft:air
+fill 0 201 -4 0 202 4 minecraft:air
+fill 8 201 -4 8 202 4 minecraft:air
+fill 16 201 -4 16 202 4 minecraft:air
+fill 24 201 -4 24 202 4 minecraft:air
+spark profiler stop --save-to-file
+spark health
+execute if entity @e[type=!minecraft:player]
+pathweaver status
+stop
