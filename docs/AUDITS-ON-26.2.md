@@ -88,7 +88,41 @@ now, and a mutation reintroducing a drifted copy turns two tests red.
 | `-PrefusedHarness` | AUDITED | 2 passed | 2 passed |
 | `-PbreakerHarness` | AUDITED | 2 passed | 2 passed |
 | `-PauditedRoutingHarness` | AUDITED | 2 passed | 2 passed |
-| unit suite | n/a | 401 passed | 401 passed |
+| `-PnewFamilyHarness` | AUDITED | 2 passed | 2 passed |
+| `-PfabricAggregateHarness` | AUDITED | 2 passed | 2 passed |
+| `-PauditedTierHarness` | AUDITED | 2 passed | **1 of 2 FAILS** |
+| unit suite | n/a | 428 passed | 428 passed |
+
+## `-PauditedTierHarness` fails on 26.2, and this table used not to say so
+
+The five harnesses above the line were the whole matrix. `auditedTierHarness` was not in it, so its
+result on 26.2 was not unknown, it was unasked. Running every harness rather than the recorded five
+is what surfaced it, on 2026-09-06.
+
+The cause is the same shape as the defect 0.8.0 fixed and it was not fixed for these two mods. The
+26.2 branch resolves Lithium `0.25.3+mc26.2` and Diagonal Blocks `26.2.0`; the audits pin Lithium
+`0.24.6+mc26.1.2` and a 26.1.2 Diagonal Blocks artifact. Both refuse on the version gate:
+
+```
+Foreign-mixin scan failure (fail-closed): Lithium exact audit: unsupported version 0.25.3+mc26.2
+Foreign-mixin scan failure (fail-closed): Diagonal Blocks exact audit: unsupported version 26.2.0
+```
+
+so `AUDITED` denies all six movement families and the harness's dispatch assertion fails.
+
+**It predates the 0.8.0 work on this branch.** Verified rather than assumed: the identical failure
+reproduces at commit `2dc6849`, the last mc-26.2 commit before the route cache, the config migration
+and the default changes landed.
+
+**What it means for a user.** On 26.2, `compatibilityTier=AUDITED` does nothing on any pack
+containing Lithium or Diagonal Blocks, which is most performance packs. The shipped default is
+`UNSAFE`, so a default install is unaffected, and the world-start report already says so out loud in
+the log. It is a real limitation of the stricter tier on that version and the release notes should
+say it rather than let the 26.1.2 result stand in for both.
+
+**Fixing it** means re-deriving the Lithium and Diagonal Blocks audits against their 26.2 artifacts,
+which is the work 0.8.0 did for `servercore` and `rabbit-pathfinding-fix`: exact hashes plus a
+bytecode shape proof, not a version bump. That is its own piece of work and is not attempted here.
 
 `default` and `auditedRouting` used to fail on 26.2. At runtime the scan now emits no audit refusals
 at all, and logs live evidence for the content registry, the land-registry lifecycle and the audited
