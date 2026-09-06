@@ -8,7 +8,7 @@ PathWeaver moves those searches onto **spare CPU cores** instead. Same paths, sa
 
 **Install it on the server, or in your singleplayer world. Clients need nothing.** Fabric, Minecraft **26.1.1, 26.1.2 or 26.2**, **Java 25 or newer**. Most hosts still default to 21, so check. Needs Fabric API and Cloth Config.
 
-26.1.1 and 26.1.2 share one file; 26.2 is a separate build. As of 0.8.0 the checked tier (`compatibilityTier=AUDITED`) works on **all three**. Its per-mod exemptions are pinned to the exact bytecode they were derived from, and until 0.8.0 they were pinned only to 26.1.2 bytes, so on 26.2 that tier refused everything and switched the mod off. All four audits are re-derived against what 26.2 actually ships.
+26.1.1 and 26.1.2 share one file; 26.2 is a separate build. The checked tier (`compatibilityTier=AUDITED`) now works on 26.1.1 and 26.1.2, and **partly** on 26.2. Its per-mod exemptions are pinned to the exact bytecode they were derived from, so a mod that ships a different build for 26.2 falls outside its own audit. Four audits were re-derived for 26.2 in 0.8.0; **Lithium and Diagonal Blocks were not**, and on 26.2 either of them present makes `AUDITED` refuse everything. Most performance packs contain Lithium, so on 26.2 treat the checked tier as unavailable in practice. The shipped default is unaffected, and the log says which mods are responsible at world start.
 
 **It ships with its compatibility checking turned off.** Back up worlds you care about, and read [the warning below](#read-this-before-installing) before you commit a world to it.
 
@@ -100,10 +100,16 @@ hand-off and install are real, and they show up here because every thread was sa
 only the one guaranteed to look better. MSPT barely moved and its ranges overlap, because that server
 sat at 5 ms against a 50 ms budget. The honest claim is headroom, not throughput.
 
-**The checked tier works on 26.2.** `compatibilityTier=AUDITED` previously did nothing at all there:
+**The checked tier works on 26.2, for four of six audited mods.** `compatibilityTier=AUDITED` previously did nothing at all there:
 every audit pinned 26.1.2 artifacts, so all four refused and all six movement families ran on the
 server thread. All four are re-derived now. One of them, `rabbit-pathfinding-fix` 1.4.0, had changed
 mechanism rather than drifted, moving a method from an `@Inject` to a `@ModifyConstant`.
+
+The honest limit, found by running every test harness rather than the five that were on record:
+**Lithium and Diagonal Blocks were not re-derived.** On 26.2 they resolve to builds their audits do
+not cover, so either one present makes `AUDITED` deny all six families. Most performance packs ship
+Lithium. If you run 26.2 and want the checked tier, it is not there yet; the default tier is
+unaffected and the world-start report names the mods responsible.
 
 Doing that turned up two real defects. The audit enumerators silently skipped any handler whose
 annotation they did not recognise, so an artifact could carry an extra modification the "modifies
