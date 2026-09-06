@@ -89,7 +89,12 @@ public final class PathCache {
             counters.blockOnlyHits++;
             return CacheLookup.BLOCK_ONLY;
         }
-        if (!serve) {
+        // A real hit either way. It cannot be served when the entry was stored while the cache was
+        // only measuring, because measuring keeps no route -- see completed(). The mode is live and
+        // takes effect without a restart, so entries from before the switch are briefly present;
+        // they expire within maxAgeTicks, and counting them as hits keeps the number honest in the
+        // meantime rather than reporting a dip that is really a mode change.
+        if (!serve || cached.path() == null) {
             counters.wouldServe++;
             return CacheLookup.WOULD_SERVE;
         }
@@ -107,8 +112,21 @@ public final class PathCache {
         pending.put(requestKey, new Pending(key, dispatchTick, xBits, yBits, zBits));
     }
 
-    /** Main thread, when a result is drained: keep it if the world stood still while it ran. */
-    public void completed(RequestKey requestKey, Path path) {
+    /**
+     * Main thread, when a result is drained: keep it if the world stood still while it ran.
+     *
+     * <p>{@code keepRoute} is false while the cache is only measuring, and then no copy is made and
+     * the entry holds no route. Measured cost of getting this wrong: the shadow arm ran 6.6% more
+     * total pathfinding CPU than the same build with the cache off, on three runs against three with
+     * no overlap between them, and every copy it paid for was thrown away unused. A default whose
+     * whole argument is "this costs almost nothing to find out" has to actually cost almost nothing.
+     *
+     * <p>Everything else is kept, because everything else is what the measurement is: the key, the
+     * dispatch tick, the exact position, and the sections the route depended on. A shadow hit is
+     * therefore checked against the same terrain and the same age limit a served one would be, which
+     * is the only way its count predicts anything.
+     */
+    public void completed(RequestKey requestKey, Path path, boolean keepRoute) {
         Pending waiting = pending.remove(requestKey);
         if (waiting == null || path == null || path.getNodeCount() == 0) return;
         long[] sections = PathCopies.sectionsOf(path);
@@ -120,8 +138,9 @@ public final class PathCache {
             return;
         }
         counters.stored++;
-        entries.put(waiting.key(), new CachedPath(PathCopies.deepCopy(path), waiting.dispatchTick(),
-            sections, waiting.exactXBits(), waiting.exactYBits(), waiting.exactZBits()));
+        entries.put(waiting.key(), new CachedPath(keepRoute ? PathCopies.deepCopy(path) : null,
+            waiting.dispatchTick(), sections,
+            waiting.exactXBits(), waiting.exactYBits(), waiting.exactZBits()));
     }
 
     /** Main thread: this request will never produce a cacheable answer. */

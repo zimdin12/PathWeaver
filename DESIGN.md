@@ -430,12 +430,43 @@ and the benefit is that the cache does not retain the thousands of nodes a searc
 
 `resultCacheMode` defaults to `SHADOW`. Whether sharing pays is a property of the pack, not of this
 code: a village of villagers standing at work sites is a different population from a plain of
-wandering cows, and this project has no measurement of either. Shadow mode fills the cache, runs
-every check, counts what serving would have returned, and gives the mob nothing. `/pathweaver status`
-prints the number.
+wandering cows. Shadow mode fills the cache, runs every check, counts what serving would have
+returned, and gives the mob nothing. `/pathweaver status` prints the number.
 
-That is the whole argument for the default. A feature whose value is unmeasured should ship producing
-the measurement, not assuming the answer.
+That is the whole argument for the default, and it only holds while measuring is nearly free. The
+first version was not. It copied every finished route into the cache whatever the mode, so the
+measuring arm ran 6.6% more total pathfinding CPU than the same build with the cache off, three runs
+against three with no overlap, and every copy was discarded unused. Measuring now keeps the key, the
+dispatch tick, the exact position and the sections the route depended on, and not the route: a
+measured hit is still checked against the same terrain and the same age limit a served one would be,
+which is the only reason its count predicts anything. Re-measured on the fixed build, the same
+comparison is +0.6% with the ranges overlapping.
+
+The mode is live, so entries stored while measuring are briefly present with no route to give. One is
+never served and is still counted as the hit it is; counting it any other way would make flipping the
+switch look like a dip that is really a mode change.
+
+### What the first measurement said
+
+Fifteen runs, five arms, 231-jar dedicated server, 200 mobs across every evaluator family the mod
+touches. Medians of three, against the mod not being installed at all:
+
+| arm | server-thread A\* | total A\* CPU | MSPT |
+|---|---|---|---|
+| off (installed, disabled) | -2.1% | -2.1% | +1.4% |
+| async (cache off) | -45.2% | +8.9% | -9.9% |
+| shadow | -40.7% | +16.0% | -7.9% |
+| serve | -46.4% | +5.7% | -9.8% |
+
+Serving dispatched 11% fewer searches than the cache-off control, at a 12-16% exact hit rate with
+another 14% matching on everything but the mob's exact coordinates.
+
+Against the cache being off rather than absent, serving bought 2.9% of total pathfinding CPU with the
+run ranges overlapping. That is a small result and it is worth saying so. The arena is 200 mobs
+walking corridors continuously, which is close to the worst case for a key that includes the exact
+position; the population this feature is aimed at, mobs that stand still and re-ask, is not what was
+measured. The `BLOCK_ONLY` counter is what says whether a looser key would change that, and it says
+14% on this population.
 
 ### Not cached: routes that do not exist
 

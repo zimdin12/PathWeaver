@@ -24,11 +24,18 @@ SAMPLE="${4:-120}"
 OUT="/c/Users/Administrator/AppData/Roaming/.minecraft/modding/PathWeaver/bench/deep"
 
 case "$ARM" in
-  vanilla) ENABLED=false; SINK=false ;;   # jar removed entirely, see below
-  off)     ENABLED=false; SINK=false ;;
-  sync)    ENABLED=true;  SINK=false ;;
-  async)   ENABLED=true;  SINK=true  ;;
-  *) echo "unknown arm: $ARM (vanilla|off|sync|async)"; exit 1 ;;
+  vanilla) ENABLED=false; SINK=false; CACHE=OFF ;;   # jar removed entirely, see below
+  off)     ENABLED=false; SINK=false; CACHE=OFF ;;
+  sync)    ENABLED=true;  SINK=false; CACHE=OFF ;;
+  async)   ENABLED=true;  SINK=true;  CACHE=OFF ;;
+  # The route cache, in both of the states it can ship in. Two arms rather than one because they
+  # answer different questions and neither answers the other's: SHADOW says how often mobs really do
+  # repeat a search, and costs a key plus a map lookup per dispatch to find out; SERVE says what
+  # spending those hits is actually worth once the copy and the terrain check are paid for. A single
+  # arm would leave "the cache found 4000 hits" and "the cache saved nothing" indistinguishable.
+  shadow)  ENABLED=true;  SINK=true;  CACHE=SHADOW ;;
+  serve)   ENABLED=true;  SINK=true;  CACHE=SERVE ;;
+  *) echo "unknown arm: $ARM (vanilla|off|sync|async|shadow|serve)"; exit 1 ;;
 esac
 
 mkdir -p "$OUT"
@@ -83,8 +90,12 @@ PY
 rm -rf "$SERVER/pw-bench"
 mkdir -p config
 cat > config/pathweaver.json <<CFG
-{"configVersion":2,"enabled":${ENABLED},"compatibilityTier":"UNSAFE","brainSinkAsync":${SINK}}
+{"configVersion":2,"enabled":${ENABLED},"compatibilityTier":"UNSAFE","brainSinkAsync":${SINK},"resultCacheMode":"${CACHE}"}
 CFG
+# Everything not named here takes the shipped default, deliberately: repathToleranceBlocks is 1 now
+# and poolThreads auto-sizes with a floor of two, and an arm that pinned them would measure a
+# configuration nobody runs. It does mean this campaign is not comparable to the one before the
+# defaults changed, which is the correct trade -- the question is what the mod does on arrival.
 # THE VANILLA ARM REMOVES THE JAR.
 #
 # "off" is enabled=false with the mod still loaded: every createPath still enters the mixin wrapper
@@ -99,7 +110,7 @@ if [ "$ARM" = "vanilla" ]; then
   mv -f "$HELD_JAR" "$SERVER/.pw-held/" || { echo "REFUSING: could not move the jar aside"; exit 8; }
   echo "vanilla arm: held $(basename "$HELD_JAR") out of mods/"
 fi
-echo "arm=$ARM enabled=$ENABLED brainSinkAsync=$SINK"
+echo "arm=$ARM enabled=$ENABLED brainSinkAsync=$SINK resultCacheMode=$CACHE"
 
 : > "$IN"; : > "$LOG"; mkdir -p "$SPARKDIR"; rm -f "$SPARKDIR"/profile-*.sparkprofile
 ( tail -f "$IN" & echo $! > "$OUT/$LABEL.tailpid"; wait ) | "$JAVA" -Xmx12G -Xms4G -XX:+UseG1GC -XX:+ParallelRefProcEnabled \
@@ -228,7 +239,36 @@ BEFORE_ALIVE="$(grep -aoE 'Test passed. Count: [0-9]+' "$LOG" | head -1 | grep -
 
 say "spark profiler start --thread * --not-combined"
 sleep 5
-sleep "$SAMPLE"
+# PW_BENCH_CHURN=1 changes blocks in the walk corridors while the window is open.
+#
+# Not part of the campaign, and it must not be. It exists because the campaign's arena is static, so
+# the cache's "dropped when the terrain changed" and "refused because the ground moved mid-search"
+# rows come back zero -- and a zero from a probe that has never returned anything else is not
+# evidence that the guard works, it is silence. This is the run that makes those rows non-zero, so
+# the campaign's zeros can be read as "nothing changed here" rather than "the guard never fired".
+#
+# The blocks toggled are the corridor gaps the walk families path through, which is where routes
+# actually run; changing a wall nothing crosses would be another way of proving nothing.
+if [ "${PW_BENCH_CHURN:-0}" = "1" ]; then
+  echo "  CHURN CONTROL: toggling corridor blocks throughout the window"
+  churn_end=$(( $(date +%s) + SAMPLE ))
+  toggle=0
+  while [ "$(date +%s)" -lt "$churn_end" ]; do
+    if [ "$toggle" = "0" ]; then
+      for x in -24 -16 -8 0 8 16 24; do say "fill $x 201 -4 $x 202 4 minecraft:stone"; done
+      toggle=1
+    else
+      for x in -24 -16 -8 0 8 16 24; do say "fill $x 201 -4 $x 202 4 minecraft:air"; done
+      toggle=0
+    fi
+    sleep 4
+  done
+  # Leave the corridors OPEN, so the run ends in the same shape every other arm measures.
+  for x in -24 -16 -8 0 8 16 24; do say "fill $x 201 -4 $x 202 4 minecraft:air"; done
+  sleep 2
+else
+  sleep "$SAMPLE"
+fi
 say "spark profiler stop --save-to-file"
 wait_for 'Profiler stopped & save complete' 120 || { echo "VOID: no profile saved"; exit 7; }
 sleep 3
@@ -284,6 +324,19 @@ case "$ARM" in
     grep -aq "Done (" "$LOG" ||
       void "vanilla server never started, so its absence proves nothing" ;;
   off)   [ "$DELTA" -gt 5 ]  && void "the mod is disabled but dispatched $DELTA searches" ;;
-  async) [ "$DELTA" -le 0 ]  && void "brain sink on but nothing dispatched in the window" ;;
+  async)
+    [ "$DELTA" -le 0 ] && void "brain sink on but nothing dispatched in the window"
+    # The negative control for the two cache arms. This arm must show the cache OFF, or "SHADOW
+    # measured nothing" and "every arm has the cache off" are the same observation.
+    grep -aq 'route cache: off' "$LOG" ||
+      void "the async arm was supposed to have the route cache off and status does not say so" ;;
+  shadow)
+    [ "$DELTA" -le 0 ] && void "nothing dispatched in the window"
+    grep -aq 'route cache: measuring only' "$LOG" ||
+      void "the shadow arm did not report a measuring cache; the setting did not take" ;;
+  serve)
+    [ "$DELTA" -le 0 ] && void "nothing dispatched in the window"
+    grep -aq 'route cache: serving' "$LOG" ||
+      void "the serve arm did not report a serving cache; the setting did not take" ;;
 esac
 echo "run $LABEL ($ARM) complete"

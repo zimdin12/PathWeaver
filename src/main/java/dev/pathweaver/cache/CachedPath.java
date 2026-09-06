@@ -9,6 +9,10 @@ import net.minecraft.world.level.pathfinder.Path;
  * {@link PathCopies#deepCopy(Path)}. Vanilla navigation mutates the path object it holds, so a
  * shared instance would let one mob truncate another's route.
  *
+ * <p>It is null while the cache is only measuring. Everything that decides whether a hit is honest
+ * is still here -- the tick, the sections, the exact position -- so the count means the same thing;
+ * only the route nobody was going to ask for is missing.
+ *
  * <p>{@code computedTick} is the tick the search was DISPATCHED, not the tick it landed. The search
  * read the world as it stood then, so that is the moment the route's claim about terrain is anchored
  * to. Using the landing tick would treat changes made while the search was in flight as if they had

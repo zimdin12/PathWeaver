@@ -79,7 +79,8 @@ public class ResultInstaller {
             if (result.discardOnly() || result.outcome().status() != PathOutcome.Status.SUCCESS) {
                 cache.forget(result.key());
             } else {
-                cache.completed(result.key(), result.outcome().path());
+                cache.completed(result.key(), result.outcome().path(),
+                    dev.pathweaver.config.PathWeaverConfig.get().resultCacheServes());
             }
             if (result.discardOnly()) {
                 sink.discard(result.key(), RequestOutcome.HANDOFF_FAILED);

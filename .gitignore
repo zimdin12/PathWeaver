@@ -1,12 +1,13 @@
-.gradle/
-build/
-run/
-*.log
-*.zip
 
 # runtime dev-server/evidence outputs (never ship)
-logs/
+*.log
+*.zip
+.gradle/
 .minecraft-dev*/
-benchmarks/
-bench/out/
+bench/deep-archive-*/
 bench/deep/
+bench/out/
+benchmarks/
+build/
+logs/
+run/
