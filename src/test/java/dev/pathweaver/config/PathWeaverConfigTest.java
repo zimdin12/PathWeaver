@@ -31,7 +31,7 @@ class PathWeaverConfigTest {
     }
     @Test void defaultsEnableMasterWithConservativeFallbacks() {
         PathWeaverConfig c = new PathWeaverConfig();
-        assertEquals(2, c.configVersion);
+        assertEquals(PathWeaverConfig.CURRENT_CONFIG_VERSION, c.configVersion);
         assertTrue(c.enabled);
         assertFalse(c.allowModdedMobAsync);
         // Path reuse defaults ON at one block, and this pins that it is not zero.
