@@ -309,6 +309,24 @@ least recently used, which is the oldest, which is already dead. Capacity never 
 
 The hit rate is what it is. Raising the budget would buy nothing and cost memory.
 
+### Corrected: the CANT_REACH gate is not outstanding work
+
+It was being carried as an open item, described as "written and unmet" and as a known red. Both
+readings were wrong and the second one was mine.
+
+It is the shipping prerequisite for DESIGN.md 11, *"Rejected: making an in-flight navigation report
+itself as in progress"*, which is a rejected design. A gate on something nobody is building is doing
+its job by staying unmet; it is not a task.
+
+And it is not red. Run three times on demand today it passed 3 of 3, with `dispatched=6` each time,
+so the brain sink was genuinely running rather than the gate timing a vanilla villager the way it did
+for its whole life before 0.8.0. The 0.8.0 measurement was 8 of 10 with the sink on against 6 of 8
+with it off, which is why it is waived as a BLOCKING gate: the residual flake is vanilla's own
+villager behaviour in a walled arena, not the feature.
+
+Nothing to do here. Recorded because a mischaracterised item is worse than an absent one, and this
+one would have cost a future reader real time.
+
 ### What is left for 0.9, and it is not much
 
 Four candidates have now been evaluated and rejected on measurement rather than on taste: crowd

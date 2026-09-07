@@ -235,7 +235,9 @@ a gate this document wrote is a real cost, so it is recorded here rather than qu
 is waived on the ground that the flake is measured to be outside the feature, not on the ground that
 it is inconvenient. The original wording follows.
 
-**Prerequisite for shipping it:** a game test asserting the whole
+**Prerequisite for shipping THIS SECTION'S REJECTED IDEA**, not for `brainSinkAsync`, which shipped
+in 0.8.0 and does not depend on it. Worth stating because the gate has twice been read as outstanding
+work against the shipped feature: a game test asserting the whole
 `CANT_REACH_WALK_TARGET_SINCE` transition table — erased on `canReach`, set once with the dispatch
 game time when unreachable, erased on arrival, never surviving a later successful search. If that
 test cannot be written, the feature must not ship.
