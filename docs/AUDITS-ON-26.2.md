@@ -150,3 +150,44 @@ Each was stated with more confidence than the evidence carried.
 8. **`dispatched=7, installed=1, discarded=3`** was one run's timing quoted as a property.
 9. **The enumerator gap was described as a `@ModifyConstant` blind spot.** It was every non-`@Inject`
    annotation in one enumerator and every non-`@Redirect` in the other.
+
+## Re-pinning Lithium for 26.2: evidence so far
+
+Work in progress for 0.9. Recorded as it is gathered so the next person does not repeat it.
+
+**The structural proof holds.** Re-run against Lithium `0.25.3+mc26.2`, which is what the 26.2 branch
+resolves, using `tools/audit_field_writes.py`. Every field write is in `<init>`, `<clinit>`,
+`lithium$initializePathNodeTypeCache` or `lithium$initializeFlags`. `WalkNodeEvaluatorMixin`,
+`FlyNodeEvaluatorMixin`, `PathfindingContextMixin`, `PathfindingContextAccessor`, the chunk-access
+`PathNavigationRegionMixin` and the inactive-navigations `PathNavigationMixin` write nothing at all.
+Zero violations.
+
+**Eight of the audited classes did not change at all.** Comparing the pinned 26.1.2 hashes against
+the 26.2 artifact, nine of twelve are byte-identical, and all eight audited mixin classes are among
+them. The proof's subject matter is literally the same bytes.
+
+| pin | 26.1.2 | 26.2 |
+|---|---|---|
+| the eight audited mixin classes | | identical |
+| `lithium-fabric.mixins.json` | | identical |
+| `lithium.mixins.json` | `f9674d7b9bb5` | `14ed3a630a22` |
+| the module jar | `509e7f770c7d` | `fdde92e238e8` |
+| `LithiumMixinPlugin` | `b97aed37b9ed` | `795f0a10e2cb` |
+
+**The mixin config declares the same set.** 286 entries both sides, 21 of them pathfinding-relevant,
+none added and none removed. The whole diff is a `conformVisibility` overwrite option and one
+unrelated sensor mixin renamed from `parent_animal_sensor` to `baby_specific_sensors`. Neither
+touches an audited class.
+
+**Still open before the pin can be written.** `LithiumMixinPlugin` changed bytes, and it is pinned
+precisely because a plugin decides which mixins actually apply. The declared set being identical and
+the audited classes being byte-identical bound the risk to one thing: whether the new plugin switches
+ON a pathfinding mixin the old one left off. That has to be read out of the plugin rather than
+assumed, and it is the next step.
+
+**A design question the evidence raises.** The audit refuses on `MOD_VERSION` before it ever looks at
+a byte. Since the proof's subject matter is byte-identical across these two builds, a version label
+is the only thing refusing, which is the same defect 0.7.0 fixed for 26.1.1: gate on the bytes the
+proof pinned, not on a label. The pin should probably carry a set of known artifact fingerprints
+rather than one version string.
+
