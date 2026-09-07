@@ -296,6 +296,29 @@ mob gets its own path rather than a good one, which is what the whole safety sto
 a bad trade at this price. Park it until a saturating benchmark or a real-world hit rate says
 otherwise.
 
+### Rejected: gate the audits on bytes instead of a version label
+
+It looked like the obvious lesson from the 0.9 re-pins. Both Lithium and Diagonal Blocks refused on
+26.2 while the bytes their proofs are about were unchanged, and `AuditedMixinCompatibility` already
+carries the argument for dropping a label, written for the Minecraft version in 0.7.0: the label is
+"a second, coarser answer to the same question that could only ever be stricter than the bytes". The
+mod-version check sits one line below that comment.
+
+It does not survive the numbers. Dropping the label would have changed nothing on either re-pin,
+because `MODULE_SHA` pins the whole jar and the whole jar changed both times: Lithium
+`509e7f770c7d` to `fdde92e238e8`, Diagonal Blocks `df59211601dc` to `ef2fc49de900`. The label was
+redundant, not binding. The audits would still have refused, one line later, on the artifact hash.
+
+Which leaves the honest position: **an exemption pinned to exact artifacts breaks on every release of
+the mod it exempts, and that is the design working.** The proof is a statement about specific bytes.
+There is no code change that keeps it true for bytes nobody has looked at. What can be improved is
+the turnaround, which is process rather than code, and the user-facing failure, which is already
+handled: the world-start report names the mods responsible and `trustedMods` is the escape hatch for
+someone who has decided for themselves.
+
+Recorded rather than left as an open idea, because it is a plausible-sounding change that would have
+bought nothing.
+
 ### 4. Closed: stop producing discards (DESIGN.md 12)
 
 Across 27 runs and 348,412 dispatched searches on 0.8.0: 63.2% installed, 36.7% parked for a mob
