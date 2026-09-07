@@ -46,13 +46,29 @@ import java.util.Set;
  * That is the opt-in checked tier, not the shipped default -- at the default the scan is waived
  * wholesale and this audit decides nothing at all.
  *
+ * <h2>Re-pinned for 26.2, and what that did and did not require</h2>
+ * The 26.1.2 pin refused on 26.2 for a version label, before it read a byte. Re-pinning was checked
+ * rather than assumed, and the answer was better than a re-derivation: <strong>all eight audited
+ * mixin classes are byte-identical</strong> between {@code 0.24.6+mc26.1.2} and
+ * {@code 0.25.3+mc26.2}, so the bytes this proof is about did not change. Nine of the twelve pinned
+ * artifacts match; only the jar, {@code lithium.mixins.json} and the plugin differ.
+ *
+ * <p>Both differences were read rather than waved through. The config declares the same 286 mixins,
+ * 21 of them pathfinding-relevant, none added or removed; its whole diff is a
+ * {@code conformVisibility} option and one unrelated sensor mixin renamed. The plugin gained exactly
+ * one thing in {@code shouldApplyMixin}, ahead of otherwise identical logic:
+ * {@code if (DISABLE_ALL_MIXINS) return false;}, read from the
+ * {@code lithium.test.disable_all_mixins} system property, which defaults false. That path can only
+ * ever apply FEWER mixins, which is the safe direction for a claim about what these mixins do when
+ * they ARE applied. It cannot switch on a pathfinding mixin the previous plugin left off.
+ *
  * <p>The exemption is pinned to exact artifact bytes. A different Lithium build, a changed mixin
  * class, or a changed mixin plugin fails verification and denies, because the proof above is a
  * statement about <em>these</em> bytes and nothing else.
  */
 final class LithiumPathfindingCompatibility {
     static final String MOD_ID = "lithium";
-    static final String MOD_VERSION = "0.24.6+mc26.1.2";
+    static final String MOD_VERSION = "0.25.3+mc26.2";
     static final String CONFIG = "lithium.mixins.json";
     static final String FABRIC_CONFIG = "lithium-fabric.mixins.json";
     static final String PLUGIN = "net.caffeinemc.mods.lithium.mixin.LithiumMixinPlugin";
@@ -79,13 +95,13 @@ final class LithiumPathfindingCompatibility {
         "net.minecraft.world.entity.ai.navigation.PathNavigation";
 
     private static final String MODULE_SHA =
-        "509e7f770c7d48bd37e9592917329db2768e4695c72a43e22c19ef64d0f9839f";
+        "fdde92e238e8075f89ad7f701f2a3d5854af88ba9a67657184a4407b104ac563";
     private static final String CONFIG_SHA =
-        "f9674d7b9bb56ba70aedae56bb07c46ed82b94f554c8573a1a8420350827dd37";
+        "14ed3a630a2287e455fb77c0ea8c0e6dce32c862a004d31a462b6a4c665e38f2";
     private static final String FABRIC_CONFIG_SHA =
         "e1bfe4635f34f0924b85d607fbd2416896a6591176bd4849b19047dd27c40c29";
     static final String PLUGIN_SHA =
-        "b97aed37b9ed2f2bd81868682ce8aac62808ec775fa3899afbca751ea204226a";
+        "795f0a10e2cbd526e1737086d1c02d3e93d1280608869c30a7aee4eac03aad13";
     private static final String BLOCK_STATE_MIXIN_SHA =
         "98e0029073adbf8ff610e6e69af696fc28d914b17e8c0d0bd78a22a806fccd19";
     private static final String WALK_MIXIN_SHA =
