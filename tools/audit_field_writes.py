@@ -16,6 +16,11 @@ direction that wastes time rather than the direction that ships a bad audit:
 So the member parser is checked in both directions before any verdict is believed: it must find
 writes in a class known to have them, and must find none in a class known to have none.
 
+A third failure sits above both, and neither control could see it: javap failing to read the file at
+all. That produced an empty dump, no parsed members, and a clean HOLDS for a class nobody had looked
+at. The exit status is checked now, and so is an empty dump, because a verdict from an unread file is
+the worst thing an audit tool can produce.
+
 Usage: python tools/audit_field_writes.py <jar> <class/with/slashes> [more classes...]
 """
 import re
@@ -32,8 +37,22 @@ NAME = re.compile(r"([\w$]+|<init>|<clinit>)\s*\(")
 
 def writes_by_method(class_file, simple_name):
     """Map method name to the fields it writes. Constructors report as <init>."""
-    dumped = subprocess.run([JAVAP, "-p", "-c", str(class_file)],
-                            capture_output=True, text=True).stdout
+    # Capture the exit status of javap, not just its stdout. Read only .stdout and an unreadable
+    # class file produces an empty dump, no parsed members, no writes, and a caller that reports
+    # HOLDS for a file it never read. Found by review: javap exits 1 with "Bad magic number" while
+    # this function returned {} and the audit above it printed a clean verdict.
+    #
+    # The existing controls could not catch it. They prove the probe SEES writes in a class known to
+    # have them, which says nothing about whether it noticed it failed to open the file. A control
+    # that only ever runs against valid input cannot detect a probe that fails silently on invalid
+    # input.
+    result = subprocess.run([JAVAP, "-p", "-c", str(class_file)], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"javap could not read {class_file}: exit {result.returncode}: "
+                           f"{(result.stderr or result.stdout).strip()[:200]}")
+    dumped = result.stdout
+    if not dumped.strip():
+        raise RuntimeError(f"javap produced no output for {class_file}; refusing to report a verdict")
     current, found = None, {}
     for line in dumped.splitlines():
         if STATIC_INIT.match(line):
