@@ -296,6 +296,34 @@ mob gets its own path rather than a good one, which is what the whole safety sto
 a bad trade at this price. Park it until a saturating benchmark or a real-world hit rate says
 otherwise.
 
+### Rejected: raise the route cache's entry budget
+
+Every 0.8.0 run ended with `entries=4096/4096`, which looked like eviction pressure holding the
+measured 12 to 16% hit rate down, and therefore like a number that had judged its own feature
+unfairly.
+
+It is not. Entries expire after 40 ticks and the arena stored 104 to 132 per second, so at most about
+264 entries can be inside the age limit at any moment. The budget is 4096, sixteen times that. A full
+map is full of entries that expired seconds ago and are removed lazily on lookup; the LRU evicts the
+least recently used, which is the oldest, which is already dead. Capacity never touched a live entry.
+
+The hit rate is what it is. Raising the budget would buy nothing and cost memory.
+
+### What is left for 0.9, and it is not much
+
+Four candidates have now been evaluated and rejected on measurement rather than on taste: crowd
+pathfinding, caching failed searches, byte-gating the audits, and this one. `DESIGN.md` 12 closed the
+same way, on 0.1% waste.
+
+That leaves 0.9 carrying **one user-facing change**: `compatibilityTier=AUDITED` works on 26.2.
+Real, bounded, and worth shipping, but a small release and it should be described as one. The
+saturating benchmark is not a feature; it is the instrument that decides whether there is a 1.0 worth
+building.
+
+**The two measurements that would change this are both blocked on Steven**, and neither is code:
+a saturating run on a free machine, and an hour of a real village on `resultCacheMode=SHADOW`. Until
+one of them exists, further feature work here would be invention rather than engineering.
+
 ### Rejected: gate the audits on bytes instead of a version label
 
 It looked like the obvious lesson from the 0.9 re-pins. Both Lithium and Diagonal Blocks refused on
