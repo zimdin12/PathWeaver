@@ -309,6 +309,25 @@ least recently used, which is the oldest, which is already dead. Capacity never 
 
 The hit rate is what it is. Raising the budget would buy nothing and cost memory.
 
+### Not splitting PathWeaverConfig, and the measurement that decided it
+
+It crossed 400 lines with the route-cache settings and was carried as a size signal. The size rule
+says to ask whether the file holds more than one responsibility and to SAY SO rather than silently
+continue, so it was asked rather than answered by reflex.
+
+Of 403 lines: 203 are javadoc and comments, 63 are Cloth annotations, 35 are blank, and **102 are
+code**. A quarter. The file is long because the settings are explained, which is the property that
+makes this project's config legible, not a structural problem to refactor away.
+
+It holds one responsibility: the persisted configuration model. Twenty-one settings, ten constants,
+thirteen methods, and no second concern hiding among them. The Cloth annotations cannot move off the
+fields they describe, and `resolvePoolThreads` is already a pure static function that inputs a number
+and outputs a number, which is what the architecture rule asks for; giving it a class of its own
+would be ceremony.
+
+A split here would move code between files without reducing the number of things the code does. Left
+alone deliberately, and recorded so the line count does not trigger the same review again.
+
 ### Corrected: the CANT_REACH gate is not outstanding work
 
 It was being carried as an open item, described as "written and unmet" and as a known red. Both
