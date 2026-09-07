@@ -90,10 +90,10 @@ now, and a mutation reintroducing a drifted copy turns two tests red.
 | `-PauditedRoutingHarness` | AUDITED | 2 passed | 2 passed |
 | `-PnewFamilyHarness` | AUDITED | 2 passed | 2 passed |
 | `-PfabricAggregateHarness` | AUDITED | 2 passed | 2 passed |
-| `-PauditedTierHarness` | AUDITED | 2 passed | **1 of 2 FAILS** |
+| `-PauditedTierHarness` | AUDITED | 2 passed | 2 passed (since the 0.9 re-pins) |
 | unit suite | n/a | 428 passed | 428 passed |
 
-## `-PauditedTierHarness` fails on 26.2, and this table used not to say so
+## RESOLVED: `-PauditedTierHarness` used to fail on 26.2
 
 The five harnesses above the line were the whole matrix. `auditedTierHarness` was not in it, so its
 result on 26.2 was not unknown, it was unasked. Running every harness rather than the recorded five
@@ -120,9 +120,25 @@ containing Lithium or Diagonal Blocks, which is most performance packs. The ship
 the log. It is a real limitation of the stricter tier on that version and the release notes should
 say it rather than let the 26.1.2 result stand in for both.
 
-**Fixing it** means re-deriving the Lithium and Diagonal Blocks audits against their 26.2 artifacts,
-which is the work 0.8.0 did for `servercore` and `rabbit-pathfinding-fix`: exact hashes plus a
-bytecode shape proof, not a version bump. That is its own piece of work and is not attempted here.
+**Fixed in 0.9, and it turned out to be a version bump after all.** Both audits were re-proved
+against their 26.2 artifacts before being re-pinned, and in both cases the bytes the proof is about
+had not changed:
+
+- Lithium: all eight audited mixin classes byte-identical between `0.24.6+mc26.1.2` and
+  `0.25.3+mc26.2`; nine of twelve pinned artifacts identical. The config declares the same 286
+  mixins with none added or removed. The plugin gained one thing,
+  `if (DISABLE_ALL_MIXINS) return false;` from a test-only system property defaulting false, which
+  can only ever apply fewer mixins.
+- Diagonal Blocks: the audited mixin class and the mixin config are byte-identical; only the
+  repackaged module jar differs.
+
+So what had been refusing on 26.2 was a version label standing in front of matching evidence. The
+structural proofs were re-run regardless, with parser controls, and both hold. All seven audits now
+verify on 26.2 and the scan reports `deniedFamilies=0`.
+
+Each new pin was mutation-verified rather than assumed to gate: corrupting the Lithium module hash,
+the Lithium plugin hash or the Diagonal Blocks module hash, or reverting the Diagonal Blocks version,
+each drops the verified tuples from two to one.
 
 `default` and `auditedRouting` used to fail on 26.2. At runtime the scan now emits no audit refusals
 at all, and logs live evidence for the content registry, the land-registry lifecycle and the audited

@@ -38,20 +38,33 @@ import java.util.Set;
  * future version routes the diagonal check through a shape cache, the exemption fails closed rather
  * than silently inheriting this finding.
  *
+ * <h2>Re-pinned for 26.2</h2>
+ * The audited mixin class and the mixin config are <strong>byte-identical</strong> between 26.1.0
+ * and 26.2.0; only the module jar differs, because it was repackaged. So nothing this proof is about
+ * changed, and what had been refusing on 26.2 was the version label standing in front of matching
+ * evidence.
+ *
+ * <p>The three checks were re-run against the 26.2 artifact anyway, because a pin that is not
+ * re-proved is a rubber stamp. No field writes. Static reads confined to
+ * {@code PROPERTY_BY_DIRECTION}. No call into {@code StarCollisionBlock}. The probe was controlled
+ * against {@code StarCollisionBlock} itself, which does write fields, does read 41 statics and does
+ * make 99 calls, and which still holds both {@code CORNER_SHAPES} caches: the hazard is real and
+ * this override still does not go near it.
+ *
  * <p>Like Lithium, this is a {@link CompatibilityTier#AUDITED} exemption rather than a
  * a structural-proof one: no worker write is possible, but the override adds live
  * block reads, so a search racing a block change can return a worse path.
  */
 final class DiagonalBlocksCompatibility {
     static final String MOD_ID = "diagonalblocks";
-    static final String MOD_VERSION = "26.1.0";
+    static final String MOD_VERSION = "26.2.0";
     static final String CONFIG = "diagonalblocks.common.mixins.json";
     private static final String PACKAGE = "fuzs.diagonalblocks.common.mixin";
     static final String WALK_MIXIN = PACKAGE + ".WalkNodeEvaluatorMixin";
     static final String WALK = "net.minecraft.world.level.pathfinder.WalkNodeEvaluator";
 
     private static final String MODULE_SHA =
-        "df59211601dc83718ec0189a56c9f5569a0654f56a58fbbd644ea462a51b74d6";
+        "ef2fc49de90018c022b63d36a871f64ecf1744e81183cca494976e9f5729d36b";
     private static final String CONFIG_SHA =
         "8aeca65fac6618bb8d7c266c5b4194af876a963fabd77c55f86c9131abfe6ea8";
     private static final String WALK_MIXIN_SHA =
