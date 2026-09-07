@@ -247,35 +247,60 @@ the write surface is unbounded because mods add behaviours. A missed write is si
 
 ---
 
-## 0.9 — Crowd pathfinding
+## 0.9 — Measure where it hurts, and fix the 26.2 gap
 
-**Where "many mobs" starts paying, and where the equivalence promise changes.** Demoted below the
-city release: it helps a narrower case and it is the first item that stops promising identical
-results.
+Ordered by what the 0.8.0 measurements actually said, not by what looked biggest before them.
 
-Fifty zombies converging on one player currently run fifty independent A\* searches over nearly
-identical terrain. Sharing that work is the largest remaining lever.
+### 1. Re-derive the Lithium and Diagonal Blocks audits for 26.2
 
-**The strict half of this landed early, in 0.8.0.** The route cache serves a stored route only when
-every input to the search agrees, so the mob receives exactly what its own search would have produced
-and the equivalence promise is untouched. It ships measuring rather than serving, because how often
-mobs actually repeat a search is a property of the pack and nobody has measured it. See DESIGN.md 14.
+The only thing on the published page that says "not there yet". On 26.2 both resolve to builds their
+audits were never derived from, so `AUDITED` denies six and one movement families respectively, and
+most performance packs ship Lithium. Exact hashes plus a bytecode shape proof, which is the work
+0.8.0 did for `servercore` and `rabbit-pathfinding-fix`. Bounded, and the highest value per hour on
+this list.
 
-What is left for 0.9 is the part that genuinely changes the promise: sharing between searches that do
-**not** agree, by reusing a route computed from a nearby block or for a nearby target. That is where
-crowds start moving in lanes, and it is also where the cache's own `BLOCK_ONLY` counter is the
-evidence — it says, on a real world, how much a looser key would actually be worth. Do not design it
-before reading that number.
+### 2. A benchmark that actually hurts, in five minutes
 
-**This is a deliberate change of promise, and must be labelled as one.** PathWeaver's claim to date is
-*identical results, just off the main thread* — that is what the safety story rests on. Shared routing
-gives a mob a **good** path rather than **its own** path: crowds move in lanes instead of each picking
-an individual line. Not unsafe — no races, all main-thread decisions — but visibly different.
+**Everything measured for 0.8.0 ran on a server that was 87% idle.** Exclusive self-time on the
+server thread in the route-sharing arm was 325,588 ms of 375,804 in `Unsafe.park`, waiting for the
+next tick, at 5 to 6 ms against a 50 ms budget. The arms are still comparable with each other, but
+none of those percentages tell someone with a struggling server what they would get, which is the
+only question that matters to them.
 
-So: config-gated, off by default, documented as a behaviour change. For a many-mobs pack it is
-probably the right trade; it must be chosen, not inherited on update.
+**Design constraint, and it is a hard one: five minutes per invocation.** Running a benchmark means
+holding every other agent off this machine, and an hour of that is not a cost worth paying for a
+number. `deep-bench.sh` is about 5.8 minutes per run and `server-bench.sh` about 4.3, so a campaign
+of interleaved arms is out. One arm per invocation, run twice, on separate approvals.
 
----
+A workable budget: 20 s startup, 15 s arena, 40 s summon and settle, 120 s measured, 25 s stop. That
+is 3.7 minutes with margin for a slow start. What has to fit inside it:
+
+- Enough mobs that the tick misses 50 ms without the mod. The 1024-zombie maze did this (mean tick
+  88 to 96 ms unmodded), so that population is the known-saturating one to start from.
+- Mean tick and the worst 1% from the same run, because the mod's claim is about spikes rather than
+  averages, and an average on a saturated server hides exactly the thing being sold.
+- The same per-arm controls the current harness has. A saturating run that quietly lost half its
+  population is worse than no run.
+
+Only once that exists is there any basis for deciding what to build next.
+
+### 3. Crowd pathfinding: parked, on the evidence
+
+This was the headline for 0.9 and the roadmap said not to design it before reading the cache's
+`BLOCK_ONLY` counter. The number is in: about 14% of lookups matched on everything except the mob's
+exact position, against 12 to 16% that matched exactly. Serving those exact hits bought about 3% of
+total pathfinding CPU with the run ranges overlapping.
+
+So capturing every near miss plausibly buys another 3%, and it is paid for with the promise that a
+mob gets its own path rather than a good one, which is what the whole safety story rests on. That is
+a bad trade at this price. Park it until a saturating benchmark or a real-world hit rate says
+otherwise.
+
+### 4. Closed: stop producing discards (DESIGN.md 12)
+
+Across 27 runs and 348,412 dispatched searches on 0.8.0: 63.2% installed, 36.7% parked for a mob
+brain, and 0.1% wasted in total. The largest waste row was 334 searches for a mob that stopped. There
+is nothing left to win here and the section is marked closed rather than left looking open.
 
 ## 1.0 — Flow fields
 

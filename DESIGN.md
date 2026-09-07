@@ -284,7 +284,13 @@ goal moved on is a mob behaving normally; the search that was cancelled was work
 being wanted. Spending correctness risk to reclaim it would be paying for the wrong thing.
 
 
-## 12. Direction for the next version: stop producing discards
+## 12. CLOSED: stop producing discards
+
+**Closed on measurement, 2026-09-07.** Across 27 runs and 348,412 dispatched searches on 0.8.0:
+63.2% installed, 36.7% parked for a mob brain, 0.1% wasted in total, and the largest waste row was
+334 searches for a mob that had stopped. Every direction below was aimed at a cost that is now a
+rounding error, so none of them is worth building. The section stays because the reasoning explains
+why the counters are split the way they are.
 
 Recorded as intent, not as a design. Scheduled for 0.7, where it depends on requests carrying their
 origin — see [ROADMAP.md](ROADMAP.md). The 2.8% below was measured before 0.6.0; the current figure on
@@ -472,7 +478,11 @@ measured. The `BLOCK_ONLY` counter is what says whether a looser key would chang
 
 A `NO_PATH` answer depends on the entire searched region rather than on a corridor through it, so its
 invalidation state is a few hundred sections instead of a few dozen. It is also the most expensive
-search there is, because failing to reach a target means exhausting the node budget, which makes it
-the most attractive thing to cache and the most expensive to get wrong. The `NO_PATH` row in
-`/pathweaver status` already says how much of a session it is; that number should decide it, and it
-does not exist yet for any real pack.
+search there is, because failing to reach a target means exhausting the node budget.
+
+That made it look like the obvious thing to cache next, and this section said so. **The benchmark
+does not support that.** Across 348,412 dispatched searches on 0.8.0 there were zero `NO_PATH`
+outcomes: the arena has no unreachable targets, so it cannot price the case at all. Mobs chasing
+something they cannot reach is common in real play and this may still be worth building, but the
+claim that it is the best next move was an assumption wearing a number's clothes. The `NO_PATH` row
+in `/pathweaver status` on a real server is what should decide it.
