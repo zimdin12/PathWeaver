@@ -102,9 +102,17 @@ the region on the main thread at dispatch and that ordering is what makes those 
 `entity.inactive_navigations.PathNavigationMixin` is the exception and rests on a different proof.
 Its handlers genuinely mutate shared state — they add and remove navigations from a listener set on
 the level — so write-confinement would not save it. It is safe because a worker never runs it: the
-worker's entry point is `PathFinder.findPath`, which contains no call edge into `PathNavigation`.
-That is the same non-reachability proof the rabbit-pathfinding-fix exemption uses, re-checked here
-against the vanilla bytes actually loaded.
+worker's entry point is `PathFinder.findPath`, and no method of `PathFinder` calls `PathNavigation`
+directly. That is a direct-call scan of one class, not a reachability result: it does not follow
+callees. What makes it worth anything is the pin. `PathFinder` is fixed by SHA-256 to the class this
+release audited, so the scan runs on bytes someone has read, and a changed `PathFinder` is refused
+rather than re-scanned and quietly passed. The rabbit-pathfinding-fix exemption rests on the same
+pair.
+
+The scan reads the class resource, which is the class as shipped rather than the definition after
+mixins have been applied to it. A mixin into `PathFinder` would not appear in it. That is covered
+separately: the foreign-mixin scan is what refuses an unaudited mixin on these classes, and this
+check does not stand in for it.
 
 **What this does not prove.** Lithium still adds live section and palette reads on the search path.
 A search running concurrently with a block change can observe a stale or torn view and return a

@@ -74,7 +74,6 @@ final class FabricInteractionCompatibility {
     private static final String CONFIG_SHA = "9a8445db121fce8e80c928290b8623f2f6e126459fddcb259b2016ae777f9759";
     private static final String MIXIN_SHA = "c35a9d60b12e32f2b1540b0116f6459bf515e8d1901dc18be5ebff9fd5bf72e7";
     private static final String BLOCK_STATE_BASE_SHA = "6391d498b3e1aff66783374415253021b9ed46e5c8110da97700b305652c4991";
-    private static final String PATH_FINDER_SHA = "095d620eaac37aa71af017858682e89689039a3b999cf2a5fcfce3f1c3973b2c";
     private static final String NODE_EVALUATOR_SHA = "8ac7d5eef6bad45b148a051ee8d5d3d890281c66672d761e785361c506f421e1";
     static final String WALK_SHA = "3e8ec632e2fb9949d9460507b0288e1752acd40b029d1499f05bcbf195204936";
     static final String PATH_CONTEXT_SHA = "30aae3ceae3c27e7f3071d8d9b8232035ad8b15ae8d7999da3fbbaa49add6a9b";
@@ -145,7 +144,8 @@ final class FabricInteractionCompatibility {
         AuditedMixinCompatibility.checkHash("mixin config", b.config(), CONFIG_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("interaction mixin", b.mixin(), MIXIN_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("vanilla BlockStateBase", b.blockStateBase(), BLOCK_STATE_BASE_SHA, diagnostics);
-        AuditedMixinCompatibility.checkHash("vanilla PathFinder", b.pathFinder(), PATH_FINDER_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla PathFinder", b.pathFinder(),
+            AuditedMixinCompatibility.PATH_FINDER_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("vanilla NodeEvaluator", b.nodeEvaluator(), NODE_EVALUATOR_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("vanilla WalkNodeEvaluator", b.walkNodeEvaluator(), WALK_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("vanilla PathfindingContext", b.pathContext(), PATH_CONTEXT_SHA, diagnostics);
