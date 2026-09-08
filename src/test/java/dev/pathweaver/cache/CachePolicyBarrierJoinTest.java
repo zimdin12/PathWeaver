@@ -12,7 +12,13 @@ import net.minecraft.world.level.pathfinder.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -23,6 +29,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -48,6 +55,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class CachePolicyBarrierJoinTest {
 
+    private static final String GATE_OWNER = "dev/pathweaver/config/PathWeaverConfig";
+    private static final String CACHE_OWNER = "dev/pathweaver/cache/PathCache";
     private static final Object DIMENSION = "overworld";
     private static final long X = Double.doubleToLongBits(10.5);
     private static final long Y = Double.doubleToLongBits(64.0);
@@ -122,17 +131,33 @@ class CachePolicyBarrierJoinTest {
      * <p>A search dispatched before the gap is drained after it. Its candidate was recorded under the
      * old policy and describes a world nobody watched since; completing it would put that observation
      * into a cache that had just been emptied, which looks fresh and is not.
+     *
+     * <p>Both switches, for the same reason the stored case tests both: a fix applied to one of them
+     * leaves the other open, and the two are separate settings on the same screen.
      */
-    @Test
-    void aSearchDispatchedBeforeTheGapDoesNotPopulateTheCacheWhenItLandsAfterIt() {
+    @ParameterizedTest(name = "in-flight across {0}")
+    @MethodSource("bothSwitches")
+    void aSearchDispatchedBeforeTheGapDoesNotPopulateTheCacheWhenItLandsAfterIt(
+            String name, Runnable openTheGap) {
         cache.remember(request(1L), key(), 100L, X, Y, Z, generation());
 
-        publish(true, PathCacheMode.OFF);
+        openTheGap.run();
+        assertFalse(PathWeaverConfig.get().recordsBlockChanges(),
+            "the gap does not exist: the hook would still have recorded this change");
         publish(true, PathCacheMode.SERVE);
 
         cache.completed(request(1L), straightPath(5), true, generation());
         assertEquals(0, cache.size(), "a candidate from before the gap was stored after it");
         assertFalse(serves(120L), "a route from before the gap was served after it");
+    }
+
+    /** The two live settings that stop the world being watched, each opening the gap on its own. */
+    static java.util.stream.Stream<org.junit.jupiter.params.provider.Arguments> bothSwitches() {
+        return java.util.stream.Stream.of(
+            org.junit.jupiter.params.provider.Arguments.of("the cache switch",
+                (Runnable) () -> publish(true, PathCacheMode.OFF)),
+            org.junit.jupiter.params.provider.Arguments.of("the master switch",
+                (Runnable) () -> publish(false, PathCacheMode.SERVE)));
     }
 
     /** The negative control for the case above: with no gap, the same late drain does store. */
@@ -193,33 +218,154 @@ class CachePolicyBarrierJoinTest {
     }
 
     /**
-     * The hook asks that one predicate and decides nothing for itself.
+     * When the predicate says no, the hook records nothing. Proved on the control flow, not the call.
      *
-     * <p>Two copies of this rule is how the switches drift apart, and a drift would not show up in
-     * any behavioural test here, because these tests read the predicate rather than the hook. So this
-     * reads the bytecode of the hook: it must call {@code recordsBlockChanges}, and must not call
-     * {@code resultCacheActive} on its own.
+     * <p>The first version of this only asserted that the hook CALLS {@code recordsBlockChanges}. That
+     * admits calling it and throwing the answer away, and it admits inverting it, both of which would
+     * leave every behavioural test in this file green while the hook recorded through the gap or
+     * stopped recording at all. The check is now what its name claims: walk the method from the branch
+     * the FALSE answer leads to, and {@code noteBlockChange} must not be reachable from there.
      *
      * <p>The class resource is the right artifact. A mixin is applied to its target, but this class is
      * itself the definition being applied, so what is on disk is what runs.
      */
     @Test
-    void theBlockChangeHookGatesOnThatPredicateAndNothingElse() {
+    void whenTheGateSaysNoTheHookCannotReachTheRecordingCall() {
         MethodNode hook = hookMethod();
-        List<String> calls = new ArrayList<>();
-        for (var insn : hook.instructions) {
-            if (insn instanceof MethodInsnNode call) calls.add(call.owner + "." + call.name);
-        }
+        InsnList code = hook.instructions;
 
-        assertEquals(1, calls.stream()
-                .filter("dev/pathweaver/config/PathWeaverConfig.recordsBlockChanges"::equals).count(),
-            "the hook does not gate on the shared predicate: " + calls);
-        assertFalse(calls.contains("dev/pathweaver/config/PathWeaverConfig.resultCacheActive"),
-            "the hook re-implements half the recording rule: " + calls);
-        // The positive control for the two assertions above: this scan can see calls at all, and it
-        // is looking at the method that really does the recording.
-        assertTrue(calls.contains("dev/pathweaver/cache/PathCache.noteBlockChange"),
-            "this is not the recording hook, so gating assertions about it prove nothing: " + calls);
+        int gate = indexOfCall(code, GATE_OWNER, "recordsBlockChanges");
+        assertTrue(gate >= 0, "the hook does not consult the recording gate at all");
+        assertEquals(gate, lastIndexOfCall(code, GATE_OWNER, "recordsBlockChanges"),
+            "the hook asks the gate more than once, so which answer controls it is ambiguous");
+
+        AbstractInsnNode next = nextRealInstruction(code.get(gate));
+        assertInstanceOf(JumpInsnNode.class, next,
+            "the gate answer is not consumed by a branch, so the hook can ignore it: " + next);
+        JumpInsnNode branch = (JumpInsnNode) next;
+        assertTrue(branch.getOpcode() == Opcodes.IFEQ || branch.getOpcode() == Opcodes.IFNE,
+            "the gate answer feeds a branch this test cannot read: opcode " + branch.getOpcode());
+
+        // IFNE jumps when the gate said true, so false falls through. IFEQ is the other way round.
+        AbstractInsnNode whenGateSaysNo = branch.getOpcode() == Opcodes.IFNE
+            ? branch.getNext() : branch.label;
+        assertFalse(reaches(code, whenGateSaysNo, CACHE_OWNER, "noteBlockChange"),
+            "with recording off, the hook still reaches noteBlockChange");
+
+        // The positive control. Without it this passes on a hook that records under no condition at
+        // all, which is the same silence and the opposite bug.
+        AbstractInsnNode whenGateSaysYes = branch.getOpcode() == Opcodes.IFNE
+            ? branch.label : branch.getNext();
+        assertTrue(reaches(code, whenGateSaysYes, CACHE_OWNER, "noteBlockChange"),
+            "the hook never records on any path, so the assertion above proves nothing");
+    }
+
+    /**
+     * The generation a caller passes is the live one, read at the call.
+     *
+     * <p>The barrier only fires when the number changes, so a caller passing a constant, a cached
+     * field or a stale local would disable it completely and every behavioural test in this file
+     * would still pass: they call the cache directly and supply the generation themselves. This binds
+     * the three production call sites instead. The generation is the last parameter of each, so the
+     * instruction that produced it is the one immediately before the call.
+     */
+    @Test
+    void everyProductionCallerReadsTheGenerationAtTheCall() {
+        assertGenerationIsReadAtTheCall(dev.pathweaver.mixin.PathNavigationMixin.class, "lookup");
+        assertGenerationIsReadAtTheCall(dev.pathweaver.mixin.PathNavigationMixin.class, "remember");
+        assertGenerationIsReadAtTheCall(dev.pathweaver.async.ResultInstaller.class, "completed");
+    }
+
+    private static void assertGenerationIsReadAtTheCall(Class<?> caller, String name) {
+        int found = 0;
+        for (MethodNode method : classNodeOf(caller).methods) {
+            for (AbstractInsnNode insn : method.instructions) {
+                if (!(insn instanceof MethodInsnNode call)) continue;
+                if (!CACHE_OWNER.equals(call.owner) || !name.equals(call.name)) continue;
+                found++;
+                AbstractInsnNode previous = previousRealInstruction(insn);
+                assertInstanceOf(MethodInsnNode.class, previous,
+                    caller.getSimpleName() + "." + method.name + " does not read the generation at "
+                        + "the " + name + " call: " + previous);
+                MethodInsnNode source = (MethodInsnNode) previous;
+                assertEquals(GATE_OWNER + ".policyGeneration", source.owner + "." + source.name,
+                    caller.getSimpleName() + "." + method.name + " passes something other than the "
+                        + "live generation to " + name);
+            }
+        }
+        // Positive control: a scan that found no call site would pass every assertion above.
+        assertTrue(found > 0, caller.getSimpleName() + " no longer calls " + name
+            + ", so this test constrains nothing");
+    }
+
+    // ---------------------------------------------------------------- reading the compiled method
+
+    /** Is {@code owner.name} reachable from {@code from}, following both sides of every branch? */
+    private static boolean reaches(InsnList code, AbstractInsnNode from, String owner, String name) {
+        java.util.Deque<AbstractInsnNode> pending = new java.util.ArrayDeque<>();
+        java.util.Set<AbstractInsnNode> seen = new java.util.HashSet<>();
+        pending.add(from);
+        while (!pending.isEmpty()) {
+            AbstractInsnNode insn = pending.poll();
+            if (insn == null || !seen.add(insn)) continue;
+            if (insn instanceof MethodInsnNode call
+                    && owner.equals(call.owner) && name.equals(call.name)) {
+                return true;
+            }
+            int opcode = insn.getOpcode();
+            if ((opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN) || opcode == Opcodes.ATHROW) {
+                continue;   // this path ends without recording anything
+            }
+            if (insn instanceof JumpInsnNode jump) {
+                pending.add(jump.label);
+                if (opcode != Opcodes.GOTO) pending.add(jump.getNext());
+                continue;
+            }
+            pending.add(insn.getNext());
+        }
+        return false;
+    }
+
+    private static int indexOfCall(InsnList code, String owner, String name) {
+        for (int i = 0; i < code.size(); i++) {
+            if (code.get(i) instanceof MethodInsnNode call
+                    && owner.equals(call.owner) && name.equals(call.name)) return i;
+        }
+        return -1;
+    }
+
+    private static int lastIndexOfCall(InsnList code, String owner, String name) {
+        int last = -1;
+        for (int i = 0; i < code.size(); i++) {
+            if (code.get(i) instanceof MethodInsnNode call
+                    && owner.equals(call.owner) && name.equals(call.name)) last = i;
+        }
+        return last;
+    }
+
+    /** Skips labels, line numbers and frames, which carry no execution. */
+    private static AbstractInsnNode nextRealInstruction(AbstractInsnNode from) {
+        AbstractInsnNode insn = from.getNext();
+        while (insn != null && insn.getOpcode() < 0) insn = insn.getNext();
+        return insn;
+    }
+
+    private static AbstractInsnNode previousRealInstruction(AbstractInsnNode from) {
+        AbstractInsnNode insn = from.getPrevious();
+        while (insn != null && insn.getOpcode() < 0) insn = insn.getPrevious();
+        return insn;
+    }
+
+    private static ClassNode classNodeOf(Class<?> type) {
+        ClassNode node = new ClassNode();
+        String resource = type.getName().substring(type.getPackageName().length() + 1) + ".class";
+        try (InputStream in = type.getResourceAsStream(resource)) {
+            assertNotNull(in, type.getName() + " is not on the test classpath");
+            new ClassReader(in).accept(node, 0);
+        } catch (java.io.IOException failure) {
+            throw new AssertionError("could not read " + type.getName(), failure);
+        }
+        return node;
     }
 
     // ----------------------------------------------------------------------------------- fixtures
@@ -252,15 +398,7 @@ class CachePolicyBarrierJoinTest {
     }
 
     private static MethodNode hookMethod() {
-        ClassNode node = new ClassNode();
-        try (InputStream in = ServerLevelBlockChangeMixin.class
-                .getResourceAsStream("ServerLevelBlockChangeMixin.class")) {
-            assertNotNull(in, "the block-change mixin class is not on the test classpath");
-            new ClassReader(in).accept(node, 0);
-        } catch (Exception e) {
-            throw new AssertionError("could not read the block-change mixin", e);
-        }
-        for (MethodNode method : node.methods) {
+        for (MethodNode method : classNodeOf(ServerLevelBlockChangeMixin.class).methods) {
             if (method.name.startsWith("pathweaver$noteBlockChange")) return method;
         }
         throw new AssertionError("the block-change injection is gone; the cache observes nothing");
