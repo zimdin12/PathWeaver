@@ -8,9 +8,16 @@ Both switches now discard what was learned under the previous settings, includin
 
 ## Villager paths at the age limit are no longer thrown away
 
-A finished search that arrived at exactly the configured age limit was accepted by one part of the mod and rejected by another, so the work was done and discarded and the mob ran its own search anyway. At `maxResultAgeTicks=1`, which the settings allow, that happened to every brain-driven mob.
+A finished search that arrived at exactly the configured age limit was accepted by one part of the mod and rejected by another, so the work was done and discarded and the mob ran its own search anyway. At `maxResultAgeTicks=1`, which the settings allow, that was every result except the ones that finished within the same tick they were dispatched.
 
 Default settings were affected far less than that, but the wasted searches were real.
+
+## A villager path from the future
+
+If server time moved backwards, on a world reload or a rollback, a finished path already set aside for
+a villager could still be handed to it, answering a question asked before the search was dispatched.
+The check that refuses a result from the future ran when the result arrived and not when it was
+collected, and those are the same rule at two different moments.
 
 ## `/pathweaver status` stops overstating route sharing
 

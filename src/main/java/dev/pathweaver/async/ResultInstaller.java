@@ -79,9 +79,12 @@ public class ResultInstaller {
             if (result.discardOnly() || result.outcome().status() != PathOutcome.Status.SUCCESS) {
                 cache.forget(result.key());
             } else {
+                // One read, so the serve decision and the generation cannot come from different
+                // published configurations.
+                dev.pathweaver.config.PathWeaverConfig cacheConfig =
+                    dev.pathweaver.config.PathWeaverConfig.get();
                 cache.completed(result.key(), result.outcome().path(),
-                    dev.pathweaver.config.PathWeaverConfig.get().resultCacheServes(),
-                    dev.pathweaver.config.PathWeaverConfig.policyGeneration());
+                    cacheConfig.resultCacheServes(), cacheConfig.generation());
             }
             if (result.discardOnly()) {
                 sink.discard(result.key(), RequestOutcome.HANDOFF_FAILED);

@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -106,15 +107,63 @@ class PathFinderPinTest {
     }
 
     /**
-     * The Lithium audit really applies the pin, rather than only having it available.
+     * A changed PathFinder produces a denial the Lithium audit actually returns.
      *
-     * <p>Lithium's audit deliberately ran the scan on unpinned bytes for a whole release. Nothing
-     * failed when it did, because a scan of the wrong class is quiet. A behavioural test of that
-     * audit needs the Lithium jar, so this reads the digest out of the compiled method instead:
-     * javac folds the constant into an LDC, so its presence is the pin being passed to something.
+     * <p>The earlier version of this looked for the digest literal inside the compiled verify method.
+     * That proves the pin is mentioned, not that a mismatch reaches the caller: a hash check writing
+     * into a list nobody returns keeps the literal exactly where the scan would find it. So this runs
+     * verify and reads its output.
+     *
+     * <p>The other artifacts in the bundle are deliberately junk, because the real Lithium jar is not
+     * on the test classpath and every other check failing is fine here. What matters is the presence
+     * or absence of one specific line among the diagnostics, and the two runs differ only in the
+     * PathFinder bytes.
      */
     @Test
-    void theLithiumAuditPassesThePinToItsHashCheck() throws Exception {
+    void aChangedPathFinderProducesADenialTheLithiumAuditReturns() throws Exception {
+        List<String> withRealBytes = LithiumPathfindingCompatibility.verify(bundleWith(pathFinderBytes()));
+        List<String> withChangedBytes = LithiumPathfindingCompatibility.verify(
+            bundleWith(oneByteDifferent(pathFinderBytes())));
+
+        assertTrue(mentionsPathFinderMismatch(withChangedBytes),
+            "a changed PathFinder produced no returned denial: " + withChangedBytes);
+        assertFalse(mentionsPathFinderMismatch(withRealBytes),
+            "the pinned PathFinder was denied, so the assertion above is not about the pin: "
+                + withRealBytes);
+
+        // The positive control on the harness itself: verify really ran and really produced output.
+        // A verify that returned nothing at all would satisfy the absence assertion above.
+        assertFalse(withRealBytes.isEmpty(),
+            "verify returned no diagnostics for a bundle of junk artifacts; it did not run");
+    }
+
+    private static boolean mentionsPathFinderMismatch(List<String> diagnostics) {
+        return diagnostics.stream().anyMatch(line ->
+            line.contains("vanilla PathFinder") && line.contains("hash mismatch"));
+    }
+
+    private static byte[] oneByteDifferent(byte[] bytes) {
+        byte[] altered = bytes.clone();
+        altered[altered.length - 1] ^= 0x01;
+        return altered;
+    }
+
+    /** Junk for every artifact the audit checks, and the given bytes for vanilla PathFinder. */
+    private static LithiumPathfindingCompatibility.Bundle bundleWith(byte[] pathFinder) {
+        byte[] junk = new byte[] {1, 2, 3};
+        return new LithiumPathfindingCompatibility.Bundle(junk, junk, junk, junk, junk, junk, junk,
+            junk, junk, junk, junk, junk, pathFinder);
+    }
+
+    /**
+     * The Lithium audit passes the pin to its hash check.
+     *
+     * <p>Kept beside the executed test, narrower on purpose: it says which constant is used, which
+     * the behavioural test above cannot, since any digest that fails for a changed class and passes
+     * for the real one would satisfy it.
+     */
+    @Test
+    void theLithiumAuditUsesThatConstantAndNotAnotherDigest() throws Exception {
         ClassNode node = new ClassNode();
         new ClassReader(AuditedMixinCompatibility.readClassBytes(
             LithiumPathfindingCompatibility.class)).accept(node, 0);

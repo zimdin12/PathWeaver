@@ -20,9 +20,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * learns about exactly the changes vanilla considers worth reacting to, rather than a set this mod
  * chose for itself.
  *
- * <p>The recording decision is {@link PathWeaverConfig#recordsBlockChanges()} and nothing else, so
- * there is one answer to "was the world being watched" rather than a copy of the rule here and
- * another in the cache. {@code CachePolicyBarrierJoinTest} holds that to a single call.
+ * <p>This method decides nothing. It adapts the level's arguments and hands them to
+ * {@link dev.pathweaver.cache.BlockChangeObserver}, which owns the whole rule and, unlike a mixin,
+ * can be executed by a test. A hook holding half the rule is how the two switches drift apart, and a
+ * hook holding a rule nothing can run is how a wrong one survives.
  *
  * <p>Cost is a config read, a section-coordinate pack and one array write. The method it joins
  * already iterates the level's navigating mobs, so this is not a new hot path.
@@ -33,11 +34,10 @@ public abstract class ServerLevelBlockChangeMixin {
     @Inject(method = "sendBlockUpdated", at = @At("HEAD"), require = 1, expect = 1)
     private void pathweaver$noteBlockChange(BlockPos pos, BlockState oldState, BlockState newState,
                                             int flags, CallbackInfo ci) {
-        if (!PathWeaverConfig.get().recordsBlockChanges()) return;
         ServerLevel level = (ServerLevel) (Object) this;
         PathWeaverRuntime runtime = PathWeaverRuntime.get();
-        if (!runtime.isRunning()) return;
-        runtime.resultCache().noteBlockChange(
+        dev.pathweaver.cache.BlockChangeObserver.observe(
+            PathWeaverConfig.get(), runtime.isRunning(), runtime.resultCache(),
             level.dimension().hashCode(), SectionPos.asLong(pos),
             level.getServer().getTickCount());
     }

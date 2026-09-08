@@ -50,11 +50,10 @@ class CacheStatusLinesTest {
         List<String> lines = CacheStatusLines.render(
             config(PathCacheMode.SERVE, 4096), cacheWith(0L, 5L, 100L, 4096));
 
-        String skipped = lineContaining(lines, "searches skipped");
-        assertTrue(skipped.contains("0"), "the measured saving is not zero: " + skipped);
-        assertFalse(skipped.contains("5"), "hits that saved nothing were reported as savings: " + skipped);
-        assertTrue(joined(lines).contains("hits that saved nothing"),
-            "the hypothetical count is not reported at all, so the hits vanish: " + joined(lines));
+        assertEquals("0", countOn(lines, "searches skipped"),
+            "hits that saved nothing were reported as savings: " + joined(lines));
+        assertEquals("5", countOn(lines, "hits that saved nothing"),
+            "the hypothetical count is not reported, so the hits vanish: " + joined(lines));
     }
 
     /** With both kinds present, neither the sum nor the wrong half may appear on the measured line. */
@@ -63,10 +62,9 @@ class CacheStatusLinesTest {
         List<String> lines = CacheStatusLines.render(
             config(PathCacheMode.SERVE, 4096), cacheWith(3L, 5L, 100L, 4096));
 
-        String skipped = lineContaining(lines, "searches skipped");
-        assertTrue(skipped.contains("3"), skipped);
-        assertFalse(skipped.contains("8"), "served and wouldServe were summed: " + skipped);
-        assertTrue(lineContaining(lines, "hits that saved nothing").contains("5"));
+        assertEquals("3", countOn(lines, "searches skipped"),
+            "served and wouldServe were summed: " + joined(lines));
+        assertEquals("5", countOn(lines, "hits that saved nothing"), joined(lines));
     }
 
     /**
@@ -82,6 +80,10 @@ class CacheStatusLinesTest {
             "the measured share is missing: " + joined(lines));
         assertTrue(lineContaining(lines, "hits that saved nothing").contains("5.0%"),
             "the hypothetical share is missing: " + joined(lines));
+        // The counts themselves, so the shares cannot stand in for them. With 100 lookups the share
+        // text happens to repeat the count digits, which is exactly why the count is read as a token.
+        assertEquals("3", countOn(lines, "searches skipped"));
+        assertEquals("5", countOn(lines, "hits that saved nothing"));
     }
 
     /** No lookups means no share to take, and a percentage of nothing must not be printed. */
@@ -113,18 +115,48 @@ class CacheStatusLinesTest {
         assertFalse(joined(lines).contains("next restart"), joined(lines));
     }
 
-    /** Measuring mode says the hits are unspent because of the mode, not because of the entries. */
+    /**
+     * The hypothetical count is explained as history, not as a total waiting to be claimed.
+     *
+     * <p>Counters survive a settings change while the entries behind them are cleared, so in SERVE
+     * this row can hold hits counted during an earlier measuring period. Telling an operator that
+     * switching to SERVE spends "these" is wrong in both modes: the entries are gone and a mode
+     * change is not retroactive. What SERVE buys is future hits.
+     */
     @Test
-    void measuringModeExplainsWhyTheHitsAreUnspent() {
-        List<String> lines = CacheStatusLines.render(
-            config(PathCacheMode.SHADOW, 4096), cacheWith(0L, 5L, 100L, 4096));
-        assertTrue(joined(lines).contains("switch to SERVE"), joined(lines));
+    void theHypotheticalCountIsExplainedAsPastHitsRatherThanPendingSavings() {
+        String measuring = joined(CacheStatusLines.render(
+            config(PathCacheMode.SHADOW, 4096), cacheWith(0L, 5L, 100L, 4096)));
+        assertTrue(measuring.contains("SERVE"),
+            "measuring mode does not say what would change the number: " + measuring);
+        assertTrue(measuring.contains("these are done") || measuring.contains("not a total"),
+            "measuring mode still offers the past count as claimable: " + measuring);
+
+        String serving = joined(CacheStatusLines.render(
+            config(PathCacheMode.SERVE, 4096), cacheWith(3L, 5L, 100L, 4096)));
+        assertTrue(serving.contains("Past hits"),
+            "serving mode does not explain the leftover count as history: " + serving);
     }
 
     @Test
     void anInactiveCacheSaysSoAndReportsNothingElse() {
         assertEquals(List.of("  route cache: off"), CacheStatusLines.render(
             config(PathCacheMode.OFF, 4096), cacheWith(3L, 5L, 100L, 4096)));
+    }
+
+    /**
+     * The count printed on a row, as a token rather than as a substring of the whole line.
+     *
+     * <p>Searching the line for the digits finds them in the percentage too, so a block printing
+     * hardcoded zeros with correct shares satisfied the old assertions. The count is the number
+     * between the colour code and its reset, and nothing else on the row can be mistaken for it.
+     */
+    private static String countOn(List<String> lines, String needle) {
+        String line = lineContaining(lines, needle);
+        java.util.regex.Matcher digits =
+            java.util.regex.Pattern.compile("\u00a7[ae](\\d+)\u00a7r").matcher(line);
+        assertTrue(digits.find(), "no count token on the row: " + line);
+        return digits.group(1);
     }
 
     private static String lineContaining(List<String> lines, String needle) {

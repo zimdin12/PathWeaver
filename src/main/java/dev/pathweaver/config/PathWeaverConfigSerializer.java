@@ -183,7 +183,15 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
      */
     private static void validateCurrentFieldTypes(JsonObject raw) {
         for (java.lang.reflect.Field field : PathWeaverConfig.class.getDeclaredFields()) {
-            if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) continue;
+            int modifiers = field.getModifiers();
+            // transient is the language's own word for "not persisted", and Gson honours it, so a
+            // transient field never appears in the file and has nothing to type-check. Deriving the
+            // exclusion from the modifier rather than from a name keeps this a walk rather than a
+            // list with one exception in it.
+            if (java.lang.reflect.Modifier.isStatic(modifiers)
+                || java.lang.reflect.Modifier.isTransient(modifiers)) {
+                continue;
+            }
             String key = field.getName();
             if (READ_ELSEWHERE.contains(key)) continue;
             Class<?> type = field.getType();

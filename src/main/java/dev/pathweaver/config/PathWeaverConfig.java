@@ -258,6 +258,9 @@ public class PathWeaverConfig implements ConfigData {
      * Every publication path funnels through {@link #set}, including a save that hands back the same
      * object, so incrementing here covers all of them without anyone having to remember to.
      *
+     * <p>It allocates the number; the number then travels ON the published object, so consumers
+     * never read it from here.
+     *
      * <p>Annotated the way every static in this class is: AutoConfig reflects over declared fields
      * and would otherwise put this on the settings screen and crash Save on a final field.
      */
@@ -266,18 +269,30 @@ public class PathWeaverConfig implements ConfigData {
     private static final java.util.concurrent.atomic.AtomicLong POLICY_GENERATION =
         new java.util.concurrent.atomic.AtomicLong();
 
+    @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
+    private transient long generation;
+
     public static PathWeaverConfig get() { return INSTANCE; }
 
-    /** Which published configuration this is. Only equality across calls is meaningful. */
-    public static long policyGeneration() { return POLICY_GENERATION.get(); }
+    /**
+     * Which published configuration THIS object is. Only equality across calls is meaningful.
+     *
+     * <p>An instance method, not a static one, and that is the whole point. A consumer that reads the
+     * settings and the generation separately can be interrupted by a publication between the two
+     * reads, and one of the two orders is wrong: take the generation first and the settings second,
+     * and the cache sees an unchanged number while acting on new settings, so the barrier never
+     * fires. Reading them off one object cannot interleave, so the question does not arise and no
+     * caller has to remember an ordering rule.
+     */
+    public long generation() { return generation; }
 
     public static void set(PathWeaverConfig c) {
         PathWeaverConfig normalized = c == null ? new PathWeaverConfig() : c;
         normalized.validatePostLoad();
+        // Stamped BEFORE publication, so the object is never visible without its own generation.
+        normalized.generation = POLICY_GENERATION.incrementAndGet();
         INSTANCE = normalized;
-        // AFTER the instance is visible. A consumer that sees the new generation must not then read
-        // the old settings; the other order leaves exactly that window.
-        POLICY_GENERATION.incrementAndGet();
     }
 
     /** Keep pathfinding synchronous if persisted configuration cannot be registered or loaded. */

@@ -23,13 +23,17 @@ hurts.
 
 ## 2. Find the pathfinding cost
 
-In the viewer, open the server thread and look for these, in the call tree under `tickServer`:
+In the viewer, open the server thread and look under `tickServer` for:
 
-- `PathFinder.findPath`
 - `PathNavigation.createPath` / `moveTo`
+- `PathFinder.findPath`
 - `WalkNodeEvaluator.getNeighbors` and friends
 
-Add up their share. Their percentage is the number that decides this.
+**Do not add those three up.** They nest: `createPath` calls `findPath`, which calls the evaluator, so
+each one's share already contains the ones below it and summing them counts the same samples two or
+three times. Take the OUTERMOST pathfinding frame in each branch of the tree and add only those, so
+every sample is counted once. In practice that usually means the navigation frames alone, and the
+`findPath` and evaluator numbers are there to tell you where inside them the time goes.
 
 ## 3. Read it against `tickServer`, not against the whole thread
 
@@ -49,8 +53,13 @@ waiting. On that pack, pathfinding was:
 
 | | Share of `tickServer` | Share of the whole sampled thread |
 |---|---|---|
-| PathWeaver off | **40.3%** | 12.38% |
-| PathWeaver on | **19.8%** | 4.92% |
+| PathWeaver off | **40.3%** | 12.4% |
+| PathWeaver on | **19.8%** | 4.9% |
+
+Numerator: the outermost navigation and pathfinding frames, counted once each. A re-analysis of the
+same retained profiles that excluded the navigation matcher and kept only `PathFinder` and below
+produced different figures, which is the double-counting problem above seen from the other side. If
+you compare your numbers with these, use the same rule.
 
 Tick time went from 15.47 ms to 12.52 ms, about 19% off the tick. Both arms held 20 TPS, so what that
 pack bought was headroom, not throughput.
@@ -66,7 +75,7 @@ between them is my opinion and you may put it elsewhere.
 | Pathfinding share of `tickServer` | What it means |
 |---|---|
 | Under 5% | Not your problem. PathWeaver would move almost nothing and still cost you the overhead. Do not install it. |
-| 5-15% | Marginal. Worth trying if what you see is tick spikes rather than a low average, because spikes are what this mod cuts. |
+| 5-15% | Marginal. Worth trying if what you see is tick spikes rather than a low average: on the workloads measured so far this mod moved the tail much more than the mean, and whether that holds on yours is the thing you are testing. |
 | Over 15% | Pathfinding is a real cost on your server. The pack this mod was built for sat at 40%. |
 
 One condition on top of the number: PathWeaver needs a spare core. On two cores or fewer it tells you
@@ -94,7 +103,9 @@ or chunk work.
 `/pathweaver status` separates what actually happened from what could have:
 
 - The dispatch rows say how many searches went to a worker and how many were installed. Dispatched
-  but never installed is work that was paid for and thrown away.
+  minus installed is not waste: at any moment some of those are still in flight, and the status rows
+  below it split the ones that really ended without being used by cause. Read those rows rather than
+  subtracting.
 - The route cache prints **searches skipped** (searches that did not run) separately from **hits that
   saved nothing** (real cache hits that could not be spent). Only the first is a saving. Before
   0.9.0 they were added together under the first label, which overstated it.

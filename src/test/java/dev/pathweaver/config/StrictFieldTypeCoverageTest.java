@@ -36,6 +36,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>The one thing a walk cannot check is that it walked anything, so the count and the three named
  * settings are asserted directly. A discovery that silently found nothing would otherwise pass.
+ *
+ * <p>This is also where an unsupported field type is caught. The serializer refuses to load a config
+ * whose declared type it has no check for, which is the right runtime behaviour and a poor way to
+ * find out: it would surface as an operator's settings file failing to load. Because every field here
+ * is loaded with its own default, adding a field of an unhandled type turns this test red on the
+ * ordinary build instead. That is detection at build time, not exhaustiveness: the compiler checks
+ * nothing here, this test does.
  */
 class StrictFieldTypeCoverageTest {
 
@@ -58,7 +65,12 @@ class StrictFieldTypeCoverageTest {
         List<String> visited = new ArrayList<>();
 
         for (Field field : PathWeaverConfig.class.getDeclaredFields()) {
-            if (Modifier.isStatic(field.getModifiers())) continue;
+            // Static is not persisted, and neither is transient: Gson skips it, so it never reaches
+            // the file. Same rule the serializer walks by, derived from the modifier on both sides.
+            if (Modifier.isStatic(field.getModifiers())
+                || Modifier.isTransient(field.getModifiers())) {
+                continue;
+            }
             String name = field.getName();
             if (READ_ELSEWHERE.contains(name)) continue;
             visited.add(name);
@@ -71,8 +83,12 @@ class StrictFieldTypeCoverageTest {
                 load(withField(name, good)).configVersion,
                 name + " with its own default value did not load");
 
-            assertThrows(Exception.class, () -> load(withField(name, wrongTypeFor(field))),
+            Exception refused = assertThrows(Exception.class,
+                () -> load(withField(name, wrongTypeFor(field))),
                 name + " accepted a value of the wrong type");
+            assertTrue(because(refused).contains(name),
+                name + " was refused for some other reason than its own type check: "
+                    + because(refused));
         }
 
         assertTrue(visited.size() >= 14,
@@ -82,17 +98,37 @@ class StrictFieldTypeCoverageTest {
     }
 
     /**
-     * A value no coercion should rescue, chosen from the declared type.
+     * A wrong-typed value that Gson would quietly accept, chosen from the declared type.
      *
-     * <p>A string for anything numeric or boolean, because Gson turns {@code "7"} into 7 without
-     * complaint. A number for an enum, because that is not a constant name. An explicit null for a
-     * list, because that is the edit that reached the settings screen.
+     * <p>This is the part the first version got wrong. It fed strings like "not a int", which Gson
+     * rejects on its own, so the test passed against a serializer with no strict checks at all and
+     * proved nothing about them. The discriminating input is the one that coercion RESCUES:
+     *
+     * <ul>
+     *   <li>a quoted number for anything numeric, and a quoted boolean, which Gson converts;</li>
+     *   <li>an unknown constant name for an enum, which Gson turns into null rather than failing,
+     *       after which the post-load defaults quietly substitute a value the operator did not
+     *       choose;</li>
+     *   <li>an explicit null for a list, which Gson writes straight over the initialised one. That
+     *       is the edit that reached the settings screen and threw.</li>
+     * </ul>
      */
     private static JsonElement wrongTypeFor(Field field) {
         Class<?> type = field.getType();
         if (List.class.isAssignableFrom(type)) return JsonNull.INSTANCE;
-        if (type.isEnum()) return new JsonPrimitive(1);
-        return new JsonPrimitive("not a " + type.getSimpleName());
+        if (type.isEnum()) return new JsonPrimitive("NOT_A_REAL_CONSTANT");
+        if (type == boolean.class) return new JsonPrimitive("true");
+        if (type == double.class || type == float.class) return new JsonPrimitive("4.0");
+        return new JsonPrimitive("7");
+    }
+
+    /** The whole cause chain, because the serializer wraps its own IllegalArgumentException. */
+    private static String because(Throwable failure) {
+        StringBuilder text = new StringBuilder();
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            text.append(cause.getMessage()).append(" | ");
+        }
+        return text.toString();
     }
 
     private static JsonObject withField(String name, JsonElement value) {

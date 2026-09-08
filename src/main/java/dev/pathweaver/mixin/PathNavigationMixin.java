@@ -705,8 +705,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
                 cacheZ = Double.doubleToLongBits(theMob.getZ());
                 dev.pathweaver.cache.CacheLookup reuse = rt.resultCache().lookup(cacheKey,
                     cacheX, cacheY, cacheZ, tick, cacheConfig.resultCacheMaxAgeTicks,
-                    cacheConfig.resultCacheServes(),
-                    dev.pathweaver.config.PathWeaverConfig.policyGeneration());
+                    cacheConfig.resultCacheServes(), cacheConfig.generation());
                 if (reuse.isServed()) {
                     pathweaver$replayCreatePathTail(reuse.path(), reachRange);
                     cir.setReturnValue(reuse.path());
@@ -849,7 +848,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
             // reaches the drain, which is the one way the pending map can grow without bound.
             if (cacheKey != null) {
                 rt.resultCache().remember(submittedKey, cacheKey, tick, cacheX, cacheY, cacheZ,
-                    dev.pathweaver.config.PathWeaverConfig.policyGeneration());
+                    cacheConfig.generation());
             }
 
             this.pathweaver$acceptedDeferred = true;

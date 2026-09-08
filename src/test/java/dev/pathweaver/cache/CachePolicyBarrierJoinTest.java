@@ -218,46 +218,135 @@ class CachePolicyBarrierJoinTest {
     }
 
     /**
-     * When the predicate says no, the hook records nothing. Proved on the control flow, not the call.
+     * The join, executed rather than read: the real recording decision, across a real transition.
      *
-     * <p>The first version of this only asserted that the hook CALLS {@code recordsBlockChanges}. That
-     * admits calling it and throwing the answer away, and it admits inverting it, both of which would
-     * leave every behavioural test in this file green while the hook recorded through the gap or
-     * stopped recording at all. The check is now what its name claims: walk the method from the branch
-     * the FALSE answer leads to, and {@code noteBlockChange} must not be reachable from there.
+     * <p>This is the whole defect in one test. Store a route. Turn the cache off. Offer the observer
+     * a block change on that route, exactly as the hook would on every block update, and it records
+     * nothing, because that is what the production function decides. Turn the cache back on inside
+     * the route's age limit. Without the barrier the route is still there and still looks fresh,
+     * because the one thing that would have marked it stale never ran.
      *
-     * <p>The class resource is the right artifact. A mixin is applied to its target, but this class is
-     * itself the definition being applied, so what is on disk is what runs.
+     * <p>Earlier versions of this asserted the hook's bytecode instead. That was worth keeping as a
+     * structural check and was never the join: reading a method is not running it.
      */
     @Test
-    void whenTheGateSaysNoTheHookCannotReachTheRecordingCall() {
+    void aChangeMadeWhileRecordingIsOffIsNotRecorded_andTheRouteDoesNotSurviveIt() {
+        store(100L);
+        assertTrue(serves(105L), "control: the route was servable before the gap");
+
+        publish(true, PathCacheMode.OFF);
+        observe(110L);          // the hook fires; the production decision drops it
+        publish(true, PathCacheMode.SERVE);
+
+        assertFalse(serves(115L),
+            "a route was served across a change the observer was switched off for");
+    }
+
+    /**
+     * The positive control for the test above, and the post-transition recording the review asked
+     * for: once the switches are back on, the observer really does record again.
+     *
+     * <p>Without this, the assertion above passes just as well against an observer that has stopped
+     * recording permanently, which is the same silence and a worse bug.
+     */
+    @Test
+    void theObserverRecordsAgainAfterTheTransition() {
+        publish(true, PathCacheMode.OFF);
+        publish(true, PathCacheMode.SERVE);
+
+        store(200L);
+        assertTrue(serves(205L), "nothing could be stored or served after the transition at all");
+
+        observe(206L);
+        assertFalse(serves(207L),
+            "a change made after the transition was not recorded, so the route survived it");
+    }
+
+    /** And with no change offered at all, the same post-transition route stays servable. */
+    @Test
+    void aRouteStoredAfterTheTransitionSurvivesWhenNothingChanges() {
+        publish(true, PathCacheMode.OFF);
+        publish(true, PathCacheMode.SERVE);
+
+        store(200L);
+        assertTrue(serves(207L),
+            "the route was withdrawn without any block change, so the test above proves nothing");
+    }
+
+    /**
+     * Both switches silence the observer, and each of them alone is enough.
+     *
+     * <p>No configuration is published inside a case, deliberately. Publishing moves the generation
+     * and the barrier then empties the cache, which would hide the very thing being measured: this
+     * asks whether the CHANGE was recorded, and a cleared cache answers "no route" for a different
+     * reason. So each case settles the switches first and then stores, observes and looks up under
+     * one policy.
+     */
+    @Test
+    void theObserverRecordsNothingWhileEitherSwitchIsOff() {
+        for (Object[] silenced : new Object[][] {
+                {"the cache switch", true, PathCacheMode.OFF},
+                {"the master switch", false, PathCacheMode.SERVE},
+                {"both", false, PathCacheMode.OFF}}) {
+            publish((Boolean) silenced[1], (PathCacheMode) silenced[2]);
+            cache = new PathCache(64);
+            store(100L);
+            observe(105L);
+
+            assertTrue(servedIgnoringMode(110L),
+                silenced[0] + " did not stop the observer: the change was recorded anyway");
+        }
+    }
+
+    /**
+     * The negative control for the case above, in the same shape.
+     *
+     * <p>Every assertion there is that a route SURVIVED, which is also what a broken observer that
+     * records nothing under any settings would produce. This is the same sequence with both switches
+     * on, where the change must be recorded and the route must not survive.
+     */
+    @Test
+    void theSameChangeIsRecordedWithBothSwitchesOn() {
+        publish(true, PathCacheMode.SERVE);
+        cache = new PathCache(64);
+        store(100L);
+        observe(105L);
+
+        assertFalse(servedIgnoringMode(110L),
+            "with everything on, the observer still recorded nothing; it can never say yes");
+    }
+
+    /**
+     * The hook is an adapter and holds no rule of its own.
+     *
+     * <p>Kept as a structural check beside the executed ones, because the tests above run the
+     * observer directly and a hook that stopped calling it, or that decided something for itself,
+     * would leave them all green. A branch in this method is the drift this is watching for: it must
+     * call the observer exactly once and contain no conditional jump.
+     *
+     * <p>The class resource is the right artifact. A mixin is applied to its target, but this class
+     * is itself the definition being applied, so what is on disk is what runs.
+     */
+    @Test
+    void theBlockChangeHookDelegatesTheWholeDecision() {
         MethodNode hook = hookMethod();
-        InsnList code = hook.instructions;
+        List<String> calls = new ArrayList<>();
+        List<String> branches = new ArrayList<>();
+        for (AbstractInsnNode insn : hook.instructions) {
+            if (insn instanceof MethodInsnNode call) calls.add(call.owner + "." + call.name);
+            if (insn instanceof JumpInsnNode jump && jump.getOpcode() != Opcodes.GOTO) {
+                branches.add(String.valueOf(jump.getOpcode()));
+            }
+        }
 
-        int gate = indexOfCall(code, GATE_OWNER, "recordsBlockChanges");
-        assertTrue(gate >= 0, "the hook does not consult the recording gate at all");
-        assertEquals(gate, lastIndexOfCall(code, GATE_OWNER, "recordsBlockChanges"),
-            "the hook asks the gate more than once, so which answer controls it is ambiguous");
-
-        AbstractInsnNode next = nextRealInstruction(code.get(gate));
-        assertInstanceOf(JumpInsnNode.class, next,
-            "the gate answer is not consumed by a branch, so the hook can ignore it: " + next);
-        JumpInsnNode branch = (JumpInsnNode) next;
-        assertTrue(branch.getOpcode() == Opcodes.IFEQ || branch.getOpcode() == Opcodes.IFNE,
-            "the gate answer feeds a branch this test cannot read: opcode " + branch.getOpcode());
-
-        // IFNE jumps when the gate said true, so false falls through. IFEQ is the other way round.
-        AbstractInsnNode whenGateSaysNo = branch.getOpcode() == Opcodes.IFNE
-            ? branch.getNext() : branch.label;
-        assertFalse(reaches(code, whenGateSaysNo, CACHE_OWNER, "noteBlockChange"),
-            "with recording off, the hook still reaches noteBlockChange");
-
-        // The positive control. Without it this passes on a hook that records under no condition at
-        // all, which is the same silence and the opposite bug.
-        AbstractInsnNode whenGateSaysYes = branch.getOpcode() == Opcodes.IFNE
-            ? branch.label : branch.getNext();
-        assertTrue(reaches(code, whenGateSaysYes, CACHE_OWNER, "noteBlockChange"),
-            "the hook never records on any path, so the assertion above proves nothing");
+        assertEquals(1, calls.stream()
+                .filter((CACHE_OWNER.replace("PathCache", "BlockChangeObserver") + ".observe")::equals)
+                .count(),
+            "the hook does not hand the decision to the observer exactly once: " + calls);
+        assertEquals(List.of(), branches,
+            "the hook branches, so it is deciding something the observer is supposed to own");
+        assertFalse(calls.contains(GATE_OWNER + ".recordsBlockChanges"),
+            "the hook re-implements the recording rule instead of delegating it: " + calls);
     }
 
     /**
@@ -268,6 +357,11 @@ class CachePolicyBarrierJoinTest {
      * would still pass: they call the cache directly and supply the generation themselves. This binds
      * the three production call sites instead. The generation is the last parameter of each, so the
      * instruction that produced it is the one immediately before the call.
+     *
+     * <p>It must come from {@code PathWeaverConfig.generation()}, the instance method, so the number
+     * and the settings come off ONE published object. A static read of a counter would be two reads
+     * that a publication can interleave, and one of the two orders leaves the barrier silent while
+     * the cache acts on settings it has not seen.
      */
     @Test
     void everyProductionCallerReadsTheGenerationAtTheCall() {
@@ -288,9 +382,9 @@ class CachePolicyBarrierJoinTest {
                     caller.getSimpleName() + "." + method.name + " does not read the generation at "
                         + "the " + name + " call: " + previous);
                 MethodInsnNode source = (MethodInsnNode) previous;
-                assertEquals(GATE_OWNER + ".policyGeneration", source.owner + "." + source.name,
+                assertEquals(GATE_OWNER + ".generation", source.owner + "." + source.name,
                     caller.getSimpleName() + "." + method.name + " passes something other than the "
-                        + "live generation to " + name);
+                        + "published config's own generation to " + name);
             }
         }
         // Positive control: a scan that found no call site would pass every assertion above.
@@ -383,11 +477,36 @@ class CachePolicyBarrierJoinTest {
         PathWeaverConfig.set(config);
     }
 
-    private static long generation() { return PathWeaverConfig.policyGeneration(); }
+    private static long generation() { return PathWeaverConfig.get().generation(); }
+
+    /**
+     * One block update on the stored route, through the production decision.
+     *
+     * <p>Exactly what {@code ServerLevelBlockChangeMixin} calls, with the arguments it computes from
+     * the level. The gap is never faked by declining to call this: the call always happens, and what
+     * differs is what the observer decides to do with it.
+     */
+    private void observe(long tick) {
+        BlockChangeObserver.observe(PathWeaverConfig.get(), true, cache,
+            DIMENSION.hashCode(), SectionPos.asLong(ON_THE_ROUTE), tick);
+    }
 
     private void store(long tick) {
         cache.remember(request(1L), key(), tick, X, Y, Z, generation());
         cache.completed(request(1L), straightPath(5), true, generation());
+    }
+
+    /**
+     * A lookup that serves regardless of the mode, for asking whether a CHANGE was recorded.
+     *
+     * <p>{@link #serves} reads {@code resultCacheServes()}, so under a switched-off cache it returns
+     * false whatever the clock says, and that answer cannot distinguish "the change was recorded"
+     * from "this mode does not serve". The generation is unchanged from the store, so the barrier
+     * does not fire here either.
+     */
+    private boolean servedIgnoringMode(long tick) {
+        return cache.lookup(key(), X, Y, Z, tick, PathWeaverConfig.get().resultCacheMaxAgeTicks,
+            true, generation()).isServed();
     }
 
     /** A lookup with the settings a dispatch would really have read, not chosen constants. */
