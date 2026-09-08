@@ -345,7 +345,7 @@ def results_for(test_filter):
     if not files:
         return None
     outcome = {"exit": completed.returncode, "tests": 0, "skipped": 0,
-               "failures": 0, "errors": 0, "causes": [], "executed": set()}
+               "failures": 0, "errors": 0, "causes": [], "executed": set(), "invocations": []}
     for path in files:
         raw = io.open(path, encoding="utf-8").read()
         head = re.search(r'tests="(\d+)" skipped="(\d+)" failures="(\d+)" errors="(\d+)"', raw)
@@ -353,12 +353,19 @@ def results_for(test_filter):
         outcome["skipped"] += int(head.group(2))
         outcome["failures"] += int(head.group(3))
         outcome["errors"] += int(head.group(4))
+        # Class-qualified, and counted rather than set-collapsed. A parameterized test can report
+        # several invocations under one display name, and folding them into a set would hide a run
+        # that executed one of three. The set is used for membership, the list for population.
         for hit in re.finditer(r'<testcase name="([^"]+)" classname="([^"]+)"', raw):
-            outcome["executed"].add(hit.group(2) + "#" + hit.group(1))
+            identity = hit.group(2) + "#" + hit.group(1)
+            outcome["executed"].add(identity)
+            outcome["invocations"].append(identity)
         for hit in re.finditer(
-                r'<testcase name="([^"]+)"[^>]*>\s*<(failure|error)[^>]*message="([^"]*)"', raw):
-            message = hit.group(3).replace("&#10;", " ").replace("&quot;", '"').replace("&gt;", ">")
-            outcome["causes"].append((hit.group(1), " ".join(message.split())))
+                r'<testcase name="([^"]+)" classname="([^"]+)"[^>]*>\s*'
+                r'<(failure|error)[^>]*message="([^"]*)"', raw):
+            message = hit.group(4).replace("&#10;", " ").replace("&quot;", '"').replace("&gt;", ">")
+            outcome["causes"].append((hit.group(2) + "#" + hit.group(1),
+                                      " ".join(message.split())))
     return outcome
 
 
@@ -411,9 +418,28 @@ def witness(entry):
         return False
     print("  1 GREEN     %s" % describe(green))
     baseline_population = green["tests"]
+
+    # PRE-FLIGHT: the testcase this entry expects to break must exist in the baseline, BEFORE the
+    # mutation is applied. Without this, an expectation naming an identity that cannot occur comes
+    # back as NOT WITNESSED, which reads as "the mutant survived" and is a claim about the product.
+    # It is a defect in the table. That is exactly what happened once: an expectation named a method
+    # name for a parameterized test, which JUnit reports by display name, so it could never match.
+    wanted = EXPECTED_CAUSE.get(name)
+    if wanted is None:
+        print("  INVALID     this entry names no expected cause, so any red would satisfy it")
+        return False
+    testcase, fragment = wanted
+    present = [i for i in green["executed"] if testcase in i]
+    if not present:
+        print("  INVALID     the expected testcase %r does not exist in the baseline population; "
+              "this is an apparatus fault, not a surviving mutant" % testcase)
+        return False
+    print("  0 EXPECT    %s :: %r  (%d matching invocation(s) in the baseline)"
+          % (testcase, fragment, len(present)))
     # The SET of testcases, not the count. Equal counts can hide a swapped population, and a count
     # comparison says nothing about which testcase actually ran.
     baseline_executed = green["executed"]
+    baseline_invocations = len(green["invocations"])
 
     ok = False
     try:
@@ -434,13 +460,10 @@ def witness(entry):
         else:
             # THE CHECK THIS RUNNER EXISTED FOR AND DID NOT DO. Any red used to count. An unrelated
             # test failing in the same filter certified the entry just as well as the right one.
-            wanted = EXPECTED_CAUSE.get(name)
             print("  2 RED       %s" % describe(red))
             for failing, message in red["causes"]:
                 print("              %s\n                %s" % (failing, message[:140]))
-            if wanted is None:
-                print("  INVALID     this entry names no expected cause, so any red would satisfy it")
-            elif red["errors"] > 0:
+            if red["errors"] > 0:
                 # A run carrying framework errors alongside the expected failure is a contaminated
                 # run. The expected failure may be real, or may be a second symptom of whatever broke
                 # the framework, and this cannot tell those apart.
@@ -454,10 +477,13 @@ def witness(entry):
                 print("  INVALID     the reverted run did not execute the same testcases as the "
                       "baseline; missing: %s"
                       % sorted(baseline_executed - red["executed"])[:4])
+            elif len(red["invocations"]) != baseline_invocations:
+                print("  INVALID     the reverted run made %d test invocations against %d in the "
+                      "baseline; a changed invocation count is not a witnessed failure"
+                      % (len(red["invocations"]), baseline_invocations))
             else:
-                testcase, fragment = wanted
                 matched = [(t, m) for t, m in red["causes"]
-                           if t.startswith(testcase) and fragment.lower() in m.lower()]
+                           if testcase in t and fragment.lower() in m.lower()]
                 if not matched:
                     print("  NOT WITNESSED  no single failure is both %r and %r; the revert broke "
                           "something else" % (testcase, fragment))
@@ -476,6 +502,10 @@ def witness(entry):
     restored = results_for(test_filter)
     if not is_green(restored):
         print("  INVALID     the restored tree is not green: %s" % describe(restored))
+        return False
+    if len(restored["invocations"]) != baseline_invocations:
+        print("  INVALID     restored run made %d invocations against %d in the baseline"
+              % (len(restored["invocations"]), baseline_invocations))
         return False
     if restored["executed"] != baseline_executed:
         print("  INVALID     the restored run did not execute the same testcases as the baseline; "

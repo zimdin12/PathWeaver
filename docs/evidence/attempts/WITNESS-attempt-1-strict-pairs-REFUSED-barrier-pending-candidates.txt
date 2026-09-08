@@ -1,0 +1,272 @@
+PathWeaver 0.9.0 witnesses, 22 entries, HEAD 10d67caa12e48ae7ca824fa5b0b48cf20e904908
+
+====================================================================================================
+expiry-parking
+  file        src/main/java/dev/pathweaver/async/EntityInstallSink.java
+  expectation parking rejects a result the freshness policy accepts
+  1 GREEN     exit=0 tests=12 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=12 skipped=0 failures=2 errors=0
+              aResultArrivingAtTheLastAllowedAgeIsCollected()
+                org.opentest4j.AssertionFailedError: a result at exactly maxResultAgeTicks was discarded, though isStale calls it fresh ==> expected: not &l
+              atTheClampedMinimumTheFinalAllowedAgeStillWorks()
+                org.opentest4j.AssertionFailedError: at maxResultAgeTicks=1 a brain mob dispatches a search nobody can collect ==> expected: not &lt;null>
+  MATCHED     aResultArrivingAtTheLastAllowedAgeIsCollected() :: at exactly maxResultAgeTicks
+  3 RESTORED  exit=0 tests=12 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+expiry-sweep
+  file        src/main/java/dev/pathweaver/async/EntityInstallSink.java
+  expectation the sweep retires a slot one tick early
+  1 GREEN     exit=0 tests=12 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=12 skipped=0 failures=1 errors=0
+              theSweepLeavesASlotAliveAtTheFinalAllowedAge()
+                org.opentest4j.AssertionFailedError: the sweep retired a slot one tick before the policy that admits its result ==> expected: &lt;true> but 
+  MATCHED     theSweepLeavesASlotAliveAtTheFinalAllowedAge() :: the sweep retired a slot
+  3 RESTORED  exit=0 tests=12 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+barrier-stored-entries
+  file        src/main/java/dev/pathweaver/cache/PathCache.java
+  expectation a route stored before a switch is served after it
+  1 GREEN     exit=0 tests=16 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=16 skipped=0 failures=3 errors=0
+              aRouteStoredBeforeTheCacheWasTurnedOffIsNotServedAfterItComesBack()
+                org.opentest4j.AssertionFailedError: a route stored before the cache was switched off was served across an unwatched change ==> expected: &l
+              aRouteStoredBeforeTheModWasTurnedOffIsNotServedAfterItComesBack()
+                org.opentest4j.AssertionFailedError: a route stored before the mod was switched off was served across an unwatched change ==> expected: &lt;
+              aChangeMadeWhileRecordingIsOffIsNotRecorded_andTheRouteDoesNotSurviveIt()
+                org.opentest4j.AssertionFailedError: a route was served across a change the observer was switched off for ==> expected: &lt;false> but was: 
+  MATCHED     aRouteStoredBeforeTheCacheWasTurnedOffIsNotServedAfterItComesBack() :: served across an unwatched change
+  3 RESTORED  exit=0 tests=16 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+barrier-pending-candidates
+  file        src/main/java/dev/pathweaver/cache/PathCache.java
+  expectation a search in flight across a switch repopulates the cache
+  1 GREEN     exit=0 tests=16 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=16 skipped=0 failures=2 errors=0
+              in-flight across the cache switch
+                org.opentest4j.AssertionFailedError: a candidate from before the gap was stored after it ==> expected: &lt;0> but was: &lt;1>
+              in-flight across the master switch
+                org.opentest4j.AssertionFailedError: a candidate from before the gap was stored after it ==> expected: &lt;0> but was: &lt;1>
+  NOT WITNESSED  no single failure is both 'aSearchDispatchedBeforeTheGapDoesNotPopulateTheCacheWhenItLandsAfterIt' and 'candidate from before the gap was stored'; the revert broke something else
+====================================================================================================
+gate-inverted
+  file        src/main/java/dev/pathweaver/cache/BlockChangeObserver.java
+  expectation the observer records exactly when it should not
+  1 GREEN     exit=0 tests=16 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=16 skipped=0 failures=3 errors=0
+              theSameChangeIsRecordedWithBothSwitchesOn()
+                org.opentest4j.AssertionFailedError: with everything on, the observer still recorded nothing; it can never say yes ==> expected: &lt;false> 
+              theObserverRecordsAgainAfterTheTransition()
+                org.opentest4j.AssertionFailedError: a change made after the transition was not recorded, so the route survived it ==> expected: &lt;false> 
+              theObserverRecordsNothingWhileEitherSwitchIsOff()
+                org.opentest4j.AssertionFailedError: the cache switch did not stop the observer: the change was recorded anyway ==> expected: &lt;true> but 
+  MATCHED     theObserverRecordsNothingWhileEitherSwitchIsOff() :: did not stop the observer
+  3 RESTORED  exit=0 tests=16 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+gate-ignored
+  file        src/main/java/dev/pathweaver/cache/BlockChangeObserver.java
+  expectation the observer asks the gate and throws the answer away
+  1 GREEN     exit=0 tests=16 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=16 skipped=0 failures=1 errors=0
+              theObserverRecordsNothingWhileEitherSwitchIsOff()
+                org.opentest4j.AssertionFailedError: the cache switch did not stop the observer: the change was recorded anyway ==> expected: &lt;true> but 
+  MATCHED     theObserverRecordsNothingWhileEitherSwitchIsOff() :: did not stop the observer
+  3 RESTORED  exit=0 tests=16 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+caller-generation-constant
+  file        src/main/java/dev/pathweaver/async/ResultInstaller.java
+  expectation a caller passes a constant, so the barrier never fires
+  1 GREEN     exit=0 tests=16 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=16 skipped=0 failures=1 errors=0
+              everyProductionCallerReadsTheGenerationAtTheCall()
+                org.opentest4j.AssertionFailedError: ResultInstaller.deliver does not read the generation at the completed call: org.objectweb.asm.tree.Insn
+  MATCHED     everyProductionCallerReadsTheGenerationAtTheCall() :: does not read the generation at
+  3 RESTORED  exit=0 tests=16 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+park-restarts-the-budget
+  file        src/main/java/dev/pathweaver/async/EntityInstallSink.java
+  expectation parking restarts the age budget from the arrival tick
+  1 GREEN     exit=0 tests=12 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=12 skipped=0 failures=2 errors=0
+              aLiveBudgetChangeAfterParkingNeitherRetractsNorExtendsTheResult()
+                org.opentest4j.AssertionFailedError: raising the budget after parking resurrected a result past its own deadline ==> expected: &lt;null> but
+              parkingCarriesTheDispatchDeadlineRatherThanRestartingIt()
+                org.opentest4j.AssertionFailedError: parking restarted the budget from the arrival tick: the result outlived tick 40 ==> expected: &lt;null>
+  MATCHED     parkingCarriesTheDispatchDeadlineRatherThanRestartingIt() :: restarted the budget from the arrival tick
+  3 RESTORED  exit=0 tests=12 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+collection-drops-the-lower-bound
+  file        src/main/java/dev/pathweaver/async/EntityInstallSink.java
+  expectation a parked result answers a question from before its own dispatch
+  1 GREEN     exit=0 tests=12 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=12 skipped=0 failures=1 errors=0
+              aParkedResultDoesNotAnswerAQuestionFromBeforeItsDispatch()
+                org.opentest4j.AssertionFailedError: a parked result answered a question asked 100 ticks before it was dispatched ==> expected: &lt;null> bu
+  MATCHED     aParkedResultDoesNotAnswerAQuestionFromBeforeItsDispatch() :: before it was dispatched
+  3 RESTORED  exit=0 tests=12 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+status-prints-hardcoded-zeros
+  file        src/main/java/dev/pathweaver/cache/CacheStatusLines.java
+  expectation the counts are hardcoded to zero while the shares stay correct
+  1 GREEN     exit=0 tests=8 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=8 skipped=0 failures=2 errors=0
+              theMeasuredAndHypotheticalCountsAreNeverAddedTogether()
+                org.opentest4j.AssertionFailedError: served and wouldServe were summed: route cache: serving entries=0/4096 maxAge=40 ticks §a0§r searches s
+              theBlockReportsBothKindsWithTheirSharesWhenThereAreLookups()
+                org.opentest4j.AssertionFailedError: expected: &lt;3> but was: &lt;0>
+  MATCHED     theMeasuredAndHypotheticalCountsAreNeverAddedTogether() :: served and wouldServe were summed
+  3 RESTORED  exit=0 tests=8 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+serializer-checks-the-mode-only
+  file        src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java
+  expectation only the cache MODE is checked, so neither numeric field is pinned
+  1 GREEN     exit=0 tests=1 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=1 skipped=0 failures=1 errors=0
+              everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault()
+                org.opentest4j.AssertionFailedError: resultCacheMaxAgeTicks accepted a value of the wrong type ==> Expected java.lang.Exception to be thrown
+  MATCHED     everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault() :: resultCacheMaxAgeTicks accepted a value of the wrong type
+  3 RESTORED  exit=0 tests=1 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+serializer-skips-max-age-only
+  file        src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java
+  expectation resultCacheMaxAgeTicks alone goes unchecked
+  1 GREEN     exit=0 tests=1 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=1 skipped=0 failures=1 errors=0
+              everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault()
+                org.opentest4j.AssertionFailedError: resultCacheMaxAgeTicks accepted a value of the wrong type ==> Expected java.lang.Exception to be thrown
+  MATCHED     everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault() :: resultCacheMaxAgeTicks accepted a value of the wrong type
+  3 RESTORED  exit=0 tests=1 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+serializer-skips-max-entries-only
+  file        src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java
+  expectation resultCacheMaxEntries alone goes unchecked
+  1 GREEN     exit=0 tests=1 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=1 skipped=0 failures=1 errors=0
+              everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault()
+                org.opentest4j.AssertionFailedError: resultCacheMaxEntries accepted a value of the wrong type ==> Expected java.lang.Exception to be thrown,
+  MATCHED     everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault() :: resultCacheMaxEntries accepted a value of the wrong type
+  3 RESTORED  exit=0 tests=1 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+published-list-stays-mutable
+  file        src/main/java/dev/pathweaver/config/PathWeaverConfig.java
+  expectation a published snapshot list can be added to, changing live settings silently
+  1 GREEN     exit=0 tests=2 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=2 skipped=0 failures=1 errors=0
+              aPublishedSnapshotsCollectionsCannotBeMutatedInPlace()
+                org.opentest4j.AssertionFailedError: a published snapshot's list can be added to, which changes live settings without moving the generation 
+  MATCHED     aPublishedSnapshotsCollectionsCannotBeMutatedInPlace() :: can be added to
+  3 RESTORED  exit=0 tests=2 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+publication-shares-the-editors-object
+  file        src/main/java/dev/pathweaver/config/PathWeaverConfig.java
+  expectation the object the settings screen keeps editing is the one that is published
+  1 GREEN     exit=0 tests=16 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=16 skipped=0 failures=3 errors=0
+              saveListenerNormalizesAndPublishesTheSavedObject()
+                org.opentest4j.AssertionFailedError: the saved object was published rather than a copy of it ==> expected: not same but was: &lt;dev.pathwea
+              editingTheSavedObjectAfterPublicationCannotReachTheLiveSettings()
+                org.opentest4j.AssertionFailedError: an edit after saving changed the running settings ==> expected: &lt;64> but was: &lt;999>
+              setNormalizesTheCallersObjectAndPublishesADetachedCopy()
+                org.opentest4j.AssertionFailedError: the caller's own object was published; a later edit to it would change live settings ==> expected: not 
+  MATCHED     editingTheSavedObjectAfterPublicationCannotReachTheLiveSettings() :: changed the running settings
+  3 RESTORED  exit=0 tests=16 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+pin-denial-is-discarded
+  file        src/main/java/dev/pathweaver/gate/LithiumPathfindingCompatibility.java
+  expectation the pin is checked into a list nobody returns
+  1 GREEN     exit=0 tests=6 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=6 skipped=0 failures=1 errors=0
+              aChangedPathFinderProducesADenialTheLithiumAuditReturns()
+                org.opentest4j.AssertionFailedError: a changed PathFinder produced no returned denial: [Lithium module jar hash mismatch: 039058c6f2c0cb492c
+  MATCHED     aChangedPathFinderProducesADenialTheLithiumAuditReturns() :: produced no returned denial
+  3 RESTORED  exit=0 tests=6 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+hook-stops-delegating
+  file        src/main/java/dev/pathweaver/mixin/ServerLevelBlockChangeMixin.java
+  expectation the hook decides something of its own instead of delegating
+  1 GREEN     exit=0 tests=16 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=16 skipped=0 failures=1 errors=0
+              theBlockChangeHookDelegatesTheWholeDecision()
+                org.opentest4j.AssertionFailedError: the hook branches, so it is deciding something the observer is supposed to own ==> expected: &lt;[]> bu
+  MATCHED     theBlockChangeHookDelegatesTheWholeDecision() :: the hook branches
+  3 RESTORED  exit=0 tests=16 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+serializer-derived-checks
+  file        src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java
+  expectation the three resultCache settings accept a wrong type, as in 0.8.0
+  1 GREEN     exit=0 tests=1 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=1 skipped=0 failures=1 errors=0
+              everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault()
+                org.opentest4j.AssertionFailedError: resultCacheMode accepted a value of the wrong type ==> Expected java.lang.Exception to be thrown, but n
+  MATCHED     everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault() :: resultCacheMode accepted a value of the wrong type
+  3 RESTORED  exit=0 tests=1 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+status-sums-the-two-counts
+  file        src/main/java/dev/pathweaver/cache/CacheStatusLines.java
+  expectation hits that saved nothing are reported as savings
+  1 GREEN     exit=0 tests=8 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=8 skipped=0 failures=3 errors=0
+              hitsThatSavedNothingAreNotCountedAsSkippedSearches()
+                org.opentest4j.AssertionFailedError: hits that saved nothing were reported as savings: route cache: serving entries=0/4096 maxAge=40 ticks §
+              theMeasuredAndHypotheticalCountsAreNeverAddedTogether()
+                org.opentest4j.AssertionFailedError: served and wouldServe were summed: route cache: serving entries=0/4096 maxAge=40 ticks §a8§r searches s
+              theBlockReportsBothKindsWithTheirSharesWhenThereAreLookups()
+                org.opentest4j.AssertionFailedError: the measured share is missing: route cache: serving entries=0/4096 maxAge=40 ticks §a8§r searches skipp
+  MATCHED     hitsThatSavedNothingAreNotCountedAsSkippedSearches() :: reported as savings
+  3 RESTORED  exit=0 tests=8 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+status-saved-capacity
+  file        src/main/java/dev/pathweaver/cache/CacheStatusLines.java
+  expectation the saved capacity is printed as if it were in force
+  1 GREEN     exit=0 tests=8 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=8 skipped=0 failures=1 errors=0
+              capacityIsTheOneInForceAndAPendingChangeIsCalledOut()
+                org.opentest4j.AssertionFailedError: the saved capacity was printed as if it were in force: route cache: serving entries=0/9999 maxAge=40 ti
+  MATCHED     capacityIsTheOneInForceAndAPendingChangeIsCalledOut() :: printed as if it were in force
+  3 RESTORED  exit=0 tests=8 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+pathfinder-pin-value
+  file        src/main/java/dev/pathweaver/gate/AuditedMixinCompatibility.java
+  expectation the pin is not the digest of the shipped class
+  1 GREEN     exit=0 tests=6 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=6 skipped=0 failures=2 errors=0
+              thePinMatchesTheVanillaClassOnTheClasspath()
+                org.opentest4j.AssertionFailedError: the pinned digest is not the one the shipped PathFinder has; every audited exemption using it refuses, 
+              aChangedPathFinderProducesADenialTheLithiumAuditReturns()
+                org.opentest4j.AssertionFailedError: the pinned PathFinder was denied, so the assertion above is not about the pin: [vanilla PathFinder hash
+  MATCHED     thePinMatchesTheVanillaClassOnTheClasspath() :: not the one the shipped PathFinder has
+  3 RESTORED  exit=0 tests=6 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+pathfinder-pin-unused
+  file        src/main/java/dev/pathweaver/gate/LithiumPathfindingCompatibility.java
+  expectation the Lithium audit scans bytes it never pinned
+  1 GREEN     exit=0 tests=6 skipped=0 failures=0 errors=0
+  2 RED       exit=1 tests=6 skipped=0 failures=2 errors=0
+              aChangedPathFinderProducesADenialTheLithiumAuditReturns()
+                org.opentest4j.AssertionFailedError: a changed PathFinder produced no returned denial: [Lithium module jar hash mismatch: 039058c6f2c0cb492c
+              theLithiumAuditUsesThatConstantAndNotAnotherDigest()
+                org.opentest4j.AssertionFailedError: the Lithium audit does not use the PathFinder pin; found it in [] ==> expected: &lt;true> but was: &lt;
+  MATCHED     theLithiumAuditUsesThatConstantAndNotAnotherDigest() :: does not use the PathFinder pin
+  3 RESTORED  exit=0 tests=6 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+  expiry-parking                 witnessed
+  expiry-sweep                   witnessed
+  barrier-stored-entries         witnessed
+  barrier-pending-candidates     NOT WITNESSED
+  gate-inverted                  witnessed
+  gate-ignored                   witnessed
+  caller-generation-constant     witnessed
+  park-restarts-the-budget       witnessed
+  collection-drops-the-lower-bound witnessed
+  status-prints-hardcoded-zeros  witnessed
+  serializer-checks-the-mode-only witnessed
+  serializer-skips-max-age-only  witnessed
+  serializer-skips-max-entries-only witnessed
+  published-list-stays-mutable   witnessed
+  publication-shares-the-editors-object witnessed
+  pin-denial-is-discarded        witnessed
+  hook-stops-delegating          witnessed
+  serializer-derived-checks      witnessed
+  status-sums-the-two-counts     witnessed
+  status-saved-capacity          witnessed
+  pathfinder-pin-value           witnessed
+  pathfinder-pin-unused          witnessed
