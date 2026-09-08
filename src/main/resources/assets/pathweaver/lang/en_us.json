@@ -59,7 +59,7 @@
   "text.autoconfig.pathweaver.option.repathToleranceBlocks.@Tooltip[2]": "Raise it if mobs re-target constantly; lower it if they walk to slightly stale destinations.",
   "text.autoconfig.pathweaver.option.resultCacheMode": "Share routes between mobs",
   "text.autoconfig.pathweaver.option.resultCacheMode.@Tooltip[0]": "Lets one mob reuse a route another already computed, when every input to the search is identical.",
-  "text.autoconfig.pathweaver.option.resultCacheMode.@Tooltip[1]": "A route is dropped the moment a block changes along it, so a reused route is never a stale one.",
+  "text.autoconfig.pathweaver.option.resultCacheMode.@Tooltip[1]": "A route is dropped when a block changes along it. A change away from the route is not noticed, as in vanilla.",
   "text.autoconfig.pathweaver.option.resultCacheMode.@Tooltip[2]": "Shadow (default) counts the hits without spending them, so you can see what Serve would be worth.",
   "text.autoconfig.pathweaver.option.resultCacheMode.@Tooltip[3]": "/pathweaver status prints the count. Switching modes takes effect at once, no restart.",
   "text.autoconfig.pathweaver.option.resultCacheMode.OFF": "Off",
