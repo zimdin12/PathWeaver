@@ -59,7 +59,13 @@ final class AuditedMixinCompatibility {
         "ff0e986419f4685469063772c85e477810dfe425bf33a1ad1a62ed65ac6aefa7";
     static final String SERVERCORE_PLUGIN_SHA =
         "0e6ddc8d3c66c7e5826831845e0da41f6594b758a128d207419083b081e33cf6";
-    private static final String PATH_FINDER_SHA =
+    /**
+     * The one pin for vanilla {@code PathFinder}, shared by every audit that reads it.
+     *
+     * <p>Three files held their own copy of this digest. They agreed, which is the only reason it was
+     * not already a defect: three constants that must match and nothing that checks they do.
+     */
+    static final String PATH_FINDER_SHA =
         "095d620eaac37aa71af017858682e89689039a3b999cf2a5fcfce3f1c3973b2c";
     static final String RABBIT_MODULE_SHA =
         "6388f7a83b303c7de485f5f0089bd7e887ea45f9adf6bc9b099cad932fa58851";
@@ -211,7 +217,7 @@ final class AuditedMixinCompatibility {
             verifyRabbitMixin(bundle.mixin(), modified, diagnostics);
             requireVanillaMethod(bundle.vanillaTarget(), "doStuckDetection", DO_STUCK_DESC, diagnostics);
             requireVanillaMethod(bundle.vanillaTarget(), "resetStuckTimeout", "()V", diagnostics);
-            verifyRabbitTargetsNotReachableFromPathFinder(bundle.workerEntry(), diagnostics);
+            verifyPathFinderMakesNoDirectCallIntoPathNavigation(bundle.workerEntry(), diagnostics);
         } catch (Throwable t) {
             diagnostics.add("rabbit ASM/config shape parse failed: " + t);
         }
@@ -330,8 +336,9 @@ final class AuditedMixinCompatibility {
             // resetStuckTimeout from an @Inject at TAIL to a @ModifyConstant on the 0.0 it compares
             // against, so an audit that only reads @Inject sees one modified method where there are
             // two. The safety argument is unchanged and is checked the same way either mechanism is
-            // used: whatever this mixin modifies must not be reachable from the worker's search
-            // closure, which verifyRabbitTargetsNotReachableFromPathFinder proves against the bytes.
+            // used: whatever this mixin modifies must not be called by the worker's entry class,
+            // which verifyPathFinderMakesNoDirectCallIntoPathNavigation checks against the pinned
+            // bytes.
             AnnotationNode modifyConstant = findAnnotation(method, MODIFY_CONSTANT_DESC);
             if (modifyConstant != null) {
                 injections++;
@@ -383,9 +390,20 @@ final class AuditedMixinCompatibility {
         }
     }
 
-    /** The worker enters the pinned PathFinder.findPath overload. It has no call edge into
-     * PathNavigation, so Rabbit's two navigation-maintenance injections are unreachable on workers. */
-    static void verifyRabbitTargetsNotReachableFromPathFinder(byte[] pathFinder,
+    /**
+     * No method of the pinned {@code PathFinder} calls {@code PathNavigation} directly.
+     *
+     * <p>A DIRECT-CALL SCAN of one class, and the name now says so. It reads the invoke instructions
+     * in {@code PathFinder} and nothing else: it does not follow callees, so it is not a reachability
+     * result and does not establish a call closure. Saying "not reachable" claimed the transitive
+     * property from evidence that only supports the immediate one.
+     *
+     * <p>What it does support is still the thing the exemptions need, because it is paired with the
+     * hash pin. The scanned class is byte-identical to the one audited, and the audit of that exact
+     * class is where the deeper argument lives. A changed {@code PathFinder} fails the pin rather
+     * than being re-analysed by this method and quietly passing.
+     */
+    static void verifyPathFinderMakesNoDirectCallIntoPathNavigation(byte[] pathFinder,
                                                                       List<String> diagnostics) {
         ClassNode node = classNode(pathFinder);
         requireVanillaMethod(pathFinder, "findPath", FIND_PATH_DESC, diagnostics);
@@ -393,7 +411,7 @@ final class AuditedMixinCompatibility {
             for (AbstractInsnNode insn : method.instructions) {
                 if (insn instanceof MethodInsnNode call
                         && "net/minecraft/world/entity/ai/navigation/PathNavigation".equals(call.owner)) {
-                    diagnostics.add("worker PathFinder unexpectedly reaches PathNavigation: "
+                    diagnostics.add("worker PathFinder calls PathNavigation directly: "
                         + method.name + method.desc + " -> " + call.name + call.desc);
                 }
             }

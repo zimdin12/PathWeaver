@@ -58,8 +58,6 @@ final class FabricSwimCompatibility {
         "2c74707049f26c23a713ebcaf26569bc38925d6dd1d399aa078d0dbf53d6f889";
     private static final String NODE_EVALUATOR_SHA =
         "8ac7d5eef6bad45b148a051ee8d5d3d890281c66672d761e785361c506f421e1";
-    private static final String PATH_FINDER_SHA =
-        "095d620eaac37aa71af017858682e89689039a3b999cf2a5fcfce3f1c3973b2c";
     private static final String PATH_CONTEXT_SHA =
         "30aae3ceae3c27e7f3071d8d9b8232035ad8b15ae8d7999da3fbbaa49add6a9b";
     private static final String BLOCK_STATE_BASE_SHA =
@@ -197,7 +195,8 @@ final class FabricSwimCompatibility {
         AuditedMixinCompatibility.checkHash("Fabric LandPathTypeRegistry", bundle.landRegistry(), LAND_REGISTRY_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("vanilla SwimNodeEvaluator", bundle.swim(), SWIM_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("vanilla NodeEvaluator", bundle.nodeEvaluator(), NODE_EVALUATOR_SHA, diagnostics);
-        AuditedMixinCompatibility.checkHash("vanilla PathFinder", bundle.pathFinder(), PATH_FINDER_SHA, diagnostics);
+        AuditedMixinCompatibility.checkHash("vanilla PathFinder", bundle.pathFinder(),
+            AuditedMixinCompatibility.PATH_FINDER_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("vanilla PathfindingContext", bundle.pathContext(), PATH_CONTEXT_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("vanilla BlockBehaviour.BlockStateBase", bundle.blockStateBase(),
             BLOCK_STATE_BASE_SHA, diagnostics);

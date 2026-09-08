@@ -106,7 +106,7 @@ class AuditedMixinCompatibilityTest {
             for (var instruction : method.instructions) {
                 if (!(instruction instanceof MethodInsnNode call)) continue;
                 assertNotEquals("net/minecraft/world/entity/ai/navigation/PathNavigation", call.owner,
-                    () -> "worker pool directly reaches Rabbit owner from " + method.name + method.desc);
+                    () -> "worker pool calls PathNavigation directly from " + method.name + method.desc);
                 if (call.owner.equals("java/util/concurrent/Callable") && call.name.equals("call")
                         && call.desc.equals("()Ljava/lang/Object;")) callableCalls++;
             }
@@ -117,7 +117,7 @@ class AuditedMixinCompatibilityTest {
         new ClassReader(classBytes(PathNavigationMixin.class)).accept(routing, 0);
         int findPathCalls = 0;
         for (var method : routing.methods) {
-            boolean searchClosure = false;
+            boolean submitsTheSearch = false;
             for (var instruction : method.instructions) {
                 if (!(instruction instanceof MethodInsnNode call)) continue;
                 if (call.owner.equals("net/minecraft/world/level/pathfinder/PathFinder")
@@ -126,14 +126,14 @@ class AuditedMixinCompatibilityTest {
                             + "Lnet/minecraft/world/entity/Mob;Ljava/util/Set;FIF)"
                             + "Lnet/minecraft/world/level/pathfinder/Path;")) {
                     findPathCalls++;
-                    searchClosure = true;
+                    submitsTheSearch = true;
                 }
             }
-            if (searchClosure) {
+            if (submitsTheSearch) {
                 for (var instruction : method.instructions) {
                     if (instruction instanceof MethodInsnNode call) {
                         assertNotEquals("net/minecraft/world/entity/ai/navigation/PathNavigation",
-                            call.owner, () -> "submitted search closure reaches Rabbit target owner: "
+                            call.owner, () -> "the method that submits the search calls PathNavigation directly: "
                                 + method.name + method.desc);
                     }
                 }

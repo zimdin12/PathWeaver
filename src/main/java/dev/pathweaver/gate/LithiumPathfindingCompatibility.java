@@ -146,11 +146,11 @@ final class LithiumPathfindingCompatibility {
             // NOT gated on the Minecraft version string, and this audit's reason differs from
             // its neighbours' -- worth stating, because the shared wording was wrong here.
             //
-            // The others pin the vanilla classes their proofs read by SHA-256. This one does not
-            // pin vanilla PathFinder at all. It RE-DERIVES the non-reachability proof from the
-            // bytes actually loaded, every time, at the bottom of verify(). That is a stronger
-            // position than a hash, not a weaker one: a changed PathFinder is re-analysed and
-            // either still has no call edge into PathNavigation or is rejected on its own merits.
+            // Vanilla PathFinder is pinned here by the same SHA-256 the other audits use, and the
+            // direct-call scan runs against those pinned bytes. It used to be unpinned, on the
+            // argument that re-deriving the scan every time was a stronger position than a hash.
+            // It is not. The scan reads one class and does not follow its callees, so on a changed
+            // PathFinder it would report nothing wrong while proving less than it appears to.
             // Lithium's own artifacts are hash-pinned as usual.
             //
             // Measured both directions before removing it. On 26.1.1 all ten pinned vanilla classes
@@ -296,13 +296,17 @@ final class LithiumPathfindingCompatibility {
             requireRegionInjectionIsConstructorOnly(bundle.regionMixin(), diagnostics);
 
             // The inactive-navigations mixin is the one Lithium hook that genuinely mutates
-            // shared state: its handlers add and remove navigations from a listener set on
-            // the level. That is safe here for a different reason than the others, because a
-            // worker never runs it. The worker entry point is PathFinder.findPath, which has
-            // no call edge into PathNavigation, so those handlers only execute on the main
-            // thread. This is the same proof the rabbit-pathfinding-fix exemption rests on,
-            // re-checked against the vanilla bytes actually loaded rather than assumed.
-            AuditedMixinCompatibility.verifyRabbitTargetsNotReachableFromPathFinder(
+            // shared state: its handlers add and remove navigations from a listener set on the
+            // level. It is safe here for a different reason than the others, because a worker never
+            // runs it. The worker entry point is PathFinder.findPath, and no method of PathFinder
+            // calls PathNavigation directly, so those handlers execute on the main thread.
+            //
+            // Pin first, then scan. The pin is what makes the scan mean anything: it fixes which
+            // bytes were audited, and the audit of those exact bytes is where the argument beyond
+            // direct calls lives. The scan alone would pass a PathFinder nobody has ever read.
+            AuditedMixinCompatibility.checkHash("vanilla PathFinder", bundle.vanillaPathFinder(),
+                AuditedMixinCompatibility.PATH_FINDER_SHA, diagnostics);
+            AuditedMixinCompatibility.verifyPathFinderMakesNoDirectCallIntoPathNavigation(
                 bundle.vanillaPathFinder(), diagnostics);
         } catch (Throwable t) {
             diagnostics.add("Lithium ASM/config shape parse failed: " + t);
