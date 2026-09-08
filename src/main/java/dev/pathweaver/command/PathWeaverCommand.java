@@ -180,52 +180,12 @@ public final class PathWeaverCommand {
             out.add((outcome.isGoodNews() ? "    §a" : "    §e") + count + "§r  "
                 + outcome.description() + "§7" + share);
         }
-        for (String line : resultCacheLines(config, runtime)) out.add(line);
+        out.addAll(dev.pathweaver.cache.CacheStatusLines.render(config, runtime.resultCache()));
         out.add("  §7Green means the search produced an answer. Amber means it did not -- most "
             + "of that is normal (a mob stopping, a request superseded), and only the failure rows "
             + "are work actually wasted. Rows with no percentage are not part of this session's "
             + "dispatch total: either they never reached a worker, or they were dispatched by a "
             + "previous session and only surfaced at this one's startup.");
-        return java.util.List.copyOf(out);
-    }
-
-    /**
-     * What the shared route cache did.
-     *
-     * <p>Every row prints even at zero, and that is the point of the block. A cache with a subtly
-     * wrong key and a cache on a world where mobs simply never repeat a search both report no hits,
-     * and the surrounding numbers are what tells them apart: {@code stored} says whether anything
-     * ever went in, {@code terrain changed} and {@code expired} say whether entries were found and
-     * rejected, and {@code same block only} says whether the near-misses are positional.
-     */
-    static java.util.List<String> resultCacheLines(PathWeaverConfig config,
-                                                   PathWeaverRuntime runtime) {
-        if (!config.resultCacheActive()) {
-            return java.util.List.of("  route cache: off");
-        }
-        dev.pathweaver.cache.PathCache.Counters counters = runtime.resultCache().counters();
-        java.util.List<String> out = new java.util.ArrayList<>();
-        String verb = config.resultCacheServes() ? "serving" : "measuring only";
-        out.add("  route cache: " + verb + "   entries=" + runtime.resultCache().size()
-            + "/" + config.resultCacheMaxEntries + "   maxAge=" + config.resultCacheMaxAgeTicks
-            + " ticks");
-        String rate = counters.lookups > 0L
-            ? String.format(java.util.Locale.ROOT, " (%.1f%% of lookups)",
-                100.0 * counters.usableHits() / counters.lookups)
-            : "";
-        out.add("    §a" + counters.usableHits() + "§r  "
-            + (config.resultCacheServes() ? "searches skipped" : "searches that COULD have been "
-                + "skipped") + "§7" + rate);
-        out.add("    §7" + counters.blockOnlyHits + "  matched except for the mob's exact position "
-            + "-- what a looser key would add, if it were safe");
-        out.add("    §7" + counters.stored + " stored, " + counters.refusedTerrainMoved
-            + " refused because the ground moved mid-search, " + counters.expired + " expired, "
-            + counters.terrainChanged + " dropped when the terrain changed, "
-            + counters.lookups + " lookups");
-        if (!config.resultCacheServes()) {
-            out.add("  §7The cache is measuring, not serving. Set resultCacheMode to SERVE to spend "
-                + "the number above; it takes effect immediately, no restart.");
-        }
         return java.util.List.copyOf(out);
     }
 
