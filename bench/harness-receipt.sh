@@ -17,6 +17,11 @@ CP="build/gametest-classpath.txt"
 if [ -f "$CP" ]; then
   echo "Providers on the harness runtime classpath:"
   python bench/classpath_providers.py "$CP" 2>&1 | sed 's/^/  /'
+  echo "  The id listed is whichever manifest sits in that directory at enumeration time. What the"
+  echo "  enumeration establishes is the PROVIDER: one classpath entry can supply a pathweaver_gametest"
+  echo "  id, it is build/resources/gametest, and no two entries on the classpath share any id. Every"
+  echo "  harness in the series is served from that same directory, so no other entry could have"
+  echo "  supplied the mod the loader reported for any of them."
   echo
 else
   echo "Providers on the harness runtime classpath: NOT ENUMERATED for this series."
