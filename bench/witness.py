@@ -55,8 +55,12 @@ EXPECTED_CAUSE = {
     "barrier-stored-entries":
         ("aRouteStoredBeforeTheCacheWasTurnedOffIsNotServedAfterItComesBack",
          "served across an unwatched change"),
+    # A @ParameterizedTest is reported by its DISPLAY name, not its method name, so that is the
+    # testcase identity here. The strict runner refused this entry when the table named the method,
+    # which was a defect in the table and not in the product: both parameterised cases failed with
+    # exactly the expected assertion.
     "barrier-pending-candidates":
-        ("aSearchDispatchedBeforeTheGapDoesNotPopulateTheCacheWhenItLandsAfterIt",
+        ("in-flight across",
          "candidate from before the gap was stored"),
     "gate-inverted":
         ("theObserverRecordsNothingWhileEitherSwitchIsOff",
