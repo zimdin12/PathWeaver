@@ -343,7 +343,10 @@ class ModMenuIntegrationContractTest {
             holder.getConfig().maxInFlight = 0;
             holder.save();
 
-            assertSame(holder.getConfig(), PathWeaverConfig.get(), "save listener publishes holder object");
+            // NOT the same object: the holder is what the settings screen edits, and publishing it
+            // would make every keystroke live before the save. A copy of it, carrying its values.
+            assertNotSame(holder.getConfig(), PathWeaverConfig.get(),
+                "the save listener published the holder object the screen is still editing");
             assertEquals(desired, holder.getConfig().enabled, "AutoConfig holder");
             assertEquals(desired, PathWeaverConfig.get().enabled, "live runtime config");
             assertEquals(0, holder.getConfig().poolThreads, "normalized holder poolThreads");

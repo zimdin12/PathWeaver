@@ -287,12 +287,62 @@ public class PathWeaverConfig implements ConfigData {
      */
     public long generation() { return generation; }
 
+    /**
+     * Publish a settings snapshot. The object handed in is never the object published.
+     *
+     * <p>The ownership rule, in one place because it is the whole safety argument for the cache's
+     * policy barrier:
+     *
+     * <ol>
+     *   <li>The caller owns what it passes. The settings screen edits its own object and saves it.</li>
+     *   <li>This makes a copy, validates it, stamps it with a fresh generation, and publishes THAT.
+     *       The copy's collections are copies too, so a later edit to the caller's list cannot reach
+     *       the published one.</li>
+     *   <li>Nothing writes to a published snapshot afterwards.</li>
+     * </ol>
+     *
+     * <p>Copying is the point, not tidiness. Cloth hands back the SAME object it has been editing, so
+     * without a copy the published settings change the moment the screen changes them, which is
+     * before this method runs and before the generation moves. A cache lookup in that window sees new
+     * settings under a generation it has already crossed, so the barrier never fires and entries
+     * learned under the old policy are served under the new one. That is the defect the barrier
+     * exists to prevent, arriving through the publication path itself.
+     *
+     * <p>The copy walks declared fields rather than listing them, so a new setting is copied by
+     * existing. Static and transient are skipped for the same reason they are skipped everywhere else
+     * in this class: neither is part of the settings.
+     */
     public static void set(PathWeaverConfig c) {
-        PathWeaverConfig normalized = c == null ? new PathWeaverConfig() : c;
-        normalized.validatePostLoad();
-        // Stamped BEFORE publication, so the object is never visible without its own generation.
-        normalized.generation = POLICY_GENERATION.incrementAndGet();
-        INSTANCE = normalized;
+        PathWeaverConfig source = c == null ? new PathWeaverConfig() : c;
+        // Normalized in place first, so the settings screen shows the clamped values it just saved
+        // rather than the out-of-range ones the operator typed. That object stays the caller's.
+        source.validatePostLoad();
+        PathWeaverConfig snapshot = snapshotOf(source);
+        // Stamped BEFORE publication, so the object is never visible without its own generation, and
+        // its settings can no longer change after the stamp because nothing else holds it.
+        snapshot.generation = POLICY_GENERATION.incrementAndGet();
+        INSTANCE = snapshot;
+    }
+
+    /** A detached copy of every persisted field, with mutable collections copied rather than shared. */
+    private static PathWeaverConfig snapshotOf(PathWeaverConfig source) {
+        PathWeaverConfig copy = new PathWeaverConfig();
+        for (java.lang.reflect.Field field : PathWeaverConfig.class.getDeclaredFields()) {
+            int modifiers = field.getModifiers();
+            if (java.lang.reflect.Modifier.isStatic(modifiers)
+                || java.lang.reflect.Modifier.isTransient(modifiers)) {
+                continue;
+            }
+            try {
+                Object value = field.get(source);
+                if (value instanceof List<?> list) value = new ArrayList<>(list);
+                field.set(copy, value);
+            } catch (IllegalAccessException unreachable) {
+                // Every persisted field is public in this class, and this class is doing the reading.
+                throw new IllegalStateException("cannot snapshot " + field.getName(), unreachable);
+            }
+        }
+        return copy;
     }
 
     /** Keep pathfinding synchronous if persisted configuration cannot be registered or loaded. */

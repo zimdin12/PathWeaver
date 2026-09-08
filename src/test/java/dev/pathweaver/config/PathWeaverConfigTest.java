@@ -105,16 +105,66 @@ class PathWeaverConfigTest {
         assertEquals(PathWeaverConfig.MAX_RESULT_AGE_TICKS, c.maxResultAgeTicks);
         assertEquals(PathWeaverConfig.MAX_STALENESS_MOVE_THRESHOLD, c.stalenessMoveThreshold);
     }
-    @Test void setNormalizesLoadedConfigBeforePublishingIt() {
+    /**
+     * Publication normalizes the caller's object and publishes a DETACHED copy of it.
+     *
+     * <p>This used to assert the two were the same object, which is the hazard rather than the
+     * contract. The settings screen edits the object it later saves, so while that object was the
+     * published one, its settings changed the moment the screen changed them: before the save, and
+     * before the generation moved. A cache lookup in that window reads new settings under a
+     * generation it has already crossed, so the policy barrier never fires.
+     *
+     * <p>The caller's object is still normalized in place, because the screen has to show the clamped
+     * values it just saved rather than the out-of-range ones the operator typed.
+     */
+    @Test void setNormalizesTheCallersObjectAndPublishesADetachedCopy() {
         PathWeaverConfig c = new PathWeaverConfig();
         c.poolThreads = -1;
         c.maxInFlight = -1;
 
         PathWeaverConfig.set(c);
 
-        assertSame(c, PathWeaverConfig.get());
-        assertEquals(0, c.poolThreads);
+        assertNotSame(c, PathWeaverConfig.get(),
+            "the caller's own object was published; a later edit to it would change live settings");
+        assertEquals(0, c.poolThreads, "the caller's object was not normalized in place");
         assertEquals(1, c.maxInFlight);
+        assertEquals(0, PathWeaverConfig.get().poolThreads, "the published copy carries the values");
+        assertEquals(1, PathWeaverConfig.get().maxInFlight);
+    }
+
+    /**
+     * The aliasing witness: after publication, the editor's object no longer reaches live settings.
+     *
+     * <p>Mutating it must change nothing that is running, and must not move the generation either,
+     * or the cache would invalidate itself on an edit nobody saved.
+     */
+    @Test void editingTheSavedObjectAfterPublicationCannotReachTheLiveSettings() {
+        PathWeaverConfig editor = new PathWeaverConfig();
+        editor.maxInFlight = 64;
+        editor.trustedMods = new java.util.ArrayList<>(java.util.List.of("one"));
+        PathWeaverConfig.set(editor);
+
+        PathWeaverConfig live = PathWeaverConfig.get();
+        long generationAtPublication = live.generation();
+
+        editor.maxInFlight = 999;
+        editor.enabled = false;
+        editor.trustedMods.add("two");
+
+        assertEquals(64, PathWeaverConfig.get().maxInFlight,
+            "an edit after saving changed the running settings");
+        assertTrue(PathWeaverConfig.get().enabled, "an edit after saving switched the mod off");
+        assertEquals(java.util.List.of("one"), PathWeaverConfig.get().trustedMods,
+            "the published snapshot shares its list with the object that was saved");
+        assertEquals(generationAtPublication, PathWeaverConfig.get().generation(),
+            "an unsaved edit moved the policy generation");
+
+        // And the other direction, so this is not passing because publication did nothing: saving
+        // the edited object does take effect, and does move the generation.
+        PathWeaverConfig.set(editor);
+        assertEquals(999, PathWeaverConfig.get().maxInFlight, "saving the edit had no effect");
+        assertNotEquals(generationAtPublication, PathWeaverConfig.get().generation(),
+            "a real publication did not move the generation");
     }
     @Test void tierAccessorsReportTheFrozenPolicyAndIgnoreThePersistedField() {
         // The tier is frozen at scan time, so writing the field -- which is what a settings save
@@ -163,9 +213,12 @@ class PathWeaverConfigTest {
         saved.maxInFlight = 0;
         try {
             assertEquals(InteractionResult.PASS, PathWeaverConfig.onSave(null, saved));
-            assertSame(saved, PathWeaverConfig.get());
-            assertEquals(0, saved.poolThreads);
+            assertNotSame(saved, PathWeaverConfig.get(),
+                "the saved object was published rather than a copy of it");
+            assertEquals(0, saved.poolThreads, "the saved object was not normalized in place");
             assertEquals(1, saved.maxInFlight);
+            assertEquals(0, PathWeaverConfig.get().poolThreads);
+            assertEquals(1, PathWeaverConfig.get().maxInFlight);
         } finally {
             PathWeaverConfig.set(previous);
         }
