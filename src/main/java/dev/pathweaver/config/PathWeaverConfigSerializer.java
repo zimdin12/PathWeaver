@@ -158,25 +158,52 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
         }
     }
 
+    /**
+     * Keys read before this runs, each by a check of its own that this must not duplicate.
+     *
+     * <p>{@code configVersion} chooses the migration branch, so it is read first. {@code enabled} is
+     * required at v2 and v3 and deliberately optional in the legacy branch, which is a rule about
+     * fidelity to old installations that no type check can express.
+     */
+    private static final java.util.Set<String> READ_ELSEWHERE =
+        java.util.Set.of("configVersion", "enabled");
+
+    /**
+     * Every persisted field must survive a hand edit, or be rejected loudly.
+     *
+     * <p>This is the file people open in a text editor, so a wrong type is a normal event rather than
+     * a corrupt one, and Gson coerces several of them without complaint: {@code "7"} became 7 and
+     * {@code null} overwrote an initialised list.
+     *
+     * <p>The fields are DISCOVERED from the config class, not listed. The listed version was wrong
+     * three separate times, each time in the same way: a field was added, the list was not, and the
+     * gap was found later by someone reading the file rather than by anything failing. Two of those
+     * shipped. Deriving the checks from the declared type means a new field is covered by existing
+     * it, and a field whose type has no check refuses to load rather than passing unvalidated.
+     */
     private static void validateCurrentFieldTypes(JsonObject raw) {
-        strictOptionalBoolean(raw, "allowModdedMobAsync");
-        strictOptionalBoolean(raw, "brainSinkAsync");
-        strictOptionalInteger(raw, "poolThreads");
-        strictOptionalInteger(raw, "maxInFlight");
-        strictOptionalInteger(raw, "repathToleranceBlocks");
-        strictOptionalNumber(raw, "stalenessMoveThreshold");
-        strictOptionalInteger(raw, "maxResultAgeTicks");
-        // Added with the fields themselves and not afterwards, because this is the file people
-        // hand-edit: without these two, {"workerFailureLimit": "7"} was quietly coerced by GSON while
-        // the identical mistake in maxInFlight was rejected.
-        strictOptionalInteger(raw, "workerFailureLimit");
-        strictOptionalInteger(raw, "workerFailureWindowTicks");
-        strictOptionalEnum(raw, "compatibilityTier");
-        // The only persisted field that had no type check. `"trustedMods": null` passed every other
-        // guard, Gson overwrote the initialised list with null, and the null survived into the
-        // config -- the scanner null-guards it, but Cloth's list entry builder does not, so the
-        // settings screen threw and ModMenu bounced the user straight back with no message.
-        strictOptionalStringList(raw, "trustedMods");
+        for (java.lang.reflect.Field field : PathWeaverConfig.class.getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) continue;
+            String key = field.getName();
+            if (READ_ELSEWHERE.contains(key)) continue;
+            Class<?> type = field.getType();
+            if (type == boolean.class) {
+                strictOptionalBoolean(raw, key);
+            } else if (type == int.class || type == long.class) {
+                strictOptionalInteger(raw, key);
+            } else if (type == double.class || type == float.class) {
+                strictOptionalNumber(raw, key);
+            } else if (type.isEnum()) {
+                strictOptionalEnum(raw, key, type);
+            } else if (java.util.List.class.isAssignableFrom(type)) {
+                strictOptionalStringList(raw, key);
+            } else {
+                // Fail closed. An unchecked field is how the last three got through, and a settings
+                // file that refuses to load is louder than one that loads something wrong.
+                throw new IllegalStateException(
+                    "no strict check for " + key + " of type " + type.getName());
+            }
+        }
     }
 
     /**
@@ -329,17 +356,18 @@ public final class PathWeaverConfigSerializer implements ConfigSerializer<PathWe
         }
     }
 
-    private static void strictOptionalEnum(JsonObject raw, String key) {
+    /** The constants come from the field's own type, so a second enum setting is covered by adding it. */
+    private static void strictOptionalEnum(JsonObject raw, String key, Class<?> type) {
         if (!raw.has(key)) return;
         JsonElement element = raw.get(key);
         if (!(element instanceof JsonPrimitive primitive) || !primitive.isString()) {
             throw new IllegalArgumentException(key + " must be a string");
         }
         String value = primitive.getAsString();
-        for (CompatibilityTier tier : CompatibilityTier.values()) {
-            if (tier.name().equals(value)) return;
+        for (Object constant : type.getEnumConstants()) {
+            if (((Enum<?>) constant).name().equals(value)) return;
         }
-        throw new IllegalArgumentException(key + " is not a known tier: " + value);
+        throw new IllegalArgumentException(key + " is not a known " + type.getSimpleName() + ": " + value);
     }
 
     private static void strictOptionalBoolean(JsonObject raw, String key) {
