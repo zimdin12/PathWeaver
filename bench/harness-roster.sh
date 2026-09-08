@@ -50,6 +50,11 @@ for entry in "${ROSTER[@]}"; do
   ./gradlew deleteGameTestRunDir --console=plain >/dev/null 2>&1
   rm -rf build/resources/gametest
 
+  # The classpath this harness is about to launch with, captured BEFORE it launches and kept
+  # beside its log. Enumerating it afterwards describes a build directory that has since been
+  # rewritten, which cannot establish what the process that already ran was able to load.
+  ./gradlew --init-script bench/print-classpath.gradle printGametestRuntimeClasspath -q \n    --console=plain 2>/dev/null | grep -E "^([A-Za-z]:|/)" > "$OUT/$name.classpath.txt"
+
   if [ -z "$flag" ]; then
     timeout 1800 ./gradlew runGameTest --rerun-tasks --console=plain > "$log" 2>&1
   else
@@ -87,7 +92,12 @@ for entry in "${ROSTER[@]}"; do
   fi
   [ "$contaminated" -eq 0 ] || verdict="SETUP-INVALID"
 
-  printf '%-16s %-14s exit=%-3s %s  %s-%s  %s\n' \
-    "$name" "$verdict" "$code" "$manifest" "$started" "$ended" "$log" >> "$OUT/summary.txt"
+  # Could this harness's own classpath have supplied that mod from anywhere else? Enumerated
+  # from the file captured before this harness launched, not from the tree as it stands now.
+  providers=$(python bench/classpath_providers.py "$OUT/$name.classpath.txt" 2>&1 | tail -1)
+
+  printf '%-16s %-14s exit=%-3s %s  %s  %s-%s  %s\n' \
+    "$name" "$verdict" "$code" "$manifest" "$providers" "$started" "$ended" "$log" \
+    >> "$OUT/summary.txt"
 done
 cat "$OUT/summary.txt"
