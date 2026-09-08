@@ -38,6 +38,12 @@ This is a structural argument about how the work is scheduled, not a measurement
 machine — both benchmarks on this page ran on many-core hardware, and that is exactly why the
 recommendation is stated rather than enforced.
 
+## Before you install it: is pathfinding even your problem?
+
+PathWeaver only helps a server whose tick time is going into mob path searches, and plenty of
+struggling servers are slow for some other reason. Ten minutes with spark answers it:
+[Is pathfinding actually your bottleneck?](docs/IS-IT-YOUR-BOTTLENECK.md)
+
 ## What it does
 
 Minecraft runs mob A* path searches on the server thread. PathWeaver runs eligible ones on a small worker pool instead, so a server that is falling behind because of pathfinding can keep up.
