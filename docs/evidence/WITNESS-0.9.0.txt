@@ -1,4 +1,4 @@
-PathWeaver 0.9.0 witnesses, 18 entries, HEAD b061926cc4113740e4ba67320af31b3165fc74ce
+PathWeaver 0.9.0 witnesses, 18 entries, HEAD f32e7dc91886e771ac3cc91f4babf396ca9bfa75
 
 ====================================================================================================
 expiry-parking
@@ -73,7 +73,7 @@ caller-generation-constant
   1 GREEN     16 tests, 0 failures
   2 RED       16 tests, 1 failing
               everyProductionCallerReadsTheGenerationAtTheCall()
-                org.opentest4j.AssertionFailedError: ResultInstaller.deliver does not read the generation at the completed call: org.objectweb.asm.tree.InsnNode@2cb66a34 ==> Un
+                org.opentest4j.AssertionFailedError: ResultInstaller.deliver does not read the generation at the completed call: org.objectweb.asm.tree.InsnNode@646432bb ==> Un
   3 RESTORED  16 tests, 0 failures, file byte-identical
 ====================================================================================================
 park-restarts-the-budget
@@ -110,7 +110,11 @@ status-prints-hardcoded-zeros
 serializer-checks-the-mode-only
   file        src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java
   expectation only the cache MODE is checked, so neither numeric field is pinned
-  INVALID     baseline is not green: (1, 1, [('everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault()', 'org.junit.jupiter.api.extension.ExtensionConfigurationException: Failed to create default temp directory')])
+  1 GREEN     1 tests, 0 failures
+  2 RED       1 tests, 1 failing
+              everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault()
+                org.opentest4j.AssertionFailedError: resultCacheMaxAgeTicks accepted a value of the wrong type ==> Expected java.lang.Exception to be thrown, but nothing was th
+  3 RESTORED  1 tests, 0 failures, file byte-identical
 ====================================================================================================
 pin-denial-is-discarded
   file        src/main/java/dev/pathweaver/gate/LithiumPathfindingCompatibility.java
@@ -133,7 +137,11 @@ hook-stops-delegating
 serializer-derived-checks
   file        src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java
   expectation the three resultCache settings accept a wrong type, as in 0.8.0
-  INVALID     baseline is not green: (1, 1, [('everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault()', 'org.junit.jupiter.api.extension.ExtensionConfigurationException: Failed to create default temp directory')])
+  1 GREEN     1 tests, 0 failures
+  2 RED       1 tests, 1 failing
+              everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault()
+                org.opentest4j.AssertionFailedError: resultCacheMode accepted a value of the wrong type ==> Expected java.lang.Exception to be thrown, but nothing was thrown.
+  3 RESTORED  1 tests, 0 failures, file byte-identical
 ====================================================================================================
 status-sums-the-two-counts
   file        src/main/java/dev/pathweaver/cache/CacheStatusLines.java
@@ -171,7 +179,13 @@ pathfinder-pin-value
 pathfinder-pin-unused
   file        src/main/java/dev/pathweaver/gate/LithiumPathfindingCompatibility.java
   expectation the Lithium audit scans bytes it never pinned
-  INVALID     the revert pattern matches 0 times, so it is not an exact revert
+  1 GREEN     6 tests, 0 failures
+  2 RED       6 tests, 2 failing
+              aChangedPathFinderProducesADenialTheLithiumAuditReturns()
+                org.opentest4j.AssertionFailedError: a changed PathFinder produced no returned denial: [Lithium module jar hash mismatch: 039058c6f2c0cb492c533b0a4d14ef77cc0f78
+              theLithiumAuditUsesThatConstantAndNotAnotherDigest()
+                org.opentest4j.AssertionFailedError: the Lithium audit does not use the PathFinder pin; found it in [] ==> expected: &lt;true> but was: &lt;false>
+  3 RESTORED  6 tests, 0 failures, file byte-identical
 ====================================================================================================
   expiry-parking                 witnessed
   expiry-sweep                   witnessed
@@ -183,11 +197,11 @@ pathfinder-pin-unused
   park-restarts-the-budget       witnessed
   collection-drops-the-lower-bound witnessed
   status-prints-hardcoded-zeros  witnessed
-  serializer-checks-the-mode-only NOT WITNESSED
+  serializer-checks-the-mode-only witnessed
   pin-denial-is-discarded        witnessed
   hook-stops-delegating          witnessed
-  serializer-derived-checks      NOT WITNESSED
+  serializer-derived-checks      witnessed
   status-sums-the-two-counts     witnessed
   status-saved-capacity          witnessed
   pathfinder-pin-value           witnessed
-  pathfinder-pin-unused          NOT WITNESSED
+  pathfinder-pin-unused          witnessed
