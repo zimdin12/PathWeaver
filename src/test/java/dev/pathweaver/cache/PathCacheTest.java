@@ -20,6 +20,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PathCacheTest {
 
+    /**
+     * One configuration for the whole of a test. The barrier only fires when this number changes, so
+     * holding it fixed here keeps these tests about the properties they were written for. The
+     * transition behaviour has its own file, {@code CachePolicyBarrierJoinTest}.
+     */
+    private static final long GEN = 7L;
+
     private static final Object DIMENSION = "overworld";
     private static final long X = Double.doubleToLongBits(10.5);
     private static final long Y = Double.doubleToLongBits(64.0);
@@ -46,8 +53,8 @@ class PathCacheTest {
     /** Fills the cache with one route dispatched at {@code tick} and returns the cache. */
     private static PathCache cacheHolding(Path path, long tick) {
         PathCache cache = new PathCache(64);
-        cache.remember(request(1L), key(), tick, X, Y, Z);
-        cache.completed(request(1L), path, true);
+        cache.remember(request(1L), key(), tick, X, Y, Z, GEN);
+        cache.completed(request(1L), path, true, GEN);
         return cache;
     }
 
@@ -56,7 +63,7 @@ class PathCacheTest {
         // Positive control for everything below: if this fails, every "did not serve" assertion in
         // this file is passing for the wrong reason.
         PathCache cache = cacheHolding(straightPath(5), 100L);
-        CacheLookup found = cache.lookup(key(), X, Y, Z, 110L, 40, true);
+        CacheLookup found = cache.lookup(key(), X, Y, Z, 110L, 40, true, GEN);
         assertTrue(found.isServed());
         assertEquals(5, found.path().getNodeCount());
         assertEquals(1L, cache.counters().served);
@@ -74,8 +81,8 @@ class PathCacheTest {
     @Test
     void oneMobTruncatingItsRouteLeavesTheOtherAndTheCachedOriginalIntact() {
         PathCache cache = cacheHolding(straightPath(5), 100L);
-        Path first = cache.lookup(key(), X, Y, Z, 101L, 40, true).path();
-        Path second = cache.lookup(key(), X, Y, Z, 101L, 40, true).path();
+        Path first = cache.lookup(key(), X, Y, Z, 101L, 40, true, GEN).path();
+        Path second = cache.lookup(key(), X, Y, Z, 101L, 40, true, GEN).path();
         assertNotSame(first, second);
 
         first.truncateNodes(2);
@@ -85,15 +92,15 @@ class PathCacheTest {
         assertEquals(5, second.getNodeCount(), "the other mob's route was cut short");
         assertEquals(0, second.getNextNodeIndex(), "the other mob's progress was advanced");
         assertEquals(10, second.getNode(0).x, "the other mob's first node was overwritten");
-        assertEquals(5, cache.lookup(key(), X, Y, Z, 102L, 40, true).path().getNodeCount(),
+        assertEquals(5, cache.lookup(key(), X, Y, Z, 102L, 40, true, GEN).path().getNodeCount(),
             "the cached route itself was damaged by a mob that held a copy of it");
     }
 
     @Test
     void nodesAreCopiedRatherThanShared() {
         PathCache cache = cacheHolding(straightPath(3), 100L);
-        Path first = cache.lookup(key(), X, Y, Z, 101L, 40, true).path();
-        Path second = cache.lookup(key(), X, Y, Z, 101L, 40, true).path();
+        Path first = cache.lookup(key(), X, Y, Z, 101L, 40, true, GEN).path();
+        Path second = cache.lookup(key(), X, Y, Z, 101L, 40, true, GEN).path();
         assertNotSame(first.getNode(0), second.getNode(0));
         assertEquals(first.getNode(0).x, second.getNode(0).x);
     }
@@ -128,7 +135,7 @@ class PathCacheTest {
     void aRouteComputedOnTheFirstTickOfTheWorldIsStillCacheable() {
         PathCache cache = cacheHolding(straightPath(5), 0L);
         assertEquals(1L, cache.counters().stored);
-        assertTrue(cache.lookup(key(), X, Y, Z, 1L, 40, true).isServed());
+        assertTrue(cache.lookup(key(), X, Y, Z, 1L, 40, true, GEN).isServed());
     }
 
     @Test
@@ -136,7 +143,7 @@ class PathCacheTest {
         PathCache cache = cacheHolding(straightPath(5), 100L);
         cache.noteBlockChange(DIMENSION.hashCode(),
             SectionPos.asLong(new BlockPos(12, 64, 10)), 105L);
-        assertFalse(cache.lookup(key(), X, Y, Z, 110L, 40, true).isServed());
+        assertFalse(cache.lookup(key(), X, Y, Z, 110L, 40, true, GEN).isServed());
         assertEquals(1L, cache.counters().terrainChanged);
     }
 
@@ -149,15 +156,15 @@ class PathCacheTest {
         PathCache cache = cacheHolding(straightPath(5), 100L);
         cache.noteBlockChange(DIMENSION.hashCode(),
             SectionPos.asLong(new BlockPos(10, 64, 400)), 105L);
-        assertTrue(cache.lookup(key(), X, Y, Z, 110L, 40, true).isServed());
+        assertTrue(cache.lookup(key(), X, Y, Z, 110L, 40, true, GEN).isServed());
     }
 
     @Test
     void aRouteThatIsOlderThanTheAgeLimitIsNotServed() {
         PathCache cache = cacheHolding(straightPath(5), 100L);
-        assertTrue(cache.lookup(key(), X, Y, Z, 140L, 40, true).isServed());
+        assertTrue(cache.lookup(key(), X, Y, Z, 140L, 40, true, GEN).isServed());
         PathCache other = cacheHolding(straightPath(5), 100L);
-        assertFalse(other.lookup(key(), X, Y, Z, 141L, 40, true).isServed());
+        assertFalse(other.lookup(key(), X, Y, Z, 141L, 40, true, GEN).isServed());
         assertEquals(1L, other.counters().expired);
     }
 
@@ -169,13 +176,13 @@ class PathCacheTest {
     @Test
     void aResultWhoseGroundMovedDuringTheSearchIsNotKept() {
         PathCache cache = new PathCache(64);
-        cache.remember(request(1L), key(), 100L, X, Y, Z);
+        cache.remember(request(1L), key(), 100L, X, Y, Z, GEN);
         cache.noteBlockChange(DIMENSION.hashCode(),
             SectionPos.asLong(new BlockPos(12, 64, 10)), 101L);
-        cache.completed(request(1L), straightPath(5), true);
+        cache.completed(request(1L), straightPath(5), true, GEN);
         assertEquals(0L, cache.counters().stored);
         assertEquals(1L, cache.counters().refusedTerrainMoved);
-        assertFalse(cache.lookup(key(), X, Y, Z, 102L, 40, true).isServed());
+        assertFalse(cache.lookup(key(), X, Y, Z, 102L, 40, true, GEN).isServed());
     }
 
     /**
@@ -189,17 +196,17 @@ class PathCacheTest {
     @Test
     void measuringKeepsTheEvidenceAndNotTheRoute() {
         PathCache cache = new PathCache(64);
-        cache.remember(request(1L), key(), 100L, X, Y, Z);
-        cache.completed(request(1L), straightPath(5), false);
+        cache.remember(request(1L), key(), 100L, X, Y, Z, GEN);
+        cache.completed(request(1L), straightPath(5), false, GEN);
         assertEquals(1L, cache.counters().stored, "the measurement itself was thrown away");
 
         // Still a hit, still checked against terrain and age: the count has to predict what serving
         // would do, or it is not a measurement of anything.
         assertEquals(CacheLookup.Kind.WOULD_SERVE,
-            cache.lookup(key(), X, Y, Z, 110L, 40, false).kind());
+            cache.lookup(key(), X, Y, Z, 110L, 40, false, GEN).kind());
         cache.noteBlockChange(DIMENSION.hashCode(),
             SectionPos.asLong(new BlockPos(12, 64, 10)), 105L);
-        assertEquals(CacheLookup.Kind.MISS, cache.lookup(key(), X, Y, Z, 110L, 40, false).kind(),
+        assertEquals(CacheLookup.Kind.MISS, cache.lookup(key(), X, Y, Z, 110L, 40, false, GEN).kind(),
             "a measured hit was not checked against the terrain a served one would be");
     }
 
@@ -211,9 +218,9 @@ class PathCacheTest {
     @Test
     void anEntryStoredWhileMeasuringIsCountedButNotServed() {
         PathCache cache = new PathCache(64);
-        cache.remember(request(1L), key(), 100L, X, Y, Z);
-        cache.completed(request(1L), straightPath(5), false);
-        CacheLookup found = cache.lookup(key(), X, Y, Z, 110L, 40, true);
+        cache.remember(request(1L), key(), 100L, X, Y, Z, GEN);
+        cache.completed(request(1L), straightPath(5), false, GEN);
+        CacheLookup found = cache.lookup(key(), X, Y, Z, 110L, 40, true, GEN);
         assertEquals(CacheLookup.Kind.WOULD_SERVE, found.kind());
         assertEquals(0L, cache.counters().served);
         assertEquals(1L, cache.counters().wouldServe);
@@ -222,7 +229,7 @@ class PathCacheTest {
     @Test
     void shadowModeCountsTheHitAndServesNothing() {
         PathCache cache = cacheHolding(straightPath(5), 100L);
-        CacheLookup found = cache.lookup(key(), X, Y, Z, 110L, 40, false);
+        CacheLookup found = cache.lookup(key(), X, Y, Z, 110L, 40, false, GEN);
         assertEquals(CacheLookup.Kind.WOULD_SERVE, found.kind());
         assertEquals(1L, cache.counters().wouldServe);
         assertEquals(0L, cache.counters().served);
@@ -237,7 +244,7 @@ class PathCacheTest {
     void sameBlockButADifferentSpotIsCountedAndNotServed() {
         PathCache cache = cacheHolding(straightPath(5), 100L);
         CacheLookup found = cache.lookup(key(), Double.doubleToLongBits(10.7), Y, Z,
-            110L, 40, true);
+            110L, 40, true, GEN);
         assertEquals(CacheLookup.Kind.BLOCK_ONLY, found.kind());
         assertEquals(0L, cache.counters().served);
         assertEquals(1L, cache.counters().blockOnlyHits);
@@ -246,24 +253,24 @@ class PathCacheTest {
     @Test
     void theLeastRecentlyUsedRouteIsDroppedOnceTheCacheIsFull() {
         PathCache cache = new PathCache(1);
-        cache.remember(request(1L), key(), 100L, X, Y, Z);
-        cache.completed(request(1L), straightPath(3), true);
+        cache.remember(request(1L), key(), 100L, X, Y, Z, GEN);
+        cache.completed(request(1L), straightPath(3), true, GEN);
         PathCacheKey other = new PathCacheKey(DIMENSION, 99, 64, 10, key().target(),
             String.class, Integer.class, 0, 4096, Float.floatToIntBits(1.0f),
             Float.floatToIntBits(0.6f), 3, Float.floatToIntBits(0.6f),
             Float.floatToIntBits(1.95f), 0, new int[] {1});
-        cache.remember(request(2L), other, 100L, X, Y, Z);
-        cache.completed(request(2L), straightPath(3), true);
+        cache.remember(request(2L), other, 100L, X, Y, Z, GEN);
+        cache.completed(request(2L), straightPath(3), true, GEN);
         assertEquals(1, cache.size());
-        assertFalse(cache.lookup(key(), X, Y, Z, 101L, 40, true).isServed());
+        assertFalse(cache.lookup(key(), X, Y, Z, 101L, 40, true, GEN).isServed());
     }
 
     @Test
     void aRequestThatNeverProducedARouteLeavesNothingBehind() {
         PathCache cache = new PathCache(64);
-        cache.remember(request(1L), key(), 100L, X, Y, Z);
+        cache.remember(request(1L), key(), 100L, X, Y, Z, GEN);
         cache.forget(request(1L));
-        cache.completed(request(1L), straightPath(5), true);
+        cache.completed(request(1L), straightPath(5), true, GEN);
         assertEquals(0, cache.size());
     }
 }

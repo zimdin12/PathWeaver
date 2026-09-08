@@ -10,6 +10,14 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ResultInstallerTest {
+
+    /**
+     * The live configuration generation, not a literal. The drain passes whatever
+     * {@code PathWeaverConfig.policyGeneration()} returns, so a dispatch that remembered under a
+     * different number would be discarded at the barrier. Reading the same source here makes this
+     * test fail if dispatch and drain ever stop agreeing on which configuration they are under.
+     */
+    private static long gen() { return dev.pathweaver.config.PathWeaverConfig.policyGeneration(); }
     static class FakeSink implements ResultInstaller.InstallSink {
         final Set<RequestKey> stale;
         final List<RequestKey> installed = new ArrayList<>();
@@ -66,14 +74,14 @@ class ResultInstallerTest {
 
         ResultInstaller installer = new ResultInstaller();
         RequestKey landed = key(1L, 20L, 20);
-        cache.remember(landed, cacheKey, 0L, 0L, 0L, 0L);
+        cache.remember(landed, cacheKey, 0L, 0L, 0L, 0L, gen());
         installer.enqueue(landed, 0L, PathOutcome.success(realPath()), 0, 0, 0);
         installer.drain(new FakeSink(Set.of()));
         assertEquals(1, cache.size(), "a finished route never reached the cache");
 
         // And the other direction: a search that produced nothing must not leave its slot behind.
         RequestKey empty = key(1L, 21L, 21);
-        cache.remember(empty, cacheKey, 0L, 0L, 0L, 0L);
+        cache.remember(empty, cacheKey, 0L, 0L, 0L, 0L, gen());
         installer.enqueue(empty, 0L, PathOutcome.noPath(), 0, 0, 0);
         installer.drain(new FakeSink(Set.of()));
         assertEquals(1, cache.size(), "a no-path result was cached as if it were a route");

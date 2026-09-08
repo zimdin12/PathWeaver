@@ -243,11 +243,41 @@ public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Gui.Excluded
     @ConfigEntry.Category("general")
     private static volatile PathWeaverConfig INSTANCE = new PathWeaverConfig();
+
+    /**
+     * Bumped on every published configuration, so a consumer can tell that policy moved under it.
+     *
+     * <p>This exists for the route cache. Its section clock only observes block changes while the
+     * cache is active, but its stored routes outlive a setting change, so switching the cache or the
+     * master switch off, changing a block, and switching back inside a route's lifetime would serve
+     * a route across a change nothing recorded. The cache cannot be cleared from here: settings are
+     * published from whichever thread saved them, the cache's maps are not concurrent, and clearing
+     * one while the server thread reads it is a worse bug than the one being fixed.
+     *
+     * <p>So the barrier is a number the cache checks on ITS thread, before it acts on the new policy.
+     * Every publication path funnels through {@link #set}, including a save that hands back the same
+     * object, so incrementing here covers all of them without anyone having to remember to.
+     *
+     * <p>Annotated the way every static in this class is: AutoConfig reflects over declared fields
+     * and would otherwise put this on the settings screen and crash Save on a final field.
+     */
+    @ConfigEntry.Gui.Excluded
+    @ConfigEntry.Category("general")
+    private static final java.util.concurrent.atomic.AtomicLong POLICY_GENERATION =
+        new java.util.concurrent.atomic.AtomicLong();
+
     public static PathWeaverConfig get() { return INSTANCE; }
+
+    /** Which published configuration this is. Only equality across calls is meaningful. */
+    public static long policyGeneration() { return POLICY_GENERATION.get(); }
+
     public static void set(PathWeaverConfig c) {
         PathWeaverConfig normalized = c == null ? new PathWeaverConfig() : c;
         normalized.validatePostLoad();
         INSTANCE = normalized;
+        // AFTER the instance is visible. A consumer that sees the new generation must not then read
+        // the old settings; the other order leaves exactly that window.
+        POLICY_GENERATION.incrementAndGet();
     }
 
     /** Keep pathfinding synchronous if persisted configuration cannot be registered or loaded. */
@@ -319,6 +349,23 @@ public class PathWeaverConfig implements ConfigData {
     /** True when a cache hit may actually be given to a mob rather than only counted. */
     public boolean resultCacheServes() {
         return resultCacheMode == PathCacheMode.SERVE;
+    }
+
+    /**
+     * True when world changes are being recorded for the shared cache.
+     *
+     * <p>The one definition of that question. The block-change hook runs on every visible block
+     * update in the world, so it has to decide quickly whether to record anything, and both switches
+     * silence it: with the mod off nothing should touch the world, and with the cache off there is
+     * nothing to keep the records for.
+     *
+     * <p>The consequence is why {@code PathCache} has a policy barrier. Routes stored earlier outlive
+     * a period when this is false, so a block broken during that period leaves no trace, and serving
+     * such a route afterwards would walk a mob through terrain nobody watched. Whoever changes this
+     * predicate is changing how wide that blind period is.
+     */
+    public boolean recordsBlockChanges() {
+        return enabled && resultCacheActive();
     }
 
     public static InteractionResult onSave(
