@@ -10,6 +10,21 @@ echo "roster    blob $(git rev-parse HEAD:bench/harness-roster.sh 2>/dev/null ||
 echo "verdict   blob $(git rev-parse HEAD:bench/manifest_verdict.py 2>/dev/null || echo uncommitted)"
 echo "command   ./gradlew runGameTest [flag] --rerun-tasks, one attempt per harness, no reruns"
 echo
+# Who else could have supplied the mod the loader reported. Without this, "the file declares id X
+# and the loader reported id X" is agreement between two things and not evidence that the loader read
+# that file: another entry declaring the same id produces the same log line.
+CP="build/gametest-classpath.txt"
+if [ -f "$CP" ]; then
+  echo "Providers on the harness runtime classpath:"
+  python bench/classpath_providers.py "$CP" 2>&1 | sed 's/^/  /'
+  echo
+else
+  echo "Providers on the harness runtime classpath: NOT ENUMERATED for this series."
+  echo "  Without it, loaded-content identity is UNVERIFIED: the receipt below shows the saved file"
+  echo "  agrees with the intended manifest and that its id matches the id the loader reported, which"
+  echo "  is not the same as showing the loader read those bytes."
+  echo
+fi
 echo "Per-test identities are NOT recorded: a passing GameTest run reports a batch size and a total,"
 echo "and names individual tests only when one fails. The batch size and the manifest that selects"
 echo "the batch are what bound the set here."

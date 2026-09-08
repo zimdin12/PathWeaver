@@ -335,7 +335,15 @@ public class PathWeaverConfig implements ConfigData {
             }
             try {
                 Object value = field.get(source);
-                if (value instanceof List<?> list) value = new ArrayList<>(list);
+                // Copied AND sealed. A copy alone stops the caller's list from being the published
+                // one; it does not stop anything holding the published config from calling add() on
+                // the list it gets back, which changes live settings without moving the generation,
+                // so the cache never learns the policy moved. Nothing in production writes to it --
+                // the one reader copies it into a Set -- so sealing it costs nothing and turns a
+                // future mistake into an exception instead of a silent stale-route window.
+                if (value instanceof List<?> list) {
+                    value = java.util.Collections.unmodifiableList(new ArrayList<>(list));
+                }
                 field.set(copy, value);
             } catch (IllegalAccessException unreachable) {
                 // Every persisted field is public in this class, and this class is doing the reading.
