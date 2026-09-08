@@ -34,35 +34,86 @@ import glob
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# The failure each entry must produce, matched against the failing test name or its assertion
-# message. WITHOUT THIS THE RUNNER CERTIFIED ANY RED: a revert that broke an unrelated test in the
-# same filter was recorded exactly like one that broke the right test. An entry with no expected
-# cause here is reported INVALID rather than skipped, so the table cannot fall silently behind the
-# entry list.
+# The exact testcase each entry must break, AND the discriminating assertion text inside it. BOTH,
+# on the SAME failure record.
+#
+# Two rounds of this were wrong. First the runner accepted any red at all, so a revert that broke an
+# unrelated test in the same filter certified the entry. Then it matched the testcase name OR the
+# message, which still accepts an unrelated assertion firing inside the named test: a test with four
+# assertions has four ways to go red and only one of them is the defect. A pair, matched together on
+# one failure, is the property.
+#
+# An entry with no row here is INVALID rather than skipped, so the table cannot fall behind the entry
+# list.
 EXPECTED_CAUSE = {
-    "expiry-parking": "at exactly maxResultAgeTicks",
-    "expiry-sweep": "the sweep retired a slot",
-    "barrier-stored-entries": "served across an unwatched change",
-    "barrier-pending-candidates": "candidate from before the gap was stored",
-    "gate-inverted": "did not stop the observer",
-    "gate-ignored": "did not stop the observer",
-    "caller-generation-constant": "does not read the generation at",
-    "park-restarts-the-budget": "restarted the budget from the arrival tick",
-    "collection-drops-the-lower-bound": "before it was dispatched",
-    "status-prints-hardcoded-zeros": "served and wouldServe were summed",
-    "serializer-checks-the-mode-only": "accepted a value of the wrong type",
-    "serializer-skips-max-age-only": "accepted a value of the wrong type",
-    "serializer-skips-max-entries-only": "accepted a value of the wrong type",
-    "publication-shares-the-editors-object": "changed the running settings",
-    "published-list-stays-mutable": "can be added to",
-    "pin-denial-is-discarded": "produced no returned denial",
-    "hook-stops-delegating": "the hook branches",
-    "serializer-derived-checks": "accepted a value of the wrong type",
-    "status-sums-the-two-counts": "reported as savings",
-    "status-saved-capacity": "printed as if it were in force",
-    "pathfinder-pin-value": "not the one the shipped PathFinder has",
-    "pathfinder-pin-unused": "does not use the PathFinder pin",
+    "expiry-parking":
+        ("aResultArrivingAtTheLastAllowedAgeIsCollected",
+         "at exactly maxResultAgeTicks"),
+    "expiry-sweep":
+        ("theSweepLeavesASlotAliveAtTheFinalAllowedAge",
+         "the sweep retired a slot"),
+    "barrier-stored-entries":
+        ("aRouteStoredBeforeTheCacheWasTurnedOffIsNotServedAfterItComesBack",
+         "served across an unwatched change"),
+    "barrier-pending-candidates":
+        ("aSearchDispatchedBeforeTheGapDoesNotPopulateTheCacheWhenItLandsAfterIt",
+         "candidate from before the gap was stored"),
+    "gate-inverted":
+        ("theObserverRecordsNothingWhileEitherSwitchIsOff",
+         "did not stop the observer"),
+    "gate-ignored":
+        ("theObserverRecordsNothingWhileEitherSwitchIsOff",
+         "did not stop the observer"),
+    "caller-generation-constant":
+        ("everyProductionCallerReadsTheGenerationAtTheCall",
+         "does not read the generation at"),
+    "park-restarts-the-budget":
+        ("parkingCarriesTheDispatchDeadlineRatherThanRestartingIt",
+         "restarted the budget from the arrival tick"),
+    "collection-drops-the-lower-bound":
+        ("aParkedResultDoesNotAnswerAQuestionFromBeforeItsDispatch",
+         "before it was dispatched"),
+    "status-prints-hardcoded-zeros":
+        ("theMeasuredAndHypotheticalCountsAreNeverAddedTogether",
+         "served and wouldServe were summed"),
+    "serializer-checks-the-mode-only":
+        ("everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault",
+         "resultCacheMaxAgeTicks accepted a value of the wrong type"),
+    "serializer-skips-max-age-only":
+        ("everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault",
+         "resultCacheMaxAgeTicks accepted a value of the wrong type"),
+    "serializer-skips-max-entries-only":
+        ("everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault",
+         "resultCacheMaxEntries accepted a value of the wrong type"),
+    "publication-shares-the-editors-object":
+        ("editingTheSavedObjectAfterPublicationCannotReachTheLiveSettings",
+         "changed the running settings"),
+    "published-list-stays-mutable":
+        ("aPublishedSnapshotsCollectionsCannotBeMutatedInPlace",
+         "can be added to"),
+    "pin-denial-is-discarded":
+        ("aChangedPathFinderProducesADenialTheLithiumAuditReturns",
+         "produced no returned denial"),
+    "hook-stops-delegating":
+        ("theBlockChangeHookDelegatesTheWholeDecision",
+         "the hook branches"),
+    "serializer-derived-checks":
+        ("everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault",
+         "resultCacheMode accepted a value of the wrong type"),
+    "status-sums-the-two-counts":
+        ("hitsThatSavedNothingAreNotCountedAsSkippedSearches",
+         "reported as savings"),
+    "status-saved-capacity":
+        ("capacityIsTheOneInForceAndAPendingChangeIsCalledOut",
+         "printed as if it were in force"),
+    "pathfinder-pin-value":
+        ("thePinMatchesTheVanillaClassOnTheClasspath",
+         "not the one the shipped PathFinder has"),
+    "pathfinder-pin-unused":
+        ("theLithiumAuditUsesThatConstantAndNotAnotherDigest",
+         "does not use the PathFinder pin"),
 }
+
 
 # (name, file, exact text to replace, replacement, test filter, the test that must go red)
 WITNESSES = [
@@ -290,7 +341,7 @@ def results_for(test_filter):
     if not files:
         return None
     outcome = {"exit": completed.returncode, "tests": 0, "skipped": 0,
-               "failures": 0, "errors": 0, "causes": []}
+               "failures": 0, "errors": 0, "causes": [], "executed": set()}
     for path in files:
         raw = io.open(path, encoding="utf-8").read()
         head = re.search(r'tests="(\d+)" skipped="(\d+)" failures="(\d+)" errors="(\d+)"', raw)
@@ -298,6 +349,8 @@ def results_for(test_filter):
         outcome["skipped"] += int(head.group(2))
         outcome["failures"] += int(head.group(3))
         outcome["errors"] += int(head.group(4))
+        for hit in re.finditer(r'<testcase name="([^"]+)" classname="([^"]+)"', raw):
+            outcome["executed"].add(hit.group(2) + "#" + hit.group(1))
         for hit in re.finditer(
                 r'<testcase name="([^"]+)"[^>]*>\s*<(failure|error)[^>]*message="([^"]*)"', raw):
             message = hit.group(3).replace("&#10;", " ").replace("&quot;", '"').replace("&gt;", ">")
@@ -354,6 +407,9 @@ def witness(entry):
         return False
     print("  1 GREEN     %s" % describe(green))
     baseline_population = green["tests"]
+    # The SET of testcases, not the count. Equal counts can hide a swapped population, and a count
+    # comparison says nothing about which testcase actually ran.
+    baseline_executed = green["executed"]
 
     ok = False
     try:
@@ -367,8 +423,7 @@ def witness(entry):
             print("  INVALID     the revert produced only framework ERRORS, not assertion failures: %s"
                   % describe(red))
         elif red["tests"] < baseline_population:
-            print("  INVALID     the reverted run executed %d tests against a %d-test baseline; a "
-                  "shrunken population is not a witnessed failure"
+            print("  INVALID     the reverted run executed %d tests against a %d-test baseline"
                   % (red["tests"], baseline_population))
         elif red["failures"] == 0:
             print("  NOT WITNESSED  reverting the fix broke nothing: %s" % describe(red))
@@ -376,18 +431,35 @@ def witness(entry):
             # THE CHECK THIS RUNNER EXISTED FOR AND DID NOT DO. Any red used to count. An unrelated
             # test failing in the same filter certified the entry just as well as the right one.
             wanted = EXPECTED_CAUSE.get(name)
-            matched = [(t, m) for t, m in red["causes"]
-                       if wanted is None or wanted.lower() in m.lower() or wanted.lower() in t.lower()]
             print("  2 RED       %s" % describe(red))
             for failing, message in red["causes"]:
                 print("              %s\n                %s" % (failing, message[:140]))
             if wanted is None:
                 print("  INVALID     this entry names no expected cause, so any red would satisfy it")
-            elif not matched:
-                print("  NOT WITNESSED  the revert failed something, but not the named cause %r"
-                      % wanted)
+            elif red["errors"] > 0:
+                # A run carrying framework errors alongside the expected failure is a contaminated
+                # run. The expected failure may be real, or may be a second symptom of whatever broke
+                # the framework, and this cannot tell those apart.
+                print("  INVALID     the reverted run also produced %d framework error(s); an "
+                      "expected failure mixed with infrastructure failure is not a clean witness"
+                      % red["errors"])
+            elif red["skipped"] > 0:
+                print("  INVALID     the reverted run skipped %d test(s); a partial population cannot "
+                      "establish which testcase failed" % red["skipped"])
+            elif red["executed"] - baseline_executed:
+                print("  INVALID     the reverted run did not execute the same testcases as the "
+                      "baseline; missing: %s"
+                      % sorted(baseline_executed - red["executed"])[:4])
             else:
-                ok = True
+                testcase, fragment = wanted
+                matched = [(t, m) for t, m in red["causes"]
+                           if t.startswith(testcase) and fragment.lower() in m.lower()]
+                if not matched:
+                    print("  NOT WITNESSED  no single failure is both %r and %r; the revert broke "
+                          "something else" % (testcase, fragment))
+                else:
+                    print("  MATCHED     %s :: %s" % (matched[0][0], fragment))
+                    ok = True
     finally:
         io.open(path, "wb").write(original)
 
@@ -401,9 +473,9 @@ def witness(entry):
     if not is_green(restored):
         print("  INVALID     the restored tree is not green: %s" % describe(restored))
         return False
-    if restored["tests"] != baseline_population:
-        print("  INVALID     restored population %d does not match the %d-test baseline"
-              % (restored["tests"], baseline_population))
+    if restored["executed"] != baseline_executed:
+        print("  INVALID     the restored run did not execute the same testcases as the baseline; "
+              "missing: %s" % sorted(baseline_executed - restored["executed"])[:4])
         return False
     print("  3 RESTORED  %s, file byte-identical, population matches baseline" % describe(restored))
     return True

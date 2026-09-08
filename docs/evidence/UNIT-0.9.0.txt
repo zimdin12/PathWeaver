@@ -1,6 +1,7 @@
 PathWeaver 0.9.0 unit suite (master, mc 26.1.2)
-commit   491ca7eb22d64106b69df503c3f18a8a463e789e
+commit   74a5f15cd8cd5ffa3d403dedbee000378779983a
 command  ./gradlew test --rerun-tasks
+NOTE: per-suite summaries parsed from the JUnit XML, not a raw Gradle transcript.
 totals   suites=63 tests=475 failures=0 errors=0 skipped=0
 
   dev.pathweaver.LowCoreAdviceTest                               tests=7    fail=0 err=0 skip=0
