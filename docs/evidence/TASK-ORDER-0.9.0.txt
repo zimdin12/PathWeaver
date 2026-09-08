@@ -1,0 +1,42 @@
+Task order for a harness launch, from gradle's own dry run.
+commit c8d9fa473a59496c2e4b723910b87f9b33d754bc
+
+The temporal premise the provider inventory rests on is that the resource is generated
+BEFORE the harness JVM starts. That is the half gradle can show: processGametestResources
+and any prepare task are ordered before runGameTest, which is the task that launches the JVM.
+
+--- ./gradlew runGameTest --dry-run (stock) ---
+  :compileJava SKIPPED
+  :processResources SKIPPED
+  :classes SKIPPED
+  :compileGametestJava SKIPPED
+  :deleteGameTestRunDir SKIPPED
+  :acceptGameTestEula SKIPPED
+  :generateLog4jConfig SKIPPED
+  :generateDLIConfig SKIPPED
+  :configureLaunch SKIPPED
+  :processGametestResources SKIPPED
+  :gametestClasses SKIPPED
+  :runGameTest SKIPPED
+
+--- ./gradlew runGameTest -PauditedTierHarness --dry-run ---
+  :compileJava SKIPPED
+  :processResources SKIPPED
+  :classes SKIPPED
+  :compileGametestJava SKIPPED
+  :deleteGameTestRunDir SKIPPED
+  :acceptGameTestEula SKIPPED
+  :generateLog4jConfig SKIPPED
+  :generateDLIConfig SKIPPED
+  :configureLaunch SKIPPED
+  :extractDiagonalBlocks SKIPPED
+  :processGametestResources SKIPPED
+  :gametestClasses SKIPPED
+  :prepareAuditedTierGameTestHarness SKIPPED
+  :runGameTest SKIPPED
+
+WHAT THIS DOES NOT SHOW: that no write occurred between the JVM reading the resource and the
+post-run capture. There is no other writer to build/resources/gametest during a run -- the
+roster's own delete happens at the top of the NEXT iteration -- but that is an inference from
+the absence of a writer, not an observation of the read. Post-run observed content and
+inferred run-time content are labelled separately in the packet for that reason.
