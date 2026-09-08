@@ -150,6 +150,18 @@ WITNESSES = [
         "resultCacheMaxEntries alone goes unchecked",
     ),
     (
+        "published-list-stays-mutable",
+        "src/main/java/dev/pathweaver/config/PathWeaverConfig.java",
+        "                if (value instanceof List<?> list) {
+"
+        "                    value = java.util.Collections.unmodifiableList(new ArrayList<>(list));
+"
+        "                }",
+        "                if (value instanceof List<?> list) value = new ArrayList<>(list);",
+        "*PublishedConfigOwnershipTest*",
+        "a published snapshot's list can be added to, changing live settings silently",
+    ),
+    (
         "publication-shares-the-editors-object",
         "src/main/java/dev/pathweaver/config/PathWeaverConfig.java",
         "        PathWeaverConfig snapshot = snapshotOf(source);",

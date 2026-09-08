@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -32,9 +33,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * written down. This is that grep, kept honest by running on every build against the compiled
  * classes rather than the source text.
  *
- * <p>Scope, stated because the file is about scope: this covers direct field writes from production
- * classes. It does not cover reflection, and it does not cover writes from tests, which do exist and
- * are the reason {@code get()} still returns a mutable object.
+ * <p>Two separate populations, and this file is explicit about which check covers which, because a
+ * direct-write scan was mistaken for ownership closure once already:
+ *
+ * <ul>
+ *   <li>DIRECT FIELD WRITES, {@code config.x = y}. Covered by the bytecode scan below. It compiles to
+ *       a {@code PUTFIELD} on the config, which is what the scan looks for.</li>
+ *   <li>CONTAINER MUTATION, {@code config.trustedMods.add(...)}. Invisible to that scan: there is no
+ *       PUTFIELD on the config at all. Covered instead by prevention, in the test below it: the
+ *       published snapshot's collections are unmodifiable, so that call throws rather than silently
+ *       changing live settings without moving the generation.</li>
+ * </ul>
+ *
+ * <p>Neither covers reflection, and neither covers tests, which do write through {@code get()} and
+ * are why it still returns a mutable object. This is a bounded audit of production writers, not a
+ * proof that a published snapshot is immutable in every sense.
  */
 class PublishedConfigOwnershipTest {
 
@@ -76,5 +89,33 @@ class PublishedConfigOwnershipTest {
         assertEquals(List.of(), writers,
             "a production class writes to a config without republishing it, so the cache never learns "
                 + "the policy moved: " + writers);
+    }
+
+    /**
+     * The other population: a published snapshot's collections cannot be mutated in place.
+     *
+     * <p>{@code PathWeaverConfig.get().trustedMods.add("x")} changes live settings and compiles to no
+     * field write at all, so the scan above cannot see it and never could. Sealing the published
+     * copy turns it into an exception instead. The one production reader copies the list into a Set,
+     * so nothing loses anything by this.
+     */
+    @Test
+    void aPublishedSnapshotsCollectionsCannotBeMutatedInPlace() {
+        PathWeaverConfig editor = new PathWeaverConfig();
+        editor.trustedMods = new java.util.ArrayList<>(java.util.List.of("some-mod"));
+        PathWeaverConfig.set(editor);
+
+        PathWeaverConfig live = PathWeaverConfig.get();
+        assertEquals(java.util.List.of("some-mod"), live.trustedMods,
+            "the published snapshot did not carry the list, so sealing it proves nothing");
+        assertThrows(UnsupportedOperationException.class, () -> live.trustedMods.add("sneaked-in"),
+            "a published snapshot's list can be added to, which changes live settings without "
+                + "moving the generation the cache watches");
+
+        // The editor's own list stays writable: it is the caller's object and the settings screen
+        // has to be able to edit it.
+        editor.trustedMods.add("added-later");
+        assertEquals(java.util.List.of("some-mod"), PathWeaverConfig.get().trustedMods,
+            "the editor's list is still the published one");
     }
 }
