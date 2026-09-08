@@ -32,7 +32,7 @@ Most hosts still default to Java 21, so check yours before you file a bug.
 | Mob farms and crowds | Stutters cut roughly in half |
 | Server thread | Roughly half the sampled pathfinding work |
 | Villages | Villager pathing comes off the tick too |
-| Mob behaviour | Paths are identical. One change: villagers set off a tick later |
+| Mob behaviour | Same routes in ordinary play. Villagers set off a tick later, and route sharing can hand one mob a route another computed |
 | Quiet server | No difference. This does nothing until mobs are actually pathing |
 
 **This is spike reduction, not free TPS.** A server sitting at "20 TPS" still stutters when one tick in a hundred takes 80 ms, and that is the number this moves. Average throughput only rises when pathfinding alone is already blowing the 50 ms tick budget and you have spare cores.
@@ -75,7 +75,7 @@ Turning villager pathing off the tick is the largest single win in this release.
 
 That is a real behaviour change, which is why it is a setting rather than something you get regardless. `brainSinkAsync=false` turns it off. The warden is not covered either way, because its navigation builds a custom pathfinder.
 
-Everything else keeps exactly the path it would have had.
+Everything else keeps the path it would have had, with two stated exceptions: a shared route when route sharing is switched on, and the search running against the world as it was a tick or two earlier rather than at the instant the mob asks. Neither changes where a mob is trying to go.
 
 ### Route sharing
 
@@ -103,11 +103,16 @@ What has actually happened so far: this has run on packs of 200 to 371 mods thro
 
 If something does look wrong, switch to `compatibilityTier=AUDITED` and report it. Be clear about what that does on a heavy pack: it turns the speed-up off entirely. That is the tier working as designed, not failing. `trustedMods` is the middle option, naming specific mods you have decided about while the scan keeps checking the rest.
 
-### On 26.2, the checked tier is not usable yet
+### The checked tier depends on which download you have
 
-Five of the seven audits verify on 26.2. Lithium and Diagonal Blocks do not, because there they are different builds from the ones the audits were derived from. Lithium alone puts all six movement families back on the server thread, and most performance packs ship Lithium.
+Each audit is pinned to the exact bytes of the mod and the vanilla classes its proof reads, so a build for one Minecraft version cannot vouch for another. There are two downloads and they differ here:
 
-The default tier is unaffected. If something looks wrong on 26.2, set `enabled=false` rather than reaching for `AUDITED`. The outcome is the same and only one of them is honest about it.
+- **The 26.1.2 download**, on 26.1.1 or 26.1.2: all seven audits verify.
+- **The 26.2 download**, on 26.2: all seven audits verify, after Lithium and Diagonal Blocks were re-derived against the builds that ship for 26.2.
+
+Install the download that matches your Minecraft version and `AUDITED` behaves the same on both. Install the 26.1.2 one on 26.2 and the pins refuse, which turns the speed-up off rather than running anything unchecked.
+
+Either way this only matters if you have opted into `AUDITED`. The shipped default consults none of it.
 
 Whatever version you are on, **mods that modify pathfinding are named at world start**, with what PathWeaver decided about each.
 
