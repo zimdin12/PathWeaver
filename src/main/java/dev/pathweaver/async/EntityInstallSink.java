@@ -451,7 +451,11 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         // Brain-sink slots expire on the same clock. A walk target that moves before the behaviour
         // collects leaves its slot behind, and unlike the two cooldown maps a slot holds a Path, so
         // leaking one leaks the nodes it owns as well as the id.
-        brainSink.entrySet().removeIf(entry -> tick >= entry.getValue().expiryTick());
+        // `>` not `>=`. expiryTick is dispatchTick + maxResultAgeTicks, and a result at exactly that
+        // age is FRESH: isStale calls a result stale only at age > max, and answers() accepts
+        // tick <= expiryTick. Sweeping at equality retired a slot whose result was still admissible,
+        // one tick before the policy that admits it says so.
+        brainSink.entrySet().removeIf(entry -> tick > entry.getValue().expiryTick());
     }
 
     /**
@@ -462,6 +466,18 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
      * the behaviour would never start.
      */
     public void noteBrainSinkDispatch(int entityId, BlockPos asked) {
+        // The slot's expiry is FIXED at dispatch, from the budget in force when the request was
+        // admitted. isStale re-reads the setting live. maxResultAgeTicks can change mid-flight, so
+        // state what happens rather than leave it to be discovered:
+        //
+        //   lowered mid-flight  -> isStale rejects on the new, smaller budget while the slot still
+        //                          considers itself live. The result is discarded before parking.
+        //   raised mid-flight   -> the slot expires on the old, smaller budget while isStale would
+        //                          still accept. parkForBrain rejects and records ARRIVED_STALE.
+        //
+        // Both directions fail toward discarding a result, never toward installing a stale one, and
+        // neither extends a request past the budget it was admitted under. That is the property that
+        // matters; the disagreement itself is bounded by one setting change.
         brainSink.put(entityId, new BrainSinkSlot(asked.immutable(), null,
             currentTick + PathWeaverConfig.get().maxResultAgeTicks));
     }
@@ -509,7 +525,17 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         int entityId = registration.key().entityId();
         rollbackOptimisticTarget(registration);
         BrainSinkSlot slot = brainSink.get(entityId);
-        if (slot == null || slot.path() != null || currentTick >= slot.expiryTick()) {
+        // `>` not `>=`, for the reason the comment on answers() already gives and this line did not
+        // follow. Four sites decide result expiry and two of them disagreed: isStale and answers()
+        // treat age == max as fresh, while this and the sweep rejected it. So a result the freshness
+        // policy accepts was discarded here as ARRIVED_STALE, which both wasted the search and put a
+        // wrong reason in the row an operator reads.
+        //
+        // At maxResultAgeTicks=1, which validatePostLoad clamps to and therefore permits, that is the
+        // exact failure the answers() comment describes as fatal and silent: every brain mob
+        // dispatches a search nobody collects, hits the liveness bound and runs a synchronous one
+        // anyway. Strictly more work than vanilla. It was fixed in one of the two places.
+        if (slot == null || slot.path() != null || currentTick > slot.expiryTick()) {
             dev.pathweaver.PathWeaverRuntime.get().markOutcome(RequestOutcome.ARRIVED_STALE);
             return;
         }
