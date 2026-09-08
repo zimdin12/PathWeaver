@@ -1,4 +1,4 @@
-PathWeaver 0.9.0 witnesses, 18 entries, HEAD f32e7dc91886e771ac3cc91f4babf396ca9bfa75
+PathWeaver 0.9.0 witnesses, 22 entries, HEAD 491ca7eb22d64106b69df503c3f18a8a463e789e
 
 ====================================================================================================
 expiry-parking
@@ -73,7 +73,7 @@ caller-generation-constant
   1 GREEN     16 tests, 0 failures
   2 RED       16 tests, 1 failing
               everyProductionCallerReadsTheGenerationAtTheCall()
-                org.opentest4j.AssertionFailedError: ResultInstaller.deliver does not read the generation at the completed call: org.objectweb.asm.tree.InsnNode@646432bb ==> Un
+                org.opentest4j.AssertionFailedError: ResultInstaller.deliver does not read the generation at the completed call: org.objectweb.asm.tree.InsnNode@144c4fcf ==> Un
   3 RESTORED  16 tests, 0 failures, file byte-identical
 ====================================================================================================
 park-restarts-the-budget
@@ -115,6 +115,46 @@ serializer-checks-the-mode-only
               everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault()
                 org.opentest4j.AssertionFailedError: resultCacheMaxAgeTicks accepted a value of the wrong type ==> Expected java.lang.Exception to be thrown, but nothing was th
   3 RESTORED  1 tests, 0 failures, file byte-identical
+====================================================================================================
+serializer-skips-max-age-only
+  file        src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java
+  expectation resultCacheMaxAgeTicks alone goes unchecked
+  1 GREEN     1 tests, 0 failures
+  2 RED       1 tests, 1 failing
+              everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault()
+                org.opentest4j.AssertionFailedError: resultCacheMaxAgeTicks accepted a value of the wrong type ==> Expected java.lang.Exception to be thrown, but nothing was th
+  3 RESTORED  1 tests, 0 failures, file byte-identical
+====================================================================================================
+serializer-skips-max-entries-only
+  file        src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java
+  expectation resultCacheMaxEntries alone goes unchecked
+  1 GREEN     1 tests, 0 failures
+  2 RED       1 tests, 1 failing
+              everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault()
+                org.opentest4j.AssertionFailedError: resultCacheMaxEntries accepted a value of the wrong type ==> Expected java.lang.Exception to be thrown, but nothing was thr
+  3 RESTORED  1 tests, 0 failures, file byte-identical
+====================================================================================================
+published-list-stays-mutable
+  file        src/main/java/dev/pathweaver/config/PathWeaverConfig.java
+  expectation a published snapshot list can be added to, changing live settings silently
+  1 GREEN     2 tests, 0 failures
+  2 RED       2 tests, 1 failing
+              aPublishedSnapshotsCollectionsCannotBeMutatedInPlace()
+                org.opentest4j.AssertionFailedError: a published snapshot's list can be added to, which changes live settings without moving the generation the cache watches ==
+  3 RESTORED  2 tests, 0 failures, file byte-identical
+====================================================================================================
+publication-shares-the-editors-object
+  file        src/main/java/dev/pathweaver/config/PathWeaverConfig.java
+  expectation the object the settings screen keeps editing is the one that is published
+  1 GREEN     16 tests, 0 failures
+  2 RED       16 tests, 3 failing
+              saveListenerNormalizesAndPublishesTheSavedObject()
+                org.opentest4j.AssertionFailedError: the saved object was published rather than a copy of it ==> expected: not same but was: &lt;dev.pathweaver.config.PathWeave
+              editingTheSavedObjectAfterPublicationCannotReachTheLiveSettings()
+                org.opentest4j.AssertionFailedError: an edit after saving changed the running settings ==> expected: &lt;64> but was: &lt;999>
+              setNormalizesTheCallersObjectAndPublishesADetachedCopy()
+                org.opentest4j.AssertionFailedError: the caller's own object was published; a later edit to it would change live settings ==> expected: not same but was: &lt;de
+  3 RESTORED  16 tests, 0 failures, file byte-identical
 ====================================================================================================
 pin-denial-is-discarded
   file        src/main/java/dev/pathweaver/gate/LithiumPathfindingCompatibility.java
@@ -198,6 +238,10 @@ pathfinder-pin-unused
   collection-drops-the-lower-bound witnessed
   status-prints-hardcoded-zeros  witnessed
   serializer-checks-the-mode-only witnessed
+  serializer-skips-max-age-only  witnessed
+  serializer-skips-max-entries-only witnessed
+  published-list-stays-mutable   witnessed
+  publication-shares-the-editors-object witnessed
   pin-denial-is-discarded        witnessed
   hook-stops-delegating          witnessed
   serializer-derived-checks      witnessed

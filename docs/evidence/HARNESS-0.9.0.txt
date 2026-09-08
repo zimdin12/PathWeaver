@@ -1,8 +1,19 @@
 PathWeaver harness series, re-classified from preserved artifacts
-commit    aefaeea893cf9859f6e717e25775d3b7c92d1d46
+commit    491ca7eb22d64106b69df503c3f18a8a463e789e
 roster    blob c122f2f3d79a03ea748d5e2cfe360190b9a65b6b
 verdict   blob c516ee293f193f5273f9f1f01f555b5edff50ab2
 command   ./gradlew runGameTest [flag] --rerun-tasks, one attempt per harness, no reruns
+
+Providers on the harness runtime classpath:
+    classpath entries scanned: 146
+    entries providing a fabric.mod.json: 53
+    distinct mod ids found: 53
+    OK   pathweaver_gametest_aggregate            1 provider(s): build\resources\gametest
+  The id listed is whichever manifest sits in that directory at enumeration time. What the
+  enumeration establishes is the PROVIDER: one classpath entry can supply a pathweaver_gametest
+  id, it is build/resources/gametest, and no two entries on the classpath share any id. Every
+  harness in the series is served from that same directory, so no other entry could have
+  supplied the mod the loader reported for any of them.
 
 Per-test identities are NOT recorded: a passing GameTest run reports a batch size and a total,
 and names individual tests only when one fails. The batch size and the manifest that selects

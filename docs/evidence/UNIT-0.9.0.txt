@@ -1,7 +1,7 @@
-PathWeaver 0.9.0 unit suite
-commit   f32e7dc91886e771ac3cc91f4babf396ca9bfa75
+PathWeaver 0.9.0 unit suite (master, mc 26.1.2)
+commit   491ca7eb22d64106b69df503c3f18a8a463e789e
 command  ./gradlew test --rerun-tasks
-totals   suites=62 tests=472 failures=0 errors=0 skipped=0
+totals   suites=63 tests=475 failures=0 errors=0 skipped=0
 
   dev.pathweaver.LowCoreAdviceTest                               tests=7    fail=0 err=0 skip=0
   dev.pathweaver.PathWeaverRuntimeTest                           tests=6    fail=0 err=0 skip=0
@@ -29,7 +29,8 @@ totals   suites=62 tests=472 failures=0 errors=0 skipped=0
   dev.pathweaver.config.LoadFailureTrackingSerializerTest        tests=1    fail=0 err=0 skip=0
   dev.pathweaver.config.ModMenuIntegrationContractTest           tests=12   fail=0 err=0 skip=0
   dev.pathweaver.config.PathWeaverConfigSerializerTest           tests=28   fail=0 err=0 skip=0
-  dev.pathweaver.config.PathWeaverConfigTest                     tests=15   fail=0 err=0 skip=0
+  dev.pathweaver.config.PathWeaverConfigTest                     tests=16   fail=0 err=0 skip=0
+  dev.pathweaver.config.PublishedConfigOwnershipTest             tests=2    fail=0 err=0 skip=0
   dev.pathweaver.config.StrictFieldTypeCoverageTest              tests=1    fail=0 err=0 skip=0
   dev.pathweaver.elision.RepathToleranceTest                     tests=5    fail=0 err=0 skip=0
   dev.pathweaver.gate.ActiveCompatibilityPolicyTest              tests=4    fail=0 err=0 skip=0
