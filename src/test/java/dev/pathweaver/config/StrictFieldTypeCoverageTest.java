@@ -6,7 +6,6 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -46,7 +45,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class StrictFieldTypeCoverageTest {
 
-    @TempDir Path tempDir;
 
     /**
      * Read before the type check, each by a rule of its own. {@code configVersion} chooses the
@@ -139,8 +137,18 @@ class StrictFieldTypeCoverageTest {
         return raw;
     }
 
+    /**
+     * Writes the config under the build directory rather than a JUnit temp directory.
+     *
+     * <p>{@code @TempDir} failed with "Failed to create default temp directory" partway through a run
+     * that executes this suite eighteen times, and a test that cannot start is indistinguishable from
+     * one that failed. The build directory is ours, is cleaned by the build, and does not depend on
+     * the state of the machine's temp space.
+     */
     private PathWeaverConfig load(JsonObject raw) throws Exception {
-        Path path = tempDir.resolve("pathweaver.json");
+        Path directory = Path.of("build", "test-scratch", "strict-field-types");
+        Files.createDirectories(directory);
+        Path path = directory.resolve("pathweaver.json");
         Files.writeString(path, raw.toString());
         return new PathWeaverConfigSerializer(path).deserialize();
     }
