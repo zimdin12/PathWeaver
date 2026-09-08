@@ -132,6 +132,32 @@ WITNESSES = [
         "only the cache MODE is checked, so neither numeric field is pinned",
     ),
     (
+        "serializer-skips-max-age-only",
+        "src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java",
+        "            if (READ_ELSEWHERE.contains(key)) continue;",
+        "            if (READ_ELSEWHERE.contains(key)) continue;\n"
+        "            if (key.equals(\"resultCacheMaxAgeTicks\")) continue;",
+        "*StrictFieldTypeCoverageTest*",
+        "resultCacheMaxAgeTicks alone goes unchecked",
+    ),
+    (
+        "serializer-skips-max-entries-only",
+        "src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java",
+        "            if (READ_ELSEWHERE.contains(key)) continue;",
+        "            if (READ_ELSEWHERE.contains(key)) continue;\n"
+        "            if (key.equals(\"resultCacheMaxEntries\")) continue;",
+        "*StrictFieldTypeCoverageTest*",
+        "resultCacheMaxEntries alone goes unchecked",
+    ),
+    (
+        "publication-shares-the-editors-object",
+        "src/main/java/dev/pathweaver/config/PathWeaverConfig.java",
+        "        PathWeaverConfig snapshot = snapshotOf(source);",
+        "        PathWeaverConfig snapshot = source;",
+        "*PathWeaverConfigTest*",
+        "the object the settings screen keeps editing is the one that is published",
+    ),
+    (
         "pin-denial-is-discarded",
         "src/main/java/dev/pathweaver/gate/LithiumPathfindingCompatibility.java",
         '        AuditedMixinCompatibility.checkHash("vanilla PathFinder", bundle.vanillaPathFinder(),\n'

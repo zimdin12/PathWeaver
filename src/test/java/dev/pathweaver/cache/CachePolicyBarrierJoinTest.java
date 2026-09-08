@@ -57,6 +57,7 @@ class CachePolicyBarrierJoinTest {
 
     private static final String GATE_OWNER = "dev/pathweaver/config/PathWeaverConfig";
     private static final String CACHE_OWNER = "dev/pathweaver/cache/PathCache";
+    private static final String OBSERVER_OWNER = "dev/pathweaver/cache/BlockChangeObserver";
     private static final Object DIMENSION = "overworld";
     private static final long X = Double.doubleToLongBits(10.5);
     private static final long Y = Double.doubleToLongBits(64.0);
@@ -317,12 +318,17 @@ class CachePolicyBarrierJoinTest {
     }
 
     /**
-     * The hook is an adapter and holds no rule of its own.
+     * The hook is an adapter: it holds no rule, and it reads its arguments from the level.
      *
-     * <p>Kept as a structural check beside the executed ones, because the tests above run the
-     * observer directly and a hook that stopped calling it, or that decided something for itself,
-     * would leave them all green. A branch in this method is the drift this is watching for: it must
-     * call the observer exactly once and contain no conditional jump.
+     * <p>Kept as a structural check beside the executed ones, because those run the observer directly
+     * and a hook that stopped calling it, or decided something for itself, would leave them green.
+     *
+     * <p>What this proves, precisely: exactly one call to the observer, no conditional branch of its
+     * own, no second copy of the recording rule, and that the three level-derived values the observer
+     * needs are computed somewhere in the method. What it does NOT prove: that those values reach the
+     * right parameters. A hook that swapped the dimension hash and the tick would satisfy every
+     * assertion here. That case is not covered by any test in this file and is worth knowing rather
+     * than implying otherwise.
      *
      * <p>The class resource is the right artifact. A mixin is applied to its target, but this class
      * is itself the definition being applied, so what is on disk is what runs.
@@ -339,18 +345,24 @@ class CachePolicyBarrierJoinTest {
             }
         }
 
-        assertEquals(1, calls.stream()
-                .filter((CACHE_OWNER.replace("PathCache", "BlockChangeObserver") + ".observe")::equals)
-                .count(),
+        assertEquals(1, calls.stream().filter((OBSERVER_OWNER + ".observe")::equals).count(),
             "the hook does not hand the decision to the observer exactly once: " + calls);
         assertEquals(List.of(), branches,
             "the hook branches, so it is deciding something the observer is supposed to own");
         assertFalse(calls.contains(GATE_OWNER + ".recordsBlockChanges"),
             "the hook re-implements the recording rule instead of delegating it: " + calls);
+
+        // The three values only the level can supply. Presence, not placement.
+        for (String required : List.of("net/minecraft/core/SectionPos.asLong",
+                                       "net/minecraft/server/MinecraftServer.getTickCount",
+                                       "dev/pathweaver/PathWeaverRuntime.resultCache")) {
+            assertTrue(calls.contains(required),
+                "the hook no longer reads " + required + " from the level: " + calls);
+        }
     }
 
     /**
-     * The generation a caller passes is the live one, read at the call.
+     * The generation a caller passes is the one on the config it read, taken at the call.
      *
      * <p>The barrier only fires when the number changes, so a caller passing a constant, a cached
      * field or a stale local would disable it completely and every behavioural test in this file
@@ -359,9 +371,9 @@ class CachePolicyBarrierJoinTest {
      * instruction that produced it is the one immediately before the call.
      *
      * <p>It must come from {@code PathWeaverConfig.generation()}, the instance method, so the number
-     * and the settings come off ONE published object. A static read of a counter would be two reads
-     * that a publication can interleave, and one of the two orders leaves the barrier silent while
-     * the cache acts on settings it has not seen.
+     * and the settings come off ONE published object. A static read of a counter would be two reads a
+     * publication can interleave, and one of the two orders leaves the barrier silent while the cache
+     * acts on settings it has not seen.
      */
     @Test
     void everyProductionCallerReadsTheGenerationAtTheCall() {
