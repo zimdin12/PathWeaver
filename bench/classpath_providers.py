@@ -24,6 +24,7 @@ hide. The same applies to finding implausibly few mods, or none matching the pre
 Exit 0 only when every id matching the prefix has exactly one provider AND nothing was unclassified.
 """
 
+import hashlib
 import io
 import json
 import os
@@ -33,8 +34,13 @@ from collections import defaultdict
 
 
 def read_manifest(raw, where, providers, problems):
+    # The digest is the point of recording this at all: a path is not a content binding, and one of
+    # these providers is a build directory the next harness rewrites. An inventory that carries the
+    # bytes it saw can be read back later without re-opening anything.
+    digest = hashlib.sha256(raw).hexdigest()[:12]
     try:
-        providers[json.loads(raw.decode("utf-8", "replace")).get("id")].append(where)
+        providers[json.loads(raw.decode("utf-8", "replace")).get("id")].append(
+            "%s [%s]" % (where, digest))
     except Exception as failure:
         problems.append("%s: unparsable fabric.mod.json (%s)" % (where, failure))
 
@@ -108,8 +114,11 @@ def main(argv):
         print("  FAIL the scan found almost no mods; it is not reading the real classpath")
         ok = False
     if nested == 0:
-        print("  FAIL no nested mods found; the Fabric API ships as nested jars, so nesting is not "
-              "being followed and the population is incomplete")
+        # A precondition of THIS harness dependency set, which is known to include the Fabric API and
+        # therefore known to contain nested mods. It is not a general definition of correct discovery:
+        # finding some nested mods does not establish that every source a loader consults was covered.
+        print("  FAIL no nested mods found; this dependency set ships the Fabric API as nested jars, "
+              "so the population is incomplete")
         ok = False
     if problems:
         print("  FAIL %d entr(y/ies) could not be classified; an unreadable entry is exactly where a "
@@ -131,7 +140,10 @@ def main(argv):
     print("  ids provided by more than one entry: %d%s"
           % (len(duplicates), "" if not duplicates else " -> " + ", ".join(sorted(duplicates))))
 
-    print("  VERDICT: %s" % ("single provider established" if ok else "NOT ESTABLISHED"))
+    # Candidate providers, not the provider Fabric selected. This says how many entries COULD have
+    # supplied that id; where the answer is one, no selection question arises for it.
+    print("  VERDICT: %s" % ("single candidate provider for the harness id" if ok
+                             else "NOT ESTABLISHED"))
     return 0 if ok else 1
 
 
