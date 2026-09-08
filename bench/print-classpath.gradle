@@ -1,0 +1,14 @@
+// Prints the runtime classpath a game-test harness launches with. Used by the roster to capture the
+// launch inputs BEFORE each harness runs, so the provider enumeration describes that launch rather
+// than a build directory rewritten since.
+allprojects {
+    tasks.register("printGametestRuntimeClasspath") {
+        doLast {
+            def cp = project.configurations.findByName("gametestRuntimeClasspath")
+            if (cp == null) { println "NO-CONFIGURATION"; return }
+            cp.resolve().each { println it.absolutePath }
+            def gametest = project.sourceSets.findByName("gametest")
+            if (gametest != null) { gametest.output.each { println it.absolutePath } }
+        }
+    }
+}
