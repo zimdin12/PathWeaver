@@ -1,0 +1,133 @@
+PathWeaver 0.9.0 witnesses, 12 entries, HEAD a2b9d92a1935d89dbc0f35f02cb2140ca4c30e4c
+
+====================================================================================================
+expiry-parking
+  file        src/main/java/dev/pathweaver/async/EntityInstallSink.java
+  expectation parking rejects a result the freshness policy accepts
+  1 GREEN     9 tests, 0 failures
+  2 RED       9 tests, 2 failing
+              aResultArrivingAtTheLastAllowedAgeIsCollected()
+                org.opentest4j.AssertionFailedError: a result at exactly maxResultAgeTicks was discarded, though isStale calls it fresh ==> expected: not &lt;null>
+              atTheClampedMinimumTheFinalAllowedAgeStillWorks()
+                org.opentest4j.AssertionFailedError: at maxResultAgeTicks=1 a brain mob dispatches a search nobody can collect ==> expected: not &lt;null>
+  3 RESTORED  9 tests, 0 failures, file byte-identical
+====================================================================================================
+expiry-sweep
+  file        src/main/java/dev/pathweaver/async/EntityInstallSink.java
+  expectation the sweep retires a slot one tick early
+  1 GREEN     9 tests, 0 failures
+  2 RED       9 tests, 1 failing
+              theSweepLeavesASlotAliveAtTheFinalAllowedAge()
+                org.opentest4j.AssertionFailedError: the sweep retired a slot one tick before the policy that admits its result ==> expected: &lt;true> but was: &lt;false>
+  3 RESTORED  9 tests, 0 failures, file byte-identical
+====================================================================================================
+barrier-stored-entries
+  file        src/main/java/dev/pathweaver/cache/PathCache.java
+  expectation a route stored before a switch is served after it
+  1 GREEN     11 tests, 0 failures
+  2 RED       11 tests, 2 failing
+              aRouteStoredBeforeTheCacheWasTurnedOffIsNotServedAfterItComesBack()
+                org.opentest4j.AssertionFailedError: a route stored before the cache was switched off was served across an unwatched change ==> expected: &lt;false> but was: &l
+              aRouteStoredBeforeTheModWasTurnedOffIsNotServedAfterItComesBack()
+                org.opentest4j.AssertionFailedError: a route stored before the mod was switched off was served across an unwatched change ==> expected: &lt;false> but was: &lt;
+  3 RESTORED  11 tests, 0 failures, file byte-identical
+====================================================================================================
+barrier-pending-candidates
+  file        src/main/java/dev/pathweaver/cache/PathCache.java
+  expectation a search in flight across a switch repopulates the cache
+  1 GREEN     11 tests, 0 failures
+  2 RED       11 tests, 2 failing
+              in-flight across the cache switch
+                org.opentest4j.AssertionFailedError: a candidate from before the gap was stored after it ==> expected: &lt;0> but was: &lt;1>
+              in-flight across the master switch
+                org.opentest4j.AssertionFailedError: a candidate from before the gap was stored after it ==> expected: &lt;0> but was: &lt;1>
+  3 RESTORED  11 tests, 0 failures, file byte-identical
+====================================================================================================
+hook-gate-inverted
+  file        src/main/java/dev/pathweaver/mixin/ServerLevelBlockChangeMixin.java
+  expectation the hook records exactly when it should not
+  1 GREEN     11 tests, 0 failures
+  2 RED       11 tests, 1 failing
+              whenTheGateSaysNoTheHookCannotReachTheRecordingCall()
+                org.opentest4j.AssertionFailedError: with recording off, the hook still reaches noteBlockChange ==> expected: &lt;false> but was: &lt;true>
+  3 RESTORED  11 tests, 0 failures, file byte-identical
+====================================================================================================
+hook-gate-ignored
+  file        src/main/java/dev/pathweaver/mixin/ServerLevelBlockChangeMixin.java
+  expectation the hook asks the gate and throws the answer away
+  1 GREEN     11 tests, 0 failures
+  2 RED       11 tests, 1 failing
+              whenTheGateSaysNoTheHookCannotReachTheRecordingCall()
+                org.opentest4j.AssertionFailedError: the gate answer is not consumed by a branch, so the hook can ignore it: org.objectweb.asm.tree.InsnNode@16d241a2 ==> Unexpe
+  3 RESTORED  11 tests, 0 failures, file byte-identical
+====================================================================================================
+caller-generation-constant
+  file        src/main/java/dev/pathweaver/async/ResultInstaller.java
+  expectation a caller passes a constant, so the barrier never fires
+  1 GREEN     11 tests, 0 failures
+  2 RED       11 tests, 1 failing
+              everyProductionCallerReadsTheGenerationAtTheCall()
+                org.opentest4j.AssertionFailedError: ResultInstaller.deliver does not read the generation at the completed call: org.objectweb.asm.tree.InsnNode@9ea1beb ==> Une
+  3 RESTORED  11 tests, 0 failures, file byte-identical
+====================================================================================================
+serializer-derived-checks
+  file        src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java
+  expectation the three resultCache settings accept a wrong type, as in 0.8.0
+  1 GREEN     1 tests, 0 failures
+  2 RED       1 tests, 1 failing
+              everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault()
+                org.opentest4j.AssertionFailedError: resultCacheMode accepted a value of the wrong type ==> Expected java.lang.Exception to be thrown, but nothing was thrown.
+  3 RESTORED  1 tests, 0 failures, file byte-identical
+====================================================================================================
+status-sums-the-two-counts
+  file        src/main/java/dev/pathweaver/cache/CacheStatusLines.java
+  expectation hits that saved nothing are reported as savings
+  1 GREEN     8 tests, 0 failures
+  2 RED       8 tests, 3 failing
+              hitsThatSavedNothingAreNotCountedAsSkippedSearches()
+                org.opentest4j.AssertionFailedError: hits that saved nothing were reported as savings: §a5§r searches skipped §7(5.0% of lookups) ==> expected: &lt;false> but w
+              theMeasuredAndHypotheticalCountsAreNeverAddedTogether()
+                org.opentest4j.AssertionFailedError: §a8§r searches skipped §7(8.0% of lookups) ==> expected: &lt;true> but was: &lt;false>
+              theBlockReportsBothKindsWithTheirSharesWhenThereAreLookups()
+                org.opentest4j.AssertionFailedError: the measured share is missing: route cache: serving entries=0/4096 maxAge=40 ticks §a8§r searches skipped §7(8.0% of lookup
+  3 RESTORED  8 tests, 0 failures, file byte-identical
+====================================================================================================
+status-saved-capacity
+  file        src/main/java/dev/pathweaver/cache/CacheStatusLines.java
+  expectation the saved capacity is printed as if it were in force
+  1 GREEN     8 tests, 0 failures
+  2 RED       8 tests, 1 failing
+              capacityIsTheOneInForceAndAPendingChangeIsCalledOut()
+                org.opentest4j.AssertionFailedError: the saved capacity was printed as if it were in force: route cache: serving entries=0/9999 maxAge=40 ticks §7Capacity is fi
+  3 RESTORED  8 tests, 0 failures, file byte-identical
+====================================================================================================
+pathfinder-pin-value
+  file        src/main/java/dev/pathweaver/gate/AuditedMixinCompatibility.java
+  expectation the pin is not the digest of the shipped class
+  1 GREEN     5 tests, 0 failures
+  2 RED       5 tests, 1 failing
+              thePinMatchesTheVanillaClassOnTheClasspath()
+                org.opentest4j.AssertionFailedError: the pinned digest is not the one the shipped PathFinder has; every audited exemption using it refuses, with no reason an op
+  3 RESTORED  5 tests, 0 failures, file byte-identical
+====================================================================================================
+pathfinder-pin-unused
+  file        src/main/java/dev/pathweaver/gate/LithiumPathfindingCompatibility.java
+  expectation the Lithium audit scans bytes it never pinned
+  1 GREEN     5 tests, 0 failures
+  2 RED       5 tests, 1 failing
+              theLithiumAuditPassesThePinToItsHashCheck()
+                org.opentest4j.AssertionFailedError: the Lithium audit does not use the PathFinder pin; found it in [] ==> expected: &lt;true> but was: &lt;false>
+  3 RESTORED  5 tests, 0 failures, file byte-identical
+====================================================================================================
+  expiry-parking                 witnessed
+  expiry-sweep                   witnessed
+  barrier-stored-entries         witnessed
+  barrier-pending-candidates     witnessed
+  hook-gate-inverted             witnessed
+  hook-gate-ignored              witnessed
+  caller-generation-constant     witnessed
+  serializer-derived-checks      witnessed
+  status-sums-the-two-counts     witnessed
+  status-saved-capacity          witnessed
+  pathfinder-pin-value           witnessed
+  pathfinder-pin-unused          witnessed
