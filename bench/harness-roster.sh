@@ -58,26 +58,22 @@ for entry in "${ROSTER[@]}"; do
   code=$?
   ended=$(date -u +%H:%M:%S)
 
-  # What the harness actually consumed, read from the manifest its own run left in place, and
-  # compared byte for byte against the file that harness is supposed to run. The stock manifest is
-  # generated rather than copied, so its comparison is by mod id; every other harness copies its
-  # source verbatim and is compared by digest.
+  # What the harness actually consumed, and whether it is the manifest that harness is supposed to
+  # run. The comparison lives in bench/manifest_verdict.py so it can be exercised on crafted inputs
+  # without a server; bench/manifest_verdict_control.py does that, including two cases where the mod
+  # id matches and the content does not, which is the case an id comparison cannot see.
+  #
+  # The loaded id ties the file on disk to the process: it is the mod Fabric reported loading.
   consumed_file="build/resources/gametest/fabric.mod.json"
   cp "$consumed_file" "$OUT/$name.manifest.json" 2>/dev/null
-  consumed_id=$(grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' "$consumed_file" 2>/dev/null     | head -1 | grep -oE '"[^"]+"$' | tr -d '"')
-  expected_id=$(grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' "$expected" 2>/dev/null     | head -1 | grep -oE '"[^"]+"$' | tr -d '"')
-  consumed_sha=$(sha256sum "$consumed_file" 2>/dev/null | cut -c1-12)
-  expected_sha=$(sha256sum "$expected" 2>/dev/null | cut -c1-12)
-  manifest="manifest=${consumed_id:-UNREADABLE}/${consumed_sha:-none}"
-  if [ "${consumed_id:-x}" != "${expected_id:-y}" ]; then
-    manifest="MANIFEST=${consumed_id:-UNREADABLE} WANTED=${expected_id:-UNREADABLE}"
-    contaminated=1
-  elif [ -n "$flag" ] && [ "${consumed_sha:-x}" != "${expected_sha:-y}" ]; then
-    manifest="MANIFEST-BYTES=${consumed_sha} WANTED=${expected_sha}"
-    contaminated=1
-  else
+  loaded_id=$(grep -oE "pathweaver_gametest[a-z_]*" "$log" | head -1)
+  if manifest=$(python bench/manifest_verdict.py "$consumed_file" "$expected" "${loaded_id:-}" 2>&1); then
     contaminated=0
+  else
+    contaminated=1
   fi
+  manifest=$(printf '%s' "$manifest" | tr '
+' ' ')
 
   # An exit code is not a test count. A harness that booted, ran nothing and shut down cleanly exits
   # zero, which looks exactly like a green one. Read what the server itself reported.

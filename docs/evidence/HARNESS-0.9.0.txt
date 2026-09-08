@@ -1,0 +1,27 @@
+PathWeaver harness series, re-classified from preserved artifacts
+commit    b25e5b895f731badcd9750689b91cc62ceb9a28b
+roster    blob a2973f248ea5feb5e835085235005d4b0c454ab9
+verdict   blob HEAD:bench/manifest_verdict.py
+uncommitted
+command   ./gradlew runGameTest [flag] --rerun-tasks, one attempt per harness, no reruns
+
+Per-test identities are NOT recorded: a passing GameTest run reports a batch size and a total,
+and names individual tests only when one fails. The batch size and the manifest that selects
+the batch are what bound the set here.
+
+stock            OK  id=pathweaver_gametest entrypoints and mixins match; loader agrees
+                   batch 0 (2 tests) | All 2 required tests passed | loader reported pathweaver_gametest
+auditedTier      OK  id=pathweaver_gametest_audited entrypoints and mixins match; loader agrees
+                   batch 0 (2 tests) | All 2 required tests passed | loader reported pathweaver_gametest_audited
+unsafeTier       OK  id=pathweaver_gametest_unsafe entrypoints and mixins match; loader agrees
+                   batch 0 (5 tests) | All 5 required tests passed | loader reported pathweaver_gametest_unsafe
+newFamily        OK  id=pathweaver_gametest_new_family entrypoints and mixins match; loader agrees
+                   batch 0 (2 tests) | All 2 required tests passed | loader reported pathweaver_gametest_new_family
+auditedRouting   OK  id=pathweaver_gametest_audited_routing entrypoints and mixins match; loader agrees
+                   batch 0 (2 tests) | All 2 required tests passed | loader reported pathweaver_gametest_audited_routing
+refused          OK  id=pathweaver_gametest_refused entrypoints and mixins match; loader agrees
+                   batch 0 (2 tests) | All 2 required tests passed | loader reported pathweaver_gametest_refused
+breaker          OK  id=pathweaver_gametest entrypoints and mixins match; loader agrees
+                   batch 0 (2 tests) | All 2 required tests passed | loader reported pathweaver_gametest
+fabricAggregate  OK  id=pathweaver_gametest_aggregate entrypoints and mixins match; loader agrees
+                   batch 0 (2 tests) | All 2 required tests passed | loader reported pathweaver_gametest_aggregate
