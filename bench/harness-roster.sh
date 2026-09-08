@@ -32,6 +32,22 @@
 set -u
 cd "$(dirname "$0")/.."
 OUT="${1:-build/harness-0.9.0}"
+
+# A NEW SERIES GETS A NEW DIRECTORY. Never a deleted one.
+#
+# This exists because of a specific loss. To get a clean run I once ran `rm -rf` on the previous
+# series directory, which destroyed the only copies of two harness failure logs: one unexplained
+# stock failure and one unattributed refused failure. Neither can ever be re-examined. No later run
+# repairs that; the evidence is simply gone.
+#
+# So reuse fails closed. If the directory exists, this refuses to start and tells the caller to name
+# a new one. Refusing to run is recoverable in a way that deleting evidence is not.
+if [ -e "$OUT" ]; then
+  echo "REFUSING TO START: $OUT already exists." >&2
+  echo "A series never overwrites or deletes a previous series directory. Pass a new path:" >&2
+  echo "    bash bench/harness-roster.sh build/harness-\$(git rev-parse --short HEAD)-\$(date -u +%H%M%S)" >&2
+  exit 2
+fi
 mkdir -p "$OUT"
 
 # name : gradle flag : the source manifest that harness is supposed to run
@@ -50,6 +66,9 @@ ROSTER=(
   "fabricAggregate:-PfabricAggregateHarness:src/gametest/aggregateResources/fabric.mod.json"
 )
 
+# The identity this series ran at, written once, so a receipt never has to guess it from the
+# checkout it happens to be printed from.
+git rev-parse HEAD > "$OUT/series-commit.txt"
 : > "$OUT/summary.txt"
 for entry in "${ROSTER[@]}"; do
   name="${entry%%:*}"

@@ -19,7 +19,14 @@ OUT="${1:-build/harness-0.9.0}"
 
 echo "PathWeaver harness series, re-classified from preserved artifacts"
 echo "series    $OUT"
-echo "commit    $(git rev-parse HEAD)"
+# The commit this series RAN at, recorded by the series itself, not the commit checked out now.
+# Stamping current HEAD labelled historical evidence with whatever the tree happens to be.
+if [ -f "$OUT/series-commit.txt" ]; then
+  echo "ran at    $(cat "$OUT/series-commit.txt")"
+else
+  echo "ran at    UNRECORDED -- this series predates the launch-identity stamp"
+fi
+echo "read at   $(git rev-parse HEAD)  (the checkout this receipt was printed from)"
 echo "roster    blob $(git rev-parse HEAD:bench/harness-roster.sh 2>/dev/null || echo uncommitted)"
 echo "verdict   blob $(git rev-parse HEAD:bench/manifest_verdict.py 2>/dev/null || echo uncommitted)"
 echo "providers blob $(git rev-parse HEAD:bench/classpath_providers.py 2>/dev/null || echo uncommitted)"
@@ -50,11 +57,22 @@ for entry in \
   printf '%-16s   %s | %s | loader reported %s\n' "" \
     "${batch:-no batch line}" "${result:-no result line}" "${loaded:-nothing}"
 
-  cp="$OUT/$h.classpath.txt"
-  if [ -f "$cp" ]; then
-    printf '%-16s   providers at launch: %s\n' "" \
-      "$(python bench/classpath_providers.py "$cp" 2>&1 | tail -1)"
+  # READ THE RECORDING. Do not re-run the scanner.
+  #
+  # This is the defect the review found: this block used to open the saved PATH LIST and run the
+  # scanner over it again, which opens those paths as they are NOW. One of them is a directory the
+  # next harness rewrites, so the "historical" verdict was reconstructed from live state and changed
+  # when the live state changed. The content-bound inventory the roster writes was never read.
+  #
+  # The inventory carries a digest per provider manifest precisely so it can be quoted rather than
+  # recomputed. If it is absent, that is reported as absent; it is not re-derived.
+  inv="$OUT/$h.providers.txt"
+  if [ -f "$inv" ]; then
+    printf '%-16s   providers at launch (from the recorded inventory): %s\n' "" "$(tail -1 "$inv")"
+    printf '%-16s     recorded inventory: %s [sha256 %s]\n' "" "$inv" \
+      "$(sha256sum "$inv" | cut -d' ' -f1)"
   else
-    printf '%-16s   providers at launch: NOT ENUMERATED -- loaded-content identity UNVERIFIED\n' ""
+    printf '%-16s   providers at launch: NO RECORDED INVENTORY -- loaded-content identity UNVERIFIED\n' ""
+    printf '%-16s     not re-derived: a scan run now would describe the tree now, not that launch\n' ""
   fi
 done
