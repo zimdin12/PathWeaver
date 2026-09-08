@@ -1,5 +1,5 @@
-PathWeaver 0.9.0 unit suite (master, mc 26.1.2)
-commit   491ca7eb22d64106b69df503c3f18a8a463e789e
+PathWeaver 0.9.0 unit suite (mc-26.2)
+commit   bb8855c3219422a00a32ab39526c536274337002
 command  ./gradlew test --rerun-tasks
 totals   suites=63 tests=475 failures=0 errors=0 skipped=0
 
