@@ -1,5 +1,5 @@
 Task order for a harness launch, from gradle's own dry run.
-commit c8d9fa473a59496c2e4b723910b87f9b33d754bc
+commit bb276fcf2a3923515c4c8794ca5fb62ed4f2fb1d
 
 The temporal premise the provider inventory rests on is that the resource is generated
 BEFORE the harness JVM starts. That is the half gradle can show: processGametestResources

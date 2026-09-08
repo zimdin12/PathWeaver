@@ -1,6 +1,6 @@
 PathWeaver harness series, re-classified from preserved artifacts
 series    build/harness-0.9.0
-commit    c8d9fa473a59496c2e4b723910b87f9b33d754bc
+commit    bb276fcf2a3923515c4c8794ca5fb62ed4f2fb1d
 roster    blob 08c4ed8b86a862350920a884273afa6dcb633c80
 verdict   blob c516ee293f193f5273f9f1f01f555b5edff50ab2
 providers blob 70ace803c94ac011dc31ecede3cf3f5bf2456911
