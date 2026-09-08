@@ -43,20 +43,28 @@ public final class PathWeaverCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("pathweaver")
-            // No permission requirement on the root or on `status`. `mobs` keeps one below, because
-            // it constructs every registered mob type in one tick; `status` only reads counters.
+            // No permission requirement on the root or on `status`. `mobs` carries one, because it
+            // constructs every registered mob type in one tick; `status` only reads counters.
             //
             // Level 2 on the root locked out every singleplayer player on a world without cheats --
             // which is most of them -- leaving the log file as their only way to find out whether
             // this mod is doing anything, on a mod whose README tells them to run this command.
+            //
+            // The `mobs` requirement was DESCRIBED here and by the 0.7.0 changelog for two published
+            // releases without existing. There was no requires() anywhere in this file, so any player
+            // on any server could repeatedly trigger a synchronous construction of every registered
+            // entity type, a cost measured at 213 ms below. A comment asserting a guard is not a
+            // guard, and this one read as one to every reviewer including the person who wrote it.
             .then(Commands.literal("status").executes(context -> {
                 status(context.getSource());
                 return 1;
             }))
-            .then(Commands.literal("mobs").executes(context -> {
-                mobs(context.getSource());
-                return 1;
-            })));
+            .then(Commands.literal("mobs")
+                .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+                .executes(context -> {
+                    mobs(context.getSource());
+                    return 1;
+                })));
     }
 
     /**
