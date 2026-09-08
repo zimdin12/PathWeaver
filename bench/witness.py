@@ -69,28 +69,85 @@ WITNESSES = [
         "a search in flight across a switch repopulates the cache",
     ),
     (
-        "hook-gate-inverted",
-        "src/main/java/dev/pathweaver/mixin/ServerLevelBlockChangeMixin.java",
-        "if (!PathWeaverConfig.get().recordsBlockChanges()) return;",
-        "if (PathWeaverConfig.get().recordsBlockChanges()) return;",
+        "gate-inverted",
+        "src/main/java/dev/pathweaver/cache/BlockChangeObserver.java",
+        "        if (!config.recordsBlockChanges()) return;",
+        "        if (config.recordsBlockChanges()) return;",
         "*CachePolicyBarrierJoinTest*",
-        "the hook records exactly when it should not",
+        "the observer records exactly when it should not",
     ),
     (
-        "hook-gate-ignored",
-        "src/main/java/dev/pathweaver/mixin/ServerLevelBlockChangeMixin.java",
-        "if (!PathWeaverConfig.get().recordsBlockChanges()) return;",
-        "PathWeaverConfig.get().recordsBlockChanges();",
+        "gate-ignored",
+        "src/main/java/dev/pathweaver/cache/BlockChangeObserver.java",
+        "        if (!config.recordsBlockChanges()) return;",
+        "        config.recordsBlockChanges();",
         "*CachePolicyBarrierJoinTest*",
-        "the hook asks the gate and throws the answer away",
+        "the observer asks the gate and throws the answer away",
     ),
     (
         "caller-generation-constant",
         "src/main/java/dev/pathweaver/async/ResultInstaller.java",
-        "dev.pathweaver.config.PathWeaverConfig.policyGeneration());",
-        "0L);",
+        "cacheConfig.resultCacheServes(), cacheConfig.generation());",
+        "cacheConfig.resultCacheServes(), 0L);",
         "*CachePolicyBarrierJoinTest*",
         "a caller passes a constant, so the barrier never fires",
+    ),
+    # ------------------------------------------------------------------ the review's predicted mutants
+    #
+    # Every entry below was named by the 0.9.0 review as a change that the tests AS WRITTEN would have
+    # survived. They are here because a predicted survivor that is never run is still a prediction.
+    (
+        "park-restarts-the-budget",
+        "src/main/java/dev/pathweaver/async/EntityInstallSink.java",
+        "        brainSink.put(entityId, new BrainSinkSlot(slot.asked(), path,\n"
+        "            slot.dispatchTick(), slot.expiryTick()));",
+        "        brainSink.put(entityId, new BrainSinkSlot(slot.asked(), path,\n"
+        "            slot.dispatchTick(), currentTick + PathWeaverConfig.get().maxResultAgeTicks));",
+        "*BrainSinkExpiryBoundaryTest*",
+        "parking restarts the age budget from the arrival tick",
+    ),
+    (
+        "collection-drops-the-lower-bound",
+        "src/main/java/dev/pathweaver/async/EntityInstallSink.java",
+        "!slot.collectable(asked, currentTick)",
+        "!slot.answers(asked, currentTick)",
+        "*BrainSinkExpiryBoundaryTest*",
+        "a parked result answers a question from before its own dispatch",
+    ),
+    (
+        "status-prints-hardcoded-zeros",
+        "src/main/java/dev/pathweaver/cache/CacheStatusLines.java",
+        'out.add("    \u00a7a" + counters.served + "\u00a7r  searches skipped"',
+        'out.add("    \u00a7a" + 0 + "\u00a7r  searches skipped"',
+        "*CacheStatusLinesTest*",
+        "the counts are hardcoded to zero while the shares stay correct",
+    ),
+    (
+        "serializer-checks-the-mode-only",
+        "src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java",
+        "            if (READ_ELSEWHERE.contains(key)) continue;",
+        "            if (READ_ELSEWHERE.contains(key)) continue;\n"
+        "            if (key.startsWith(\"resultCacheMax\")) continue;",
+        "*StrictFieldTypeCoverageTest*",
+        "only the cache MODE is checked, so neither numeric field is pinned",
+    ),
+    (
+        "pin-denial-is-discarded",
+        "src/main/java/dev/pathweaver/gate/LithiumPathfindingCompatibility.java",
+        '        AuditedMixinCompatibility.checkHash("vanilla PathFinder", bundle.vanillaPathFinder(),\n'
+        "            AuditedMixinCompatibility.PATH_FINDER_SHA, diagnostics);",
+        '        AuditedMixinCompatibility.checkHash("vanilla PathFinder", bundle.vanillaPathFinder(),\n'
+        "            AuditedMixinCompatibility.PATH_FINDER_SHA, new ArrayList<>());",
+        "*PathFinderPinTest*",
+        "the pin is checked into a list nobody returns",
+    ),
+    (
+        "hook-stops-delegating",
+        "src/main/java/dev/pathweaver/mixin/ServerLevelBlockChangeMixin.java",
+        "        dev.pathweaver.cache.BlockChangeObserver.observe(",
+        "        if (runtime.isRunning()) dev.pathweaver.cache.BlockChangeObserver.observe(",
+        "*CachePolicyBarrierJoinTest*",
+        "the hook decides something of its own instead of delegating",
     ),
     (
         "serializer-derived-checks",

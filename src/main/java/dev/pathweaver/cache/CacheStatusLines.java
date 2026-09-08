@@ -49,11 +49,17 @@ public final class CacheStatusLines {
         // Measured, on its own line, with its own share. Zero here means zero saving, whatever the
         // hit count says.
         out.add("    §a" + counters.served + "§r  searches skipped" + share(counters.served, counters));
+        // The cause is deliberately not stated as a fact about the current mode. Counters survive a
+        // settings change while the entries behind them are cleared, so in SERVE this row can hold
+        // hits counted during an earlier SHADOW period. Naming the current mode as their reason
+        // reads as "switch to SERVE and these become savings", and they cannot: they are history,
+        // the entries are gone, and a mode change is not retroactive.
         out.add("    §e" + counters.wouldServe + "§r  hits that saved nothing"
             + share(counters.wouldServe, counters) + " §7-- "
             + (config.resultCacheServes()
-                ? "stored while the cache was only measuring, so no route was kept"
-                : "the cache is measuring; switch to SERVE to spend these"));
+                ? "counted while the cache was measuring, or on an entry holding no route. Past "
+                    + "hits, not savings waiting to be collected"
+                : "the cache is measuring. Switching to SERVE spends FUTURE hits; these are done"));
 
         out.add("    §7" + counters.blockOnlyHits + "  matched except for the mob's exact position "
             + "-- what a looser key would add, if it were safe");
@@ -62,8 +68,9 @@ public final class CacheStatusLines {
             + counters.terrainChanged + " dropped when the terrain changed, "
             + counters.lookups + " lookups");
         if (!config.resultCacheServes()) {
-            out.add("  §7The cache is measuring, not serving. Set resultCacheMode to SERVE to spend "
-                + "the amber number above; it takes effect immediately, no restart.");
+            out.add("  §7The cache is measuring, not serving. Set resultCacheMode to SERVE and hits "
+                + "from then on become skipped searches; it takes effect immediately, no restart. "
+                + "The amber number is the rate to expect, not a total waiting to be claimed.");
         }
         return List.copyOf(out);
     }

@@ -219,6 +219,12 @@ final class LithiumPathfindingCompatibility {
 
     static List<String> verify(Bundle bundle) {
         List<String> diagnostics = new ArrayList<>();
+        // Beside the other hash checks and OUTSIDE the ASM block below, deliberately. A digest needs
+        // no parsing, and while it sat inside that try an unrelated artifact failing to parse took
+        // the whole block into the catch and a changed PathFinder was never reported at all. A pin
+        // that can be suppressed by an unrelated failure is not a pin.
+        AuditedMixinCompatibility.checkHash("vanilla PathFinder", bundle.vanillaPathFinder(),
+            AuditedMixinCompatibility.PATH_FINDER_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("Lithium module jar", bundle.moduleJar(),
             MODULE_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("Lithium mixin config", bundle.config(),
@@ -304,8 +310,6 @@ final class LithiumPathfindingCompatibility {
             // Pin first, then scan. The pin is what makes the scan mean anything: it fixes which
             // bytes were audited, and the audit of those exact bytes is where the argument beyond
             // direct calls lives. The scan alone would pass a PathFinder nobody has ever read.
-            AuditedMixinCompatibility.checkHash("vanilla PathFinder", bundle.vanillaPathFinder(),
-                AuditedMixinCompatibility.PATH_FINDER_SHA, diagnostics);
             AuditedMixinCompatibility.verifyPathFinderMakesNoDirectCallIntoPathNavigation(
                 bundle.vanillaPathFinder(), diagnostics);
         } catch (Throwable t) {

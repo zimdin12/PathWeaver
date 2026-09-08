@@ -104,15 +104,45 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
      */
     private final Map<Integer, BrainSinkSlot> brainSink = new ConcurrentHashMap<>();
 
-    private record BrainSinkSlot(BlockPos asked, Path path, long expiryTick) {
+    /**
+     * One brain-driven mob's outstanding question, and its answer once one has landed.
+     *
+     * <p>Both ends of the age window are carried here. The expiry alone was not enough: it bounds how
+     * OLD a result may be and says nothing about a result from the future, and server ticks can move
+     * backwards on a world reload or a rollback. With only the upper bound, a slot dispatched at tick
+     * 1000 and parked at 1001 answered a question asked at tick 900, handing a mob a route at an age
+     * of minus a hundred. {@code isStale} has always refused a negative age; collection did not, and
+     * the two are the same rule at different moments.
+     */
+    private record BrainSinkSlot(BlockPos asked, Path path, long dispatchTick, long expiryTick) {
         boolean answers(BlockPos question, long tick) {
-            // Inclusive, to match isStale, which calls a result stale only at age > maxResultAgeTicks
-            // -- so age == max is still fresh there. Exclusive here made the slot expire a tick
-            // EARLIER than the result it holds. At the clamped minimum of 1 that is fatal and silent:
-            // a slot dispatched at T expires at T+1 and can never be collected at T+1, so every brain
-            // mob dispatches a search nobody reads, hits the liveness bound, and runs a synchronous
-            // one anyway. Strictly more work than vanilla, at a setting the config permits.
+            // 0 <= age <= budget, and both bounds are the point.
+            //
+            // Inclusive at the top, to match isStale, which calls a result stale only at
+            // age > maxResultAgeTicks -- so age == max is still fresh there. Exclusive here made the
+            // slot expire a tick EARLIER than the result it holds. At the clamped minimum of 1 that
+            // is silent and expensive: a slot dispatched at T expires at T+1 and cannot be collected
+            // at T+1, so a brain mob whose result lands later than the same tick dispatches a search
+            // nobody reads, hits the liveness bound, and runs a synchronous one anyway.
+            //
             return tick <= expiryTick && asked.equals(question);
+        }
+
+        /**
+         * May the parked path be handed to the behaviour on this tick?
+         *
+         * <p>{@code answers} on its own is the LIVENESS question, and liveness must survive a clock
+         * that moves backwards: a world reload or a rollback must not make an outstanding request
+         * look absent, because the behaviour would then run vanilla's unreachable bookkeeping for a
+         * search that is still coming. Collection is a different question with a stricter rule. A
+         * result cannot answer a question asked before it was dispatched, and {@code isStale} has
+         * always refused a negative age at arrival; this is the same rule at the other moment.
+         *
+         * <p>A slot dispatched at 1000 and parked at 1001 used to answer a question asked at tick
+         * 900, handing a mob a route computed a hundred ticks in its own future.
+         */
+        boolean collectable(BlockPos question, long tick) {
+            return tick >= dispatchTick && answers(question, tick);
         }
     }
     private final AtomicBoolean callbackFailureLogged = new AtomicBoolean();
@@ -478,7 +508,15 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
         // Both directions fail toward discarding a result, never toward installing a stale one, and
         // neither extends a request past the budget it was admitted under. That is the property that
         // matters; the disagreement itself is bounded by one setting change.
-        brainSink.put(entityId, new BrainSinkSlot(asked.immutable(), null,
+        //
+        // AFTER PARKING THE BUDGET IS FROZEN, and that is a separate policy rather than a consequence
+        // of the rule above. A parked result is collected against the window its request was admitted
+        // under, and a maxResultAgeTicks change after parking neither shortens nor extends it. The
+        // alternative, re-reading the live setting at collection, would let a raise resurrect a result
+        // that had already expired unread, which is the one direction the arrival rules never take.
+        // The consequence to be aware of: lowering the setting does not retract results already
+        // parked, and they stay collectable for up to the old budget, once each.
+        brainSink.put(entityId, new BrainSinkSlot(asked.immutable(), null, currentTick,
             currentTick + PathWeaverConfig.get().maxResultAgeTicks));
     }
 
@@ -502,7 +540,9 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
      */
     public Path takeBrainSinkPath(int entityId, BlockPos asked) {
         BrainSinkSlot slot = brainSink.get(entityId);
-        if (slot == null || slot.path() == null || !slot.answers(asked, currentTick)) return null;
+        if (slot == null || slot.path() == null || !slot.collectable(asked, currentTick)) {
+            return null;
+        }
         brainSink.remove(entityId, slot);
         return slot.path();
     }
@@ -539,7 +579,9 @@ public class EntityInstallSink implements ResultInstaller.InstallSink {
             dev.pathweaver.PathWeaverRuntime.get().markOutcome(RequestOutcome.ARRIVED_STALE);
             return;
         }
-        brainSink.put(entityId, new BrainSinkSlot(slot.asked(), path, slot.expiryTick()));
+        // Both bounds carried forward unchanged. Parking answers a question; it does not re-ask it.
+        brainSink.put(entityId, new BrainSinkSlot(slot.asked(), path,
+            slot.dispatchTick(), slot.expiryTick()));
         failUntilTick.remove(entityId);
         dev.pathweaver.PathWeaverRuntime.get().markOutcome(RequestOutcome.PARKED_FOR_BRAIN);
     }

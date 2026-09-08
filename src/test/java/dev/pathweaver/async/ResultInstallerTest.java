@@ -13,11 +13,11 @@ class ResultInstallerTest {
 
     /**
      * The live configuration generation, not a literal. The drain passes whatever
-     * {@code PathWeaverConfig.policyGeneration()} returns, so a dispatch that remembered under a
+     * the published config's own generation, so a dispatch that remembered under a
      * different number would be discarded at the barrier. Reading the same source here makes this
      * test fail if dispatch and drain ever stop agreeing on which configuration they are under.
      */
-    private static long gen() { return dev.pathweaver.config.PathWeaverConfig.policyGeneration(); }
+    private static long gen() { return dev.pathweaver.config.PathWeaverConfig.get().generation(); }
     static class FakeSink implements ResultInstaller.InstallSink {
         final Set<RequestKey> stale;
         final List<RequestKey> installed = new ArrayList<>();

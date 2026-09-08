@@ -172,10 +172,15 @@ public final class PathCache {
      * and it is the one that is easy to miss because nothing in the cache looks stale at the moment
      * of the switch.
      *
-     * <p>Two things are deliberately NOT cleared. The section clock keeps its records: a route stored
-     * after the barrier carries a dispatch tick after the gap, so a change made during the gap is
-     * older than anything that route's search could have read, and discarding the clock would throw
-     * away good observations to no purpose. The counters keep counting: resetting them mid-session
+     * <p>Two things are deliberately NOT cleared. The section clock keeps its records, and keeping
+     * them is the conservative direction. A record made during the gap is at or before the dispatch
+     * tick of anything stored after it, and {@link SectionChangeClock} withdraws a route whose
+     * section changed at OR AFTER its dispatch tick, so such a record can only cause a route to be
+     * refused that need not have been. It cannot cause one to be served that should not be. Note the
+     * "or": a gap-era change and a fresh dispatch can land on the same tick, so the record is not
+     * always strictly older, and the safety here comes from the comparison being inclusive rather
+     * than from the ticks being ordered. Discarding the clock would throw away good observations and
+     * buy nothing. The counters keep counting: resetting them mid-session
      * would silently start a new measurement epoch under the same labels, and an operator reading
      * "searches skipped" has no way to know the number restarted.
      *

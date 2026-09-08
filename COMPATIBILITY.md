@@ -110,9 +110,19 @@ rather than re-scanned and quietly passed. The rabbit-pathfinding-fix exemption 
 pair.
 
 The scan reads the class resource, which is the class as shipped rather than the definition after
-mixins have been applied to it. A mixin into `PathFinder` would not appear in it. That is covered
-separately: the foreign-mixin scan is what refuses an unaudited mixin on these classes, and this
-check does not stand in for it.
+mixins have been applied to it. A mixin into `PathFinder` would not appear in it, and neither the pin
+nor the scan authenticates a transformed definition or follows what a method calls.
+
+What covers that case, and exactly how far: the foreign-mixin scan denies the affected families when
+it DISCOVERS an untrusted, non-exempt claim on a watched class under enforced scanning, and
+`PathFinder` is one of the watched classes. Three conditions are load-bearing there. The scan only
+enforces at `compatibilityTier=AUDITED`; at the shipped `UNSAFE` default it is waived wholesale. It
+skips any mod named in `trustedMods` before it applies the target and audit checks at all, which is
+the point of that setting and also its cost. And it acts on what it discovers, so a claim it cannot
+see is not one it refuses.
+
+Taken together the pin and the scan are bounded drift protection on the class as shipped. They are
+not a proof of worker safety through the call graph, and nothing here establishes one.
 
 **What this does not prove.** Lithium still adds live section and palette reads on the search path.
 A search running concurrently with a block change can observe a stale or torn view and return a

@@ -62,21 +62,37 @@ class BrainSinkExpiryBoundaryTest {
      * drain on the main thread, then collect the way the behaviour does.
      */
     private static Path deliverAt(long arriveTick, int maxAge) {
+        return deliver(arriveTick, arriveTick, maxAge, maxAge);
+    }
+
+    /**
+     * Dispatch at tick 0 under {@code maxAge}, land the result at {@code arriveTick}, optionally
+     * publish {@code maxAgeAtCollection} after it has parked, then collect at {@code collectTick}.
+     *
+     * <p>The setting change happens between parking and collection deliberately. That is the only
+     * moment at which an implementation that re-reads the live budget behaves differently from one
+     * that honours the budget the request was admitted under, and the two were indistinguishable
+     * while arrival and collection were the same tick.
+     */
+    private static Path deliver(long arriveTick, long collectTick, int maxAge,
+                                int maxAgeAtCollection) {
         withMaxAge(maxAge);
         EntityInstallSink sink = new EntityInstallSink();
         ResultInstaller installer = new ResultInstaller();
-        EntityInstallSinkTest.FakeNav nav = new EntityInstallSinkTest.FakeNav();
         RequestKey key = new RequestKey(1L, 1L, 7);
 
         sink.setTick(0L);
-        sink.register(key, nav, RequestTarget.of(java.util.Set.of(ASKED), 8, false, 1, 16.0f),
-            false, RequestOrigin.BRAIN_SINK);
+        sink.register(key, new EntityInstallSinkTest.FakeNav(),
+            RequestTarget.of(java.util.Set.of(ASKED), 8, false, 1, 16.0f), false,
+            RequestOrigin.BRAIN_SINK);
         sink.noteBrainSinkDispatch(7, ASKED);
 
         installer.enqueue(key, 0L, PathOutcome.success(route()), 0.0, 0.0, 0.0);
         sink.setTick(arriveTick);
         installer.drain(sink);
 
+        if (maxAgeAtCollection != maxAge) withMaxAge(maxAgeAtCollection);
+        sink.setTick(collectTick);
         return sink.takeBrainSinkPath(7, ASKED);
     }
 
@@ -183,10 +199,99 @@ class BrainSinkExpiryBoundaryTest {
             "a slot was swept because the clock moved backwards past its dispatch");
     }
 
+    /**
+     * Parking carries the dispatch deadline, rather than starting a new one from the arrival tick.
+     *
+     * <p>The previous version of this only checked an arrival that was ALREADY too late, which
+     * parking rejects before the deadline is ever stored. That leaves the interesting mutation alive:
+     * storing {@code currentTick + maxResultAgeTicks} at parking instead of the slot's own expiry.
+     * Every earlier assertion here survives it, because they park at or before the deadline and
+     * collect on the same tick. This one parks early and collects late, where a restarted budget
+     * shows up as a result that outlives the window its request was admitted under.
+     */
+    @Test
+    void parkingCarriesTheDispatchDeadlineRatherThanRestartingIt() {
+        // Parked at 5 with a budget of 40, so the deadline is tick 40 and not 45.
+        assertNotNull(deliver(5L, 40L, 40, 40),
+            "a result parked early was not collectable at its own deadline");
+        assertNull(deliver(5L, 41L, 40, 40),
+            "parking restarted the budget from the arrival tick: the result outlived tick 40");
+        assertNull(deliver(5L, 45L, 40, 40),
+            "a result was collectable 45 ticks after dispatch on a 40-tick budget");
+    }
+
     /** The age budget is fixed at dispatch and parking must never extend it. */
     @Test
     void parkingDoesNotExtendTheBudgetTheRequestWasAdmittedUnder() {
         assertNull(deliverAt(41L, 40),
             "parking extended the dispatch-time budget instead of honouring it");
+    }
+
+    /**
+     * Server time can move backwards, and a parked result must not answer a question from before it
+     * was dispatched.
+     *
+     * <p>{@code isStale} has always refused a negative age. Collection checked only the upper bound,
+     * so a slot dispatched at 1000 and parked at 1001 answered a question asked at tick 900 and gave
+     * a mob a route computed a hundred ticks in its own future. The two checks are the same rule at
+     * different moments and now agree.
+     */
+    @Test
+    void aParkedResultDoesNotAnswerAQuestionFromBeforeItsDispatch() {
+        withMaxAge(40);
+        EntityInstallSink sink = new EntityInstallSink();
+        ResultInstaller installer = new ResultInstaller();
+        RequestKey key = new RequestKey(1L, 1L, 7);
+
+        sink.setTick(1000L);
+        sink.register(key, new EntityInstallSinkTest.FakeNav(),
+            RequestTarget.of(java.util.Set.of(ASKED), 8, false, 1, 16.0f), false,
+            RequestOrigin.BRAIN_SINK);
+        sink.noteBrainSinkDispatch(7, ASKED);
+        installer.enqueue(key, 1000L, PathOutcome.success(route()), 0.0, 0.0, 0.0);
+        sink.setTick(1001L);
+        installer.drain(sink);
+
+        // The control: at its own tick the parked result is collectable, so a null below is the
+        // rollback being refused rather than nothing having been parked at all.
+        EntityInstallSink other = parkedAt(1000L, 1001L);
+        assertNotNull(other.takeBrainSinkPath(7, ASKED), "nothing was parked; the test proves nothing");
+
+        sink.setTick(900L);
+        assertNull(sink.takeBrainSinkPath(7, ASKED),
+            "a parked result answered a question asked 100 ticks before it was dispatched");
+    }
+
+    /** A sink holding one parked result, dispatched and landed at the given ticks. */
+    private static EntityInstallSink parkedAt(long dispatchTick, long arriveTick) {
+        EntityInstallSink sink = new EntityInstallSink();
+        ResultInstaller installer = new ResultInstaller();
+        RequestKey key = new RequestKey(1L, 2L, 7);
+        sink.setTick(dispatchTick);
+        sink.register(key, new EntityInstallSinkTest.FakeNav(),
+            RequestTarget.of(java.util.Set.of(ASKED), 8, false, 1, 16.0f), false,
+            RequestOrigin.BRAIN_SINK);
+        sink.noteBrainSinkDispatch(7, ASKED);
+        installer.enqueue(key, dispatchTick, PathOutcome.success(route()), 0.0, 0.0, 0.0);
+        sink.setTick(arriveTick);
+        installer.drain(sink);
+        return sink;
+    }
+
+    /**
+     * The stated after-parking policy: the budget is frozen once a result is parked.
+     *
+     * <p>This is a decision, not a derivation, so it is pinned rather than left to be rediscovered.
+     * Lowering the setting after a result has parked does not retract it, and raising the setting
+     * does not extend it. The alternative, re-reading the live setting at collection, would let a
+     * raise resurrect a result that had already expired unread, which is the one direction none of
+     * the arrival rules take.
+     */
+    @Test
+    void aLiveBudgetChangeAfterParkingNeitherRetractsNorExtendsTheResult() {
+        assertNotNull(deliver(5L, 6L, 40, 1),
+            "lowering the budget after parking retracted a result already admitted under the old one");
+        assertNull(deliver(5L, 41L, 40, 400),
+            "raising the budget after parking resurrected a result past its own deadline");
     }
 }
