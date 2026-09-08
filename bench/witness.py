@@ -34,6 +34,36 @@ import glob
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# The failure each entry must produce, matched against the failing test name or its assertion
+# message. WITHOUT THIS THE RUNNER CERTIFIED ANY RED: a revert that broke an unrelated test in the
+# same filter was recorded exactly like one that broke the right test. An entry with no expected
+# cause here is reported INVALID rather than skipped, so the table cannot fall silently behind the
+# entry list.
+EXPECTED_CAUSE = {
+    "expiry-parking": "at exactly maxResultAgeTicks",
+    "expiry-sweep": "the sweep retired a slot",
+    "barrier-stored-entries": "served across an unwatched change",
+    "barrier-pending-candidates": "candidate from before the gap was stored",
+    "gate-inverted": "did not stop the observer",
+    "gate-ignored": "did not stop the observer",
+    "caller-generation-constant": "does not read the generation at",
+    "park-restarts-the-budget": "restarted the budget from the arrival tick",
+    "collection-drops-the-lower-bound": "before it was dispatched",
+    "status-prints-hardcoded-zeros": "served and wouldServe were summed",
+    "serializer-checks-the-mode-only": "accepted a value of the wrong type",
+    "serializer-skips-max-age-only": "accepted a value of the wrong type",
+    "serializer-skips-max-entries-only": "accepted a value of the wrong type",
+    "publication-shares-the-editors-object": "changed the running settings",
+    "published-list-stays-mutable": "can be added to",
+    "pin-denial-is-discarded": "produced no returned denial",
+    "hook-stops-delegating": "the hook branches",
+    "serializer-derived-checks": "accepted a value of the wrong type",
+    "status-sums-the-two-counts": "reported as savings",
+    "status-saved-capacity": "printed as if it were in force",
+    "pathfinder-pin-value": "not the one the shipped PathFinder has",
+    "pathfinder-pin-unused": "does not use the PathFinder pin",
+}
+
 # (name, file, exact text to replace, replacement, test filter, the test that must go red)
 WITNESSES = [
     (
@@ -240,25 +270,60 @@ def gradlew():
 
 
 def results_for(test_filter):
-    """Run one test filter and return (tests, failures, [(name, message)]) or None if it did not run."""
+    """Run one filter and describe what happened, in enough detail to refuse a false positive.
+
+    Returns a dict, or None when nothing ran at all. The fields exist because each one was a way the
+    old version could certify a witness it had not earned:
+
+      exit          the Gradle exit status, which used to be discarded entirely
+      tests         executed test count, so an empty or vanished population cannot pass as a run
+      skipped       counted separately: an all-skipped suite is not a green suite
+      failures      assertion failures only
+      errors        framework and infrastructure errors, kept apart from assertion failures
+      causes        (test name, message) for every failure AND error, so a caller can require the one
+                    it named rather than accepting any red
+    """
     for stale in glob.glob(os.path.join(ROOT, "build", "test-results", "test", "*.xml")):
         os.remove(stale)
-    run([gradlew(), "test", "--tests", test_filter, "--rerun-tasks", "--console=plain"])
+    completed = run([gradlew(), "test", "--tests", test_filter, "--rerun-tasks", "--console=plain"])
     files = glob.glob(os.path.join(ROOT, "build", "test-results", "test", "*.xml"))
     if not files:
         return None
-    tests = failures = 0
-    detail = []
+    outcome = {"exit": completed.returncode, "tests": 0, "skipped": 0,
+               "failures": 0, "errors": 0, "causes": []}
     for path in files:
         raw = io.open(path, encoding="utf-8").read()
-        head = re.search(r'tests="(\d+)" skipped="\d+" failures="(\d+)" errors="(\d+)"', raw)
-        tests += int(head.group(1))
-        failures += int(head.group(2)) + int(head.group(3))
+        head = re.search(r'tests="(\d+)" skipped="(\d+)" failures="(\d+)" errors="(\d+)"', raw)
+        outcome["tests"] += int(head.group(1))
+        outcome["skipped"] += int(head.group(2))
+        outcome["failures"] += int(head.group(3))
+        outcome["errors"] += int(head.group(4))
         for hit in re.finditer(
-                r'<testcase name="([^"]+)"[^>]*>\s*<(?:failure|error)[^>]*message="([^"]*)"', raw):
-            message = hit.group(2).replace("&#10;", " ").replace("&quot;", '"').replace("&gt;", ">")
-            detail.append((hit.group(1), " ".join(message.split())[:160]))
-    return tests, failures, detail
+                r'<testcase name="([^"]+)"[^>]*>\s*<(failure|error)[^>]*message="([^"]*)"', raw):
+            message = hit.group(3).replace("&#10;", " ").replace("&quot;", '"').replace("&gt;", ">")
+            outcome["causes"].append((hit.group(1), " ".join(message.split())))
+    return outcome
+
+
+def describe(outcome):
+    if outcome is None:
+        return "no results produced"
+    return ("exit=%(exit)s tests=%(tests)d skipped=%(skipped)d failures=%(failures)d "
+            "errors=%(errors)d" % outcome)
+
+
+def is_green(outcome):
+    """A green run: it ran, it ran something, nothing failed, nothing errored, nothing was skipped.
+
+    Every clause earns its place. The old version accepted a nonzero build exit with plausible XML, an
+    empty population, an all-skipped population, and framework errors counted as ordinary failures.
+    """
+    return (outcome is not None
+            and outcome["exit"] == 0
+            and outcome["tests"] > 0
+            and outcome["skipped"] == 0
+            and outcome["failures"] == 0
+            and outcome["errors"] == 0)
 
 
 def digest(path):
@@ -282,35 +347,65 @@ def witness(entry):
         return False
 
     green = results_for(test_filter)
-    if green is None or green[1] != 0:
-        print("  INVALID     baseline is not green: %s" % (green,))
+    if not is_green(green):
+        print("  INVALID     baseline is not green: %s" % describe(green))
+        for failing, message in (green or {}).get("causes", [])[:3]:
+            print("                %s: %s" % (failing, message[:110]))
         return False
-    print("  1 GREEN     %d tests, 0 failures" % green[0])
+    print("  1 GREEN     %s" % describe(green))
+    baseline_population = green["tests"]
 
-    io.open(path, "w", encoding="utf-8", newline="\n").write(source.replace(old, new, 1))
+    ok = False
     try:
+        io.open(path, "w", encoding="utf-8", newline="\n").write(source.replace(old, new, 1))
         red = results_for(test_filter)
         if red is None:
-            print("  INVALID     the reverted tree did not produce results; probably a compile error")
-            return False
-        if red[1] == 0:
-            print("  NOT WITNESSED  reverting the fix broke nothing: %d tests, 0 failures" % red[0])
-            return False
-        print("  2 RED       %d tests, %d failing" % (red[0], red[1]))
-        for failing, message in red[2]:
-            print("              %s\n                %s" % (failing, message))
+            print("  INVALID     the reverted tree produced no results; probably a compile error, "
+                  "which is not the failure this entry claims")
+        elif red["errors"] > 0 and red["failures"] == 0:
+            # A framework error is an infrastructure failure wearing a red hat.
+            print("  INVALID     the revert produced only framework ERRORS, not assertion failures: %s"
+                  % describe(red))
+        elif red["tests"] < baseline_population:
+            print("  INVALID     the reverted run executed %d tests against a %d-test baseline; a "
+                  "shrunken population is not a witnessed failure"
+                  % (red["tests"], baseline_population))
+        elif red["failures"] == 0:
+            print("  NOT WITNESSED  reverting the fix broke nothing: %s" % describe(red))
+        else:
+            # THE CHECK THIS RUNNER EXISTED FOR AND DID NOT DO. Any red used to count. An unrelated
+            # test failing in the same filter certified the entry just as well as the right one.
+            wanted = EXPECTED_CAUSE.get(name)
+            matched = [(t, m) for t, m in red["causes"]
+                       if wanted is None or wanted.lower() in m.lower() or wanted.lower() in t.lower()]
+            print("  2 RED       %s" % describe(red))
+            for failing, message in red["causes"]:
+                print("              %s\n                %s" % (failing, message[:140]))
+            if wanted is None:
+                print("  INVALID     this entry names no expected cause, so any red would satisfy it")
+            elif not matched:
+                print("  NOT WITNESSED  the revert failed something, but not the named cause %r"
+                      % wanted)
+            else:
+                ok = True
     finally:
         io.open(path, "wb").write(original)
 
+    if not ok:
+        return False
     if digest(path) != before_digest:
         print("  INVALID     the file was not restored")
         return False
 
     restored = results_for(test_filter)
-    if restored is None or restored[1] != 0:
-        print("  INVALID     the restored tree is not green: %s" % (restored,))
+    if not is_green(restored):
+        print("  INVALID     the restored tree is not green: %s" % describe(restored))
         return False
-    print("  3 RESTORED  %d tests, 0 failures, file byte-identical" % restored[0])
+    if restored["tests"] != baseline_population:
+        print("  INVALID     restored population %d does not match the %d-test baseline"
+              % (restored["tests"], baseline_population))
+        return False
+    print("  3 RESTORED  %s, file byte-identical, population matches baseline" % describe(restored))
     return True
 
 

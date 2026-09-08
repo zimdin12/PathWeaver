@@ -39,7 +39,7 @@ The settings screen said a reused route "is never a stale one". It now says what
 
 The Lithium audit now pins the vanilla pathfinding class it inspects by hash, like the other audits do. It previously inspected whatever was loaded, on the argument that re-deriving the check each time was stronger than pinning it. It is not: that check reads one class and does not follow what that class calls, so on a changed class it would have reported nothing while proving less than it looked like it proved.
 
-No compatibility outcome changes on 26.1.1 or 26.1.2 as a result. `AUDITED` on 26.2 is still not usable, for the reasons on the project page.
+No compatibility outcome changes as a result, on any version. Both downloads verify all seven audits on the Minecraft version they are built for; see the project page for what happens if you install the wrong one.
 
 ## New: is pathfinding even your problem?
 

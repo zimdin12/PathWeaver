@@ -56,10 +56,13 @@ waiting. On that pack, pathfinding was:
 | PathWeaver off | **40.3%** | 12.4% |
 | PathWeaver on | **19.8%** | 4.9% |
 
-Numerator: the outermost navigation and pathfinding frames, counted once each. A re-analysis of the
-same retained profiles that excluded the navigation matcher and kept only `PathFinder` and below
-produced different figures, which is the double-counting problem above seen from the other side. If
-you compare your numbers with these, use the same rule.
+Numerator: the outermost navigation and pathfinding frames, counted once each.
+
+A second set of figures exists for the same retained profiles, 12.38% and 4.92% of the whole thread,
+and the difference is a definition rather than a disagreement. Those come from dropping one matcher,
+`PathNavigator`, while the vanilla navigation matchers stay in. Neither set is wrong; they answer
+slightly different questions, and mixing them is what produces an apparent contradiction. If you
+compare your own numbers against these, use the rule in the first sentence.
 
 Tick time went from 15.47 ms to 12.52 ms, about 19% off the tick. Both arms held 20 TPS, so what that
 pack bought was headroom, not throughput.
