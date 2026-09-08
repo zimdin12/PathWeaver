@@ -29,8 +29,34 @@ rm -rf build/test-results/test
 ./gradlew test --rerun-tasks --console=plain > "$OUT/gradle.log" 2>&1
 echo "$?" > "$OUT/gradle-exit.txt"
 
-# Copied out BEFORE anything else can touch build/. This is the whole point of the script.
-cp build/test-results/test/*.xml "$OUT/xml/" 2>/dev/null
+# Copied out BEFORE anything else can touch build/. This is the whole point of the script, so the
+# copy FAILS CLOSED rather than leaving a tidy empty capture that reads like a clean run.
+#
+# The adverse paths matter more than the happy one here: a Gradle invocation that never produced XML,
+# and a copy that produced fewer files than it found. Both used to end with a summary reporting
+# suites=0 and no complaint, which is the shape of every wrong zero in this project.
+produced=$(ls build/test-results/test/*.xml 2>/dev/null | wc -l)
+if [ "$produced" -eq 0 ]; then
+  {
+    echo "CAPTURE FAILED: Gradle produced no test XML at all."
+    echo "gradle exit was $(cat "$OUT/gradle-exit.txt")"
+    echo "The Gradle log is kept at $OUT/gradle.log. No PASS is claimed and no totals are reported,"
+    echo "because there is nothing to report and a zero here would read as a clean run."
+  } | tee "$OUT/summary.txt" >&2
+  exit 3
+fi
+cp build/test-results/test/*.xml "$OUT/xml/" || {
+  echo "CAPTURE FAILED: could not copy the test XML into $OUT/xml" | tee "$OUT/summary.txt" >&2
+  exit 3
+}
+copied=$(ls "$OUT/xml"/*.xml 2>/dev/null | wc -l)
+if [ "$copied" -ne "$produced" ]; then
+  {
+    echo "CAPTURE INCOMPLETE: Gradle produced $produced XML files, $copied were preserved."
+    echo "No totals are reported from a partial capture."
+  } | tee "$OUT/summary.txt" >&2
+  exit 3
+fi
 
 python - "$OUT" <<'PY'
 import glob, io, os, re, sys

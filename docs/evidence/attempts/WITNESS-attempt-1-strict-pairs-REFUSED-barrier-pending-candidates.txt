@@ -1,4 +1,4 @@
-PathWeaver 0.9.0 witnesses, 22 entries, HEAD dd2ac347e3eb2bd714724b8d12ab0b46e85b6046
+PathWeaver 0.9.0 witnesses, 22 entries, HEAD 10d67caa12e48ae7ca824fa5b0b48cf20e904908
 
 ====================================================================================================
 expiry-parking
@@ -46,8 +46,7 @@ barrier-pending-candidates
                 org.opentest4j.AssertionFailedError: a candidate from before the gap was stored after it ==> expected: &lt;0> but was: &lt;1>
               in-flight across the master switch
                 org.opentest4j.AssertionFailedError: a candidate from before the gap was stored after it ==> expected: &lt;0> but was: &lt;1>
-  MATCHED     in-flight across the cache switch :: candidate from before the gap was stored
-  3 RESTORED  exit=0 tests=16 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+  NOT WITNESSED  no single failure is both 'aSearchDispatchedBeforeTheGapDoesNotPopulateTheCacheWhenItLandsAfterIt' and 'candidate from before the gap was stored'; the revert broke something else
 ====================================================================================================
 gate-inverted
   file        src/main/java/dev/pathweaver/cache/BlockChangeObserver.java
@@ -252,7 +251,7 @@ pathfinder-pin-unused
   expiry-parking                 witnessed
   expiry-sweep                   witnessed
   barrier-stored-entries         witnessed
-  barrier-pending-candidates     witnessed
+  barrier-pending-candidates     NOT WITNESSED
   gate-inverted                  witnessed
   gate-ignored                   witnessed
   caller-generation-constant     witnessed
