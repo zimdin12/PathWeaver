@@ -206,6 +206,15 @@ public final class PathCache {
 
     public int size() { return entries.size(); }
 
+    /**
+     * The capacity this cache was built with, which is not always the one in the settings file.
+     *
+     * <p>Capacity is chosen when the server starts and never changes; editing the setting mid-session
+     * saves a number that nothing is using yet. Reporting the saved number as if it were in force is
+     * how an operator concludes a cache is oversized when it is not.
+     */
+    public int capacity() { return maxEntries; }
+
     public Counters counters() { return counters; }
 
     /**
