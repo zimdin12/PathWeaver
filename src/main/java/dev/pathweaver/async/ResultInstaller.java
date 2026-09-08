@@ -80,7 +80,8 @@ public class ResultInstaller {
                 cache.forget(result.key());
             } else {
                 cache.completed(result.key(), result.outcome().path(),
-                    dev.pathweaver.config.PathWeaverConfig.get().resultCacheServes());
+                    dev.pathweaver.config.PathWeaverConfig.get().resultCacheServes(),
+                    dev.pathweaver.config.PathWeaverConfig.policyGeneration());
             }
             if (result.discardOnly()) {
                 sink.discard(result.key(), RequestOutcome.HANDOFF_FAILED);

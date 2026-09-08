@@ -41,6 +41,16 @@ public final class PathCache {
     private final int maxEntries;
 
     /**
+     * The published configuration this cache last acted on. {@code -1} means "not yet seen one".
+     *
+     * <p>Observation stops while the cache or the master switch is off, but stored routes do not.
+     * Turn the cache off, break a block on a stored route, turn it back on inside the route's age
+     * limit, and the clock has no record of the change: the route would be served across terrain
+     * nothing watched. Both switches take effect live, so this is reachable from the settings screen.
+     */
+    private long seenGeneration = -1L;
+
+    /**
      * The key a dispatch built, and the tick it read the world on.
      *
      * <p>The tick is kept here rather than recovered at completion because the search is anchored to
@@ -71,7 +81,8 @@ public final class PathCache {
      * @param serve false to measure without changing what any mob does
      */
     public CacheLookup lookup(PathCacheKey key, long xBits, long yBits, long zBits,
-                              long tick, int maxAgeTicks, boolean serve) {
+                              long tick, int maxAgeTicks, boolean serve, long policyGeneration) {
+        crossPolicyBarrier(policyGeneration);
         counters.lookups++;
         CachedPath cached = entries.get(key);
         if (cached == null) return CacheLookup.MISS;
@@ -104,7 +115,8 @@ public final class PathCache {
 
     /** Main thread, at dispatch: this request's answer may be worth keeping. */
     public void remember(RequestKey requestKey, PathCacheKey key, long dispatchTick,
-                         long xBits, long yBits, long zBits) {
+                         long xBits, long yBits, long zBits, long policyGeneration) {
+        crossPolicyBarrier(policyGeneration);
         // Bounded by the pool's own admission limit in normal operation. The guard is for the
         // abnormal case: a request that never reaches drain leaks its entry, and an unbounded map of
         // leaked entries is a slow memory fault rather than a lost cache hit.
@@ -126,7 +138,9 @@ public final class PathCache {
      * therefore checked against the same terrain and the same age limit a served one would be, which
      * is the only way its count predicts anything.
      */
-    public void completed(RequestKey requestKey, Path path, boolean keepRoute) {
+    public void completed(RequestKey requestKey, Path path, boolean keepRoute,
+                          long policyGeneration) {
+        crossPolicyBarrier(policyGeneration);
         Pending waiting = pending.remove(requestKey);
         if (waiting == null || path == null || path.getNodeCount() == 0) return;
         long[] sections = PathCopies.sectionsOf(path);
@@ -141,6 +155,40 @@ public final class PathCache {
         entries.put(waiting.key(), new CachedPath(keepRoute ? PathCopies.deepCopy(path) : null,
             waiting.dispatchTick(), sections,
             waiting.exactXBits(), waiting.exactYBits(), waiting.exactZBits()));
+    }
+
+    /**
+     * Discard everything learned under a previous configuration, before acting under this one.
+     *
+     * <p>Called at the top of every operation that can store or serve a route, on the thread that
+     * owns these maps. That placement is the whole design: settings are published from whichever
+     * thread saved them, these maps are not concurrent, and clearing them from the saving thread
+     * would race a lookup in progress. Checking a number here instead means invalidation always
+     * happens on the server thread and always before the new policy is acted on.
+     *
+     * <p>PENDING CANDIDATES GO TOO, not just stored routes. A request remembered before the gap can
+     * be completed after it by the installer draining later, which would repopulate the cache from an
+     * observation taken under the old policy. Clearing stored entries alone leaves that path open,
+     * and it is the one that is easy to miss because nothing in the cache looks stale at the moment
+     * of the switch.
+     *
+     * <p>Two things are deliberately NOT cleared. The section clock keeps its records: a route stored
+     * after the barrier carries a dispatch tick after the gap, so a change made during the gap is
+     * older than anything that route's search could have read, and discarding the clock would throw
+     * away good observations to no purpose. The counters keep counting: resetting them mid-session
+     * would silently start a new measurement epoch under the same labels, and an operator reading
+     * "searches skipped" has no way to know the number restarted.
+     *
+     * <p>Unrelated good entries are lost when any setting changes, including ones the cache does not
+     * read. That is accepted: correctness across the transition is worth more than a cache that
+     * survives a settings save, and a rule that tries to decide which settings matter is a rule that
+     * will one day be wrong about a new one.
+     */
+    private void crossPolicyBarrier(long policyGeneration) {
+        if (policyGeneration == seenGeneration) return;
+        seenGeneration = policyGeneration;
+        entries.clear();
+        pending.clear();
     }
 
     /** Main thread: this request will never produce a cacheable answer. */

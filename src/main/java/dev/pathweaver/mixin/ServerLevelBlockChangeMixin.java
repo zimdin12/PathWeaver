@@ -20,6 +20,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * learns about exactly the changes vanilla considers worth reacting to, rather than a set this mod
  * chose for itself.
  *
+ * <p>The recording decision is {@link PathWeaverConfig#recordsBlockChanges()} and nothing else, so
+ * there is one answer to "was the world being watched" rather than a copy of the rule here and
+ * another in the cache. {@code CachePolicyBarrierJoinTest} holds that to a single call.
+ *
  * <p>Cost is a config read, a section-coordinate pack and one array write. The method it joins
  * already iterates the level's navigating mobs, so this is not a new hot path.
  */
@@ -29,8 +33,7 @@ public abstract class ServerLevelBlockChangeMixin {
     @Inject(method = "sendBlockUpdated", at = @At("HEAD"), require = 1, expect = 1)
     private void pathweaver$noteBlockChange(BlockPos pos, BlockState oldState, BlockState newState,
                                             int flags, CallbackInfo ci) {
-        PathWeaverConfig config = PathWeaverConfig.get();
-        if (!config.enabled || !config.resultCacheActive()) return;
+        if (!PathWeaverConfig.get().recordsBlockChanges()) return;
         ServerLevel level = (ServerLevel) (Object) this;
         PathWeaverRuntime runtime = PathWeaverRuntime.get();
         if (!runtime.isRunning()) return;
