@@ -187,9 +187,7 @@ WITNESSES = [
     (
         "pathfinder-pin-unused",
         "src/main/java/dev/pathweaver/gate/LithiumPathfindingCompatibility.java",
-        '            AuditedMixinCompatibility.checkHash("vanilla PathFinder", '
-        'bundle.vanillaPathFinder(),\n'
-        "                AuditedMixinCompatibility.PATH_FINDER_SHA, diagnostics);\n",
+        '        AuditedMixinCompatibility.checkHash("vanilla PathFinder", bundle.vanillaPathFinder(),\n            AuditedMixinCompatibility.PATH_FINDER_SHA, diagnostics);\n',
         "",
         "*PathFinderPinTest*",
         "the Lithium audit scans bytes it never pinned",
