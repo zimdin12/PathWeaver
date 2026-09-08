@@ -1,8 +1,7 @@
 PathWeaver harness series, re-classified from preserved artifacts
-commit    b25e5b895f731badcd9750689b91cc62ceb9a28b
-roster    blob a2973f248ea5feb5e835085235005d4b0c454ab9
-verdict   blob HEAD:bench/manifest_verdict.py
-uncommitted
+commit    aefaeea893cf9859f6e717e25775d3b7c92d1d46
+roster    blob c122f2f3d79a03ea748d5e2cfe360190b9a65b6b
+verdict   blob c516ee293f193f5273f9f1f01f555b5edff50ab2
 command   ./gradlew runGameTest [flag] --rerun-tasks, one attempt per harness, no reruns
 
 Per-test identities are NOT recorded: a passing GameTest run reports a batch size and a total,
