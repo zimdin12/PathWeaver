@@ -100,12 +100,28 @@ for entry in "${ROSTER[@]}"; do
   # the summary and governed nothing, so a row reading "NOT ESTABLISHED" still carried the verdict
   # passed:2. A sentence saying the attribution failed, sitting beside a verdict saying the run was
   # clean, is worse than not printing it, because the clean word is the one that gets quoted.
-  python bench/classpath_providers.py "$OUT/$name.classpath.txt" > "$OUT/$name.providers.txt" 2>&1
+  # WHICH id. This call used to pass none, so the scan fell back to its default prefix
+  # "pathweaver_gametest" for all eight harnesses, while seven of them load a longer id
+  # (pathweaver_gametest_audited, _unsafe, _new_family and so on). Prefix matching made that look
+  # fine: asking about pathweaver_gametest matched whichever family member was on the classpath and
+  # returned a clean verdict about an id nobody had asked about.
+  #
+  # The claim worth making is about the id the loader REPORTED for this harness, so that is what is
+  # passed, and it has to be read out of the log before the scan rather than after.
+  loaded_id=$(grep -oE "pathweaver_gametest[a-z_]*" "$log" | head -1)
+  python bench/classpath_providers.py "$OUT/$name.classpath.txt" "${loaded_id:-pathweaver_gametest}" \
+    > "$OUT/$name.providers.txt" 2>&1
   providers_exit=$?
   providers=$(tail -1 "$OUT/$name.providers.txt")
+  # A harness whose log names no mod id at all cannot have its provider set resolved against
+  # anything, and must not borrow the default and pass.
+  if [ -z "${loaded_id:-}" ]; then
+    echo "  no mod id appears in this harness log; the provider question has no subject" \
+      >> "$OUT/$name.providers.txt"
+    providers_exit=1
+  fi
 
   # ---- what it consumed, and whether that is what it was supposed to run ------------------------
-  loaded_id=$(grep -oE "pathweaver_gametest[a-z_]*" "$log" | head -1)
   if manifest=$(python bench/manifest_verdict.py "$OUT/$name.manifest.json" "$expected" \
       "${loaded_id:-}" 2>&1); then
     contaminated=0
