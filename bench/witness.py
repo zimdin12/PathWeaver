@@ -101,6 +101,9 @@ EXPECTED_CAUSE = {
     "hook-stops-delegating":
         ("theBlockChangeHookDelegatesTheWholeDecision",
          "the hook branches"),
+    "hook-swaps-the-two-long-arguments":
+        ("theSectionKeyAndTheTickReachTheParametersTheyWereComputedFor",
+         "the two long arguments are in the wrong order"),
     "serializer-derived-checks":
         ("everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault",
          "resultCacheMode accepted a value of the wrong type"),
@@ -269,6 +272,18 @@ WITNESSES = [
         "        if (runtime.isRunning()) dev.pathweaver.cache.BlockChangeObserver.observe(",
         "*CachePolicyBarrierJoinTest*",
         "the hook decides something of its own instead of delegating",
+    ),
+    (
+        "hook-swaps-the-two-long-arguments",
+        "src/main/java/dev/pathweaver/mixin/ServerLevelBlockChangeMixin.java",
+        "            level.dimension().hashCode(), SectionPos.asLong(pos),
+"
+        "            level.getServer().getTickCount());",
+        "            level.dimension().hashCode(), level.getServer().getTickCount(),
+"
+        "            SectionPos.asLong(pos));",
+        "*CachePolicyBarrierJoinTest*",
+        "the section key and the tick are passed to each other's parameters, which compiles",
     ),
     (
         "serializer-derived-checks",

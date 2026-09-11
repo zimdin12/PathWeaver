@@ -58,6 +58,8 @@ class CachePolicyBarrierJoinTest {
     private static final String GATE_OWNER = "dev/pathweaver/config/PathWeaverConfig";
     private static final String CACHE_OWNER = "dev/pathweaver/cache/PathCache";
     private static final String OBSERVER_OWNER = "dev/pathweaver/cache/BlockChangeObserver";
+    private static final String SERVER_OWNER = "net/minecraft/server/MinecraftServer";
+    private static final String SECTION_POS_OWNER = "net/minecraft/core/SectionPos";
     private static final Object DIMENSION = "overworld";
     private static final long X = Double.doubleToLongBits(10.5);
     private static final long Y = Double.doubleToLongBits(64.0);
@@ -325,10 +327,9 @@ class CachePolicyBarrierJoinTest {
      *
      * <p>What this proves, precisely: exactly one call to the observer, no conditional branch of its
      * own, no second copy of the recording rule, and that the three level-derived values the observer
-     * needs are computed somewhere in the method. What it does NOT prove: that those values reach the
-     * right parameters. A hook that swapped the dimension hash and the tick would satisfy every
-     * assertion here. That case is not covered by any test in this file and is worth knowing rather
-     * than implying otherwise.
+     * needs are computed somewhere in the method. Presence, not placement. Placement is
+     * {@link #theSectionKeyAndTheTickReachTheParametersTheyWereComputedFor()}, which was written
+     * because this test alone would stay green through the swap that matters.
      *
      * <p>The class resource is the right artifact. A mixin is applied to its target, but this class
      * is itself the definition being applied, so what is on disk is what runs.
@@ -359,6 +360,60 @@ class CachePolicyBarrierJoinTest {
             assertTrue(calls.contains(required),
                 "the hook no longer reads " + required + " from the level: " + calls);
         }
+    }
+
+    /**
+     * The section key and the tick reach the parameters they were computed for, not each other's.
+     *
+     * <p>The bug this catches, exactly. {@code observe} takes {@code (config, serverRunning, cache,
+     * int dimensionHash, long sectionKey, long tick)}. The last two are both {@code long}, and
+     * {@code getTickCount()} returns an {@code int} that widens to one silently, so writing the call
+     * with those two arguments the other way round compiles without a warning. The dimension hash
+     * cannot join in: it is an {@code int} parameter and {@code SectionPos.asLong} returns a
+     * {@code long}, so that swap will not compile. The two longs are the whole exposure.
+     *
+     * <p>Swapped, every block update in the world would be filed against a section key equal to the
+     * tick number and stamped with a tick equal to a packed coordinate. No route would ever be
+     * invalidated by a change on it, and the cache would serve mobs through terrain that had been
+     * mined away, which is the failure the cache exists to prevent. Nothing else in this file would
+     * notice: the executed tests call the observer directly with their own arguments, and the
+     * structural test above only asks whether the values are computed, not where they land.
+     *
+     * <p>Argument order is read off the instruction stream rather than by running the hook, which
+     * needs a server. Java evaluates arguments left to right and pushes them in order, so the
+     * producer of the last parameter is the last thing to run before the call, and the producer of
+     * the one before it runs earlier. That is what is asserted: {@code getTickCount} immediately
+     * before the call (past the {@code I2L} widening javac inserts), and {@code SectionPos.asLong}
+     * somewhere before that.
+     */
+    @Test
+    void theSectionKeyAndTheTickReachTheParametersTheyWereComputedFor() {
+        InsnList code = hookMethod().instructions;
+
+        int observe = lastIndexOfCall(code, OBSERVER_OWNER, "observe");
+        assertTrue(observe >= 0, "the hook no longer calls the observer at all");
+
+        // getTickCount() returns an int, so javac emits I2L between the call and the invocation.
+        // That widening is not incidental: it is the reason the swap compiles silently, and skipping
+        // past it here is reading the same conversion the compiler would accept in the wrong place.
+        AbstractInsnNode producer = previousRealInstruction(code.get(observe));
+        if (producer != null && producer.getOpcode() == Opcodes.I2L) {
+            producer = previousRealInstruction(producer);
+        }
+        assertInstanceOf(MethodInsnNode.class, producer,
+            "the last argument the hook pushes is not produced by a call, so it is not the tick: "
+                + producer);
+        MethodInsnNode tick = (MethodInsnNode) producer;
+        assertEquals(SERVER_OWNER + ".getTickCount", tick.owner + "." + tick.name,
+            "the tick is the observer's last parameter, so the last value the hook computes before "
+                + "the call must be the tick; it computes " + tick.owner + "." + tick.name
+                + " instead, which means the two long arguments are in the wrong order");
+
+        int sectionKey = lastIndexOfCall(code, SECTION_POS_OWNER, "asLong");
+        assertTrue(sectionKey >= 0, "the hook no longer packs a section key");
+        assertTrue(sectionKey < code.indexOf(tick),
+            "the section key is computed after the tick, so it is being passed as the tick and the "
+                + "tick as the section key");
     }
 
     /**
