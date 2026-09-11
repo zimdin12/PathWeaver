@@ -1,4 +1,4 @@
-PathWeaver 0.9.0 witnesses, 22 entries, HEAD 544f3482a7eb542da6054dc80e8cad3a69fa0f39
+PathWeaver 0.9.0 witnesses, 23 entries, HEAD 68dff7559f9d0f060bbbfff7c4830d5391ccb287
 
 ====================================================================================================
 expiry-parking
@@ -28,9 +28,9 @@ expiry-sweep
 barrier-stored-entries
   file        src/main/java/dev/pathweaver/cache/PathCache.java
   expectation a route stored before a switch is served after it
-  1 GREEN     exit=0 tests=16 skipped=0 failures=0 errors=0
+  1 GREEN     exit=0 tests=17 skipped=0 failures=0 errors=0
   0 EXPECT    aRouteStoredBeforeTheCacheWasTurnedOffIsNotServedAfterItComesBack :: 'served across an unwatched change'  (1 matching invocation(s) in the baseline)
-  2 RED       exit=1 tests=16 skipped=0 failures=3 errors=0
+  2 RED       exit=1 tests=17 skipped=0 failures=3 errors=0
               dev.pathweaver.cache.CachePolicyBarrierJoinTest#aRouteStoredBeforeTheCacheWasTurnedOffIsNotServedAfterItComesBack()
                 org.opentest4j.AssertionFailedError: a route stored before the cache was switched off was served across an unwatched change ==> expected: &l
               dev.pathweaver.cache.CachePolicyBarrierJoinTest#aRouteStoredBeforeTheModWasTurnedOffIsNotServedAfterItComesBack()
@@ -38,27 +38,27 @@ barrier-stored-entries
               dev.pathweaver.cache.CachePolicyBarrierJoinTest#aChangeMadeWhileRecordingIsOffIsNotRecorded_andTheRouteDoesNotSurviveIt()
                 org.opentest4j.AssertionFailedError: a route was served across a change the observer was switched off for ==> expected: &lt;false> but was: 
   MATCHED     dev.pathweaver.cache.CachePolicyBarrierJoinTest#aRouteStoredBeforeTheCacheWasTurnedOffIsNotServedAfterItComesBack() :: served across an unwatched change
-  3 RESTORED  exit=0 tests=16 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+  3 RESTORED  exit=0 tests=17 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 barrier-pending-candidates
   file        src/main/java/dev/pathweaver/cache/PathCache.java
   expectation a search in flight across a switch repopulates the cache
-  1 GREEN     exit=0 tests=16 skipped=0 failures=0 errors=0
+  1 GREEN     exit=0 tests=17 skipped=0 failures=0 errors=0
   0 EXPECT    in-flight across :: 'candidate from before the gap was stored'  (2 matching invocation(s) in the baseline)
-  2 RED       exit=1 tests=16 skipped=0 failures=2 errors=0
+  2 RED       exit=1 tests=17 skipped=0 failures=2 errors=0
               dev.pathweaver.cache.CachePolicyBarrierJoinTest#in-flight across the cache switch
                 org.opentest4j.AssertionFailedError: a candidate from before the gap was stored after it ==> expected: &lt;0> but was: &lt;1>
               dev.pathweaver.cache.CachePolicyBarrierJoinTest#in-flight across the master switch
                 org.opentest4j.AssertionFailedError: a candidate from before the gap was stored after it ==> expected: &lt;0> but was: &lt;1>
   MATCHED     dev.pathweaver.cache.CachePolicyBarrierJoinTest#in-flight across the cache switch :: candidate from before the gap was stored
-  3 RESTORED  exit=0 tests=16 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+  3 RESTORED  exit=0 tests=17 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 gate-inverted
   file        src/main/java/dev/pathweaver/cache/BlockChangeObserver.java
   expectation the observer records exactly when it should not
-  1 GREEN     exit=0 tests=16 skipped=0 failures=0 errors=0
+  1 GREEN     exit=0 tests=17 skipped=0 failures=0 errors=0
   0 EXPECT    theObserverRecordsNothingWhileEitherSwitchIsOff :: 'did not stop the observer'  (1 matching invocation(s) in the baseline)
-  2 RED       exit=1 tests=16 skipped=0 failures=3 errors=0
+  2 RED       exit=1 tests=17 skipped=0 failures=3 errors=0
               dev.pathweaver.cache.CachePolicyBarrierJoinTest#theSameChangeIsRecordedWithBothSwitchesOn()
                 org.opentest4j.AssertionFailedError: with everything on, the observer still recorded nothing; it can never say yes ==> expected: &lt;false> 
               dev.pathweaver.cache.CachePolicyBarrierJoinTest#theObserverRecordsAgainAfterTheTransition()
@@ -66,29 +66,29 @@ gate-inverted
               dev.pathweaver.cache.CachePolicyBarrierJoinTest#theObserverRecordsNothingWhileEitherSwitchIsOff()
                 org.opentest4j.AssertionFailedError: the cache switch did not stop the observer: the change was recorded anyway ==> expected: &lt;true> but 
   MATCHED     dev.pathweaver.cache.CachePolicyBarrierJoinTest#theObserverRecordsNothingWhileEitherSwitchIsOff() :: did not stop the observer
-  3 RESTORED  exit=0 tests=16 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+  3 RESTORED  exit=0 tests=17 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 gate-ignored
   file        src/main/java/dev/pathweaver/cache/BlockChangeObserver.java
   expectation the observer asks the gate and throws the answer away
-  1 GREEN     exit=0 tests=16 skipped=0 failures=0 errors=0
+  1 GREEN     exit=0 tests=17 skipped=0 failures=0 errors=0
   0 EXPECT    theObserverRecordsNothingWhileEitherSwitchIsOff :: 'did not stop the observer'  (1 matching invocation(s) in the baseline)
-  2 RED       exit=1 tests=16 skipped=0 failures=1 errors=0
+  2 RED       exit=1 tests=17 skipped=0 failures=1 errors=0
               dev.pathweaver.cache.CachePolicyBarrierJoinTest#theObserverRecordsNothingWhileEitherSwitchIsOff()
                 org.opentest4j.AssertionFailedError: the cache switch did not stop the observer: the change was recorded anyway ==> expected: &lt;true> but 
   MATCHED     dev.pathweaver.cache.CachePolicyBarrierJoinTest#theObserverRecordsNothingWhileEitherSwitchIsOff() :: did not stop the observer
-  3 RESTORED  exit=0 tests=16 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+  3 RESTORED  exit=0 tests=17 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 caller-generation-constant
   file        src/main/java/dev/pathweaver/async/ResultInstaller.java
   expectation a caller passes a constant, so the barrier never fires
-  1 GREEN     exit=0 tests=16 skipped=0 failures=0 errors=0
+  1 GREEN     exit=0 tests=17 skipped=0 failures=0 errors=0
   0 EXPECT    everyProductionCallerReadsTheGenerationAtTheCall :: 'does not read the generation at'  (1 matching invocation(s) in the baseline)
-  2 RED       exit=1 tests=16 skipped=0 failures=1 errors=0
+  2 RED       exit=1 tests=17 skipped=0 failures=1 errors=0
               dev.pathweaver.cache.CachePolicyBarrierJoinTest#everyProductionCallerReadsTheGenerationAtTheCall()
                 org.opentest4j.AssertionFailedError: ResultInstaller.deliver does not read the generation at the completed call: org.objectweb.asm.tree.Insn
   MATCHED     dev.pathweaver.cache.CachePolicyBarrierJoinTest#everyProductionCallerReadsTheGenerationAtTheCall() :: does not read the generation at
-  3 RESTORED  exit=0 tests=16 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+  3 RESTORED  exit=0 tests=17 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 park-restarts-the-budget
   file        src/main/java/dev/pathweaver/async/EntityInstallSink.java
@@ -200,13 +200,24 @@ pin-denial-is-discarded
 hook-stops-delegating
   file        src/main/java/dev/pathweaver/mixin/ServerLevelBlockChangeMixin.java
   expectation the hook decides something of its own instead of delegating
-  1 GREEN     exit=0 tests=16 skipped=0 failures=0 errors=0
+  1 GREEN     exit=0 tests=17 skipped=0 failures=0 errors=0
   0 EXPECT    theBlockChangeHookDelegatesTheWholeDecision :: 'the hook branches'  (1 matching invocation(s) in the baseline)
-  2 RED       exit=1 tests=16 skipped=0 failures=1 errors=0
+  2 RED       exit=1 tests=17 skipped=0 failures=1 errors=0
               dev.pathweaver.cache.CachePolicyBarrierJoinTest#theBlockChangeHookDelegatesTheWholeDecision()
                 org.opentest4j.AssertionFailedError: the hook branches, so it is deciding something the observer is supposed to own ==> expected: &lt;[]> bu
   MATCHED     dev.pathweaver.cache.CachePolicyBarrierJoinTest#theBlockChangeHookDelegatesTheWholeDecision() :: the hook branches
-  3 RESTORED  exit=0 tests=16 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+  3 RESTORED  exit=0 tests=17 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+hook-swaps-the-two-long-arguments
+  file        src/main/java/dev/pathweaver/mixin/ServerLevelBlockChangeMixin.java
+  expectation the section key and the tick are passed to each other's parameters, which compiles
+  1 GREEN     exit=0 tests=17 skipped=0 failures=0 errors=0
+  0 EXPECT    theSectionKeyAndTheTickReachTheParametersTheyWereComputedFor :: 'the two long arguments are in the wrong order'  (1 matching invocation(s) in the baseline)
+  2 RED       exit=1 tests=17 skipped=0 failures=1 errors=0
+              dev.pathweaver.cache.CachePolicyBarrierJoinTest#theSectionKeyAndTheTickReachTheParametersTheyWereComputedFor()
+                org.opentest4j.AssertionFailedError: the tick is the observer's last parameter, so the last value the hook computes before the call must be 
+  MATCHED     dev.pathweaver.cache.CachePolicyBarrierJoinTest#theSectionKeyAndTheTickReachTheParametersTheyWereComputedFor() :: the two long arguments are in the wrong order
+  3 RESTORED  exit=0 tests=17 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 serializer-derived-checks
   file        src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java
@@ -288,6 +299,7 @@ pathfinder-pin-unused
   publication-shares-the-editors-object witnessed
   pin-denial-is-discarded        witnessed
   hook-stops-delegating          witnessed
+  hook-swaps-the-two-long-arguments witnessed
   serializer-derived-checks      witnessed
   status-sums-the-two-counts     witnessed
   status-saved-capacity          witnessed

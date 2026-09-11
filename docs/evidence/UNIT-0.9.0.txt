@@ -5,14 +5,14 @@ directory before anything can overwrite it, and fails closed rather than reporti
 if Gradle produced no XML or the copy came up short.
 
 The raw XML is NOT in this repository. build/ is gitignored, so it exists only on the
-machine that ran it, at build/unit-7f8d33e-220547/xml/.
+machine that ran it, at build/unit-68dff75-223339/xml/.
 What is below is the parse of that XML, not a raw Gradle transcript.
 
-commit       7f8d33e4d91c1a53dff4ca40ab427c67569cde03
+commit       68dff7559f9d0f060bbbfff7c4830d5391ccb287
 command      ./gradlew test --rerun-tasks
 gradle exit  0
-raw XML      build/unit-7f8d33e-220547/xml/ (kept, pass or fail)
-totals       suites=63 tests=475 failures=0 errors=0 skipped=0
+raw XML      build/unit-68dff75-223339/xml/ (kept, pass or fail)
+totals       suites=63 tests=476 failures=0 errors=0 skipped=0
 
   dev.pathweaver.LowCoreAdviceTest                               tests=7    fail=0 err=0 skip=0
   dev.pathweaver.PathWeaverRuntimeTest                           tests=6    fail=0 err=0 skip=0
@@ -29,7 +29,7 @@ totals       suites=63 tests=475 failures=0 errors=0 skipped=0
   dev.pathweaver.async.SearchStartGateTest                       tests=2    fail=0 err=0 skip=0
   dev.pathweaver.async.SubclassDispatchReachabilityTest          tests=6    fail=0 err=0 skip=0
   dev.pathweaver.brain.BrainSinkPolicyTest                       tests=12   fail=0 err=0 skip=0
-  dev.pathweaver.cache.CachePolicyBarrierJoinTest                tests=16   fail=0 err=0 skip=0
+  dev.pathweaver.cache.CachePolicyBarrierJoinTest                tests=17   fail=0 err=0 skip=0
   dev.pathweaver.cache.CacheStatusLinesTest                      tests=8    fail=0 err=0 skip=0
   dev.pathweaver.cache.PathCacheKeyTest                          tests=2    fail=0 err=0 skip=0
   dev.pathweaver.cache.PathCacheTest                             tests=15   fail=0 err=0 skip=0

@@ -1,9 +1,10 @@
 PathWeaver harness series, re-classified from preserved artifacts
-series    build/harness-0.9.0
-commit    c8d9fa473a59496c2e4b723910b87f9b33d754bc
-roster    blob 08c4ed8b86a862350920a884273afa6dcb633c80
+series    build/harness-f3266be-223708
+ran at    f3266bebce892123f8969c95bb80e418e7a5a1dc
+read at   f3266bebce892123f8969c95bb80e418e7a5a1dc  (the checkout this receipt was printed from)
+roster    blob b28d51b49c15d86ab425e2573237fccb3e695f7b
 verdict   blob c516ee293f193f5273f9f1f01f555b5edff50ab2
-providers blob 70ace803c94ac011dc31ecede3cf3f5bf2456911
+providers blob b77bab933f6eb2f6713a19930eeb413518201cd5
 command   ./gradlew runGameTest [flag] --rerun-tasks, one attempt per harness, no reruns
 
 Per-test identities are NOT recorded: a passing GameTest run reports a batch size and a total,
@@ -12,25 +13,43 @@ bounded selector claim, not an observed set.
 
 stock            OK  id=pathweaver_gametest entrypoints and mixins match; loader agrees
                    batch 0 (2 tests) | All 2 required tests passed | loader reported pathweaver_gametest
-                   providers at launch:   VERDICT: single candidate provider for the harness id
+                   providers at launch (from the recorded inventory):   VERDICT: single candidate provider for the harness id
+                     recorded inventory: build/harness-f3266be-223708/stock.providers.txt [sha256 6e3ca77fc8e8a82a78c98964df15f75dee2ede8b1e3cf94db355b44add993040]
+                   ESTABLISHED
 auditedTier      OK  id=pathweaver_gametest_audited entrypoints and mixins match; loader agrees
                    batch 0 (2 tests) | All 2 required tests passed | loader reported pathweaver_gametest_audited
-                   providers at launch:   VERDICT: single candidate provider for the harness id
+                   providers at launch (from the recorded inventory):   VERDICT: single candidate provider for the harness id
+                     recorded inventory: build/harness-f3266be-223708/auditedTier.providers.txt [sha256 7d174ce92d717a58ca33e9a84f92e535e306b187a7068bec6f563928e9f9beaf]
+                   ESTABLISHED
 unsafeTier       OK  id=pathweaver_gametest_unsafe entrypoints and mixins match; loader agrees
                    batch 0 (5 tests) | All 5 required tests passed | loader reported pathweaver_gametest_unsafe
-                   providers at launch:   VERDICT: single candidate provider for the harness id
+                   providers at launch (from the recorded inventory):   VERDICT: single candidate provider for the harness id
+                     recorded inventory: build/harness-f3266be-223708/unsafeTier.providers.txt [sha256 7df8b95dd819bb402490dfc162f545181b7c7b34005b30e6bd0944a9ccf1c6ad]
+                   ESTABLISHED
 newFamily        OK  id=pathweaver_gametest_new_family entrypoints and mixins match; loader agrees
                    batch 0 (2 tests) | All 2 required tests passed | loader reported pathweaver_gametest_new_family
-                   providers at launch:   VERDICT: single candidate provider for the harness id
+                   providers at launch (from the recorded inventory):   VERDICT: single candidate provider for the harness id
+                     recorded inventory: build/harness-f3266be-223708/newFamily.providers.txt [sha256 8a2dd458f3543b5842f63da076aa45b46f705eb22a1c4f278e9e2379094e04c3]
+                   ESTABLISHED
 auditedRouting   OK  id=pathweaver_gametest_audited_routing entrypoints and mixins match; loader agrees
                    batch 0 (2 tests) | All 2 required tests passed | loader reported pathweaver_gametest_audited_routing
-                   providers at launch:   VERDICT: single candidate provider for the harness id
+                   providers at launch (from the recorded inventory):   VERDICT: single candidate provider for the harness id
+                     recorded inventory: build/harness-f3266be-223708/auditedRouting.providers.txt [sha256 906f07e420749c551885f4aa32c50ad0261da748e5a8f395699b729b50087f3f]
+                   ESTABLISHED
 refused          OK  id=pathweaver_gametest_refused entrypoints and mixins match; loader agrees
                    batch 0 (2 tests) | All 2 required tests passed | loader reported pathweaver_gametest_refused
-                   providers at launch:   VERDICT: single candidate provider for the harness id
+                   providers at launch (from the recorded inventory):   VERDICT: single candidate provider for the harness id
+                     recorded inventory: build/harness-f3266be-223708/refused.providers.txt [sha256 4658c4cd178e43380198cc9bc2b95eb4552b1d1125706056392294c9acfa7f97]
+                   ESTABLISHED
 breaker          OK  id=pathweaver_gametest entrypoints and mixins match; loader agrees
                    batch 0 (2 tests) | All 2 required tests passed | loader reported pathweaver_gametest
-                   providers at launch:   VERDICT: single candidate provider for the harness id
+                   providers at launch (from the recorded inventory):   VERDICT: single candidate provider for the harness id
+                     recorded inventory: build/harness-f3266be-223708/breaker.providers.txt [sha256 100bb49732f2c44380a6699bd2ac56379a79da416ea49a92a222683fc11b98c1]
+                   ESTABLISHED
 fabricAggregate  OK  id=pathweaver_gametest_aggregate entrypoints and mixins match; loader agrees
                    batch 0 (2 tests) | All 2 required tests passed | loader reported pathweaver_gametest_aggregate
-                   providers at launch:   VERDICT: single candidate provider for the harness id
+                   providers at launch (from the recorded inventory):   VERDICT: single candidate provider for the harness id
+                     recorded inventory: build/harness-f3266be-223708/fabricAggregate.providers.txt [sha256 3d7c5b22993129a64a5d0733582bc58dabb8751edd1b77dbc30d0e093db287e8]
+                   ESTABLISHED
+
+all 8 harness rows established: manifest agrees, single recorded provider, tests passed
