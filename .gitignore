@@ -12,7 +12,7 @@ build/
 logs/
 run/
 
-# Generated Python bytecode. The 0.9.0 review found three of these tracked; they are build
-# artifacts, not review authority, and one of them dirtied the tree under the witness runner.
+# Generated Python bytecode. Build artifacts, not review authority; one of them dirtied the tree
+# under the witness runner, which then refused to start.
 __pycache__/
 *.pyc
