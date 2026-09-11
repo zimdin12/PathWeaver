@@ -2,7 +2,10 @@
 
 **body-0.8.0.md**
 
-Last published 2026-09-07 with the 0.8.0 release.
+Last published with the 0.8.0 release. Read back from the Modrinth API on 2026-09-12: both
+`0.8.0+26.1.2` and `0.8.0+26.2` carry `date_published` 2026-09-06 and the project's `updated`
+field is 2026-09-06, so the 2026-09-07 this file used to state was a day out. 15 versions are
+listed, the newest being 0.8.0.
 
 Two later bodies are written and NOT published:
 
