@@ -276,12 +276,8 @@ WITNESSES = [
     (
         "hook-swaps-the-two-long-arguments",
         "src/main/java/dev/pathweaver/mixin/ServerLevelBlockChangeMixin.java",
-        "            level.dimension().hashCode(), SectionPos.asLong(pos),
-"
-        "            level.getServer().getTickCount());",
-        "            level.dimension().hashCode(), level.getServer().getTickCount(),
-"
-        "            SectionPos.asLong(pos));",
+        "            SectionPos.asLong(pos), level.getServer().getTickCount());",
+        "            level.getServer().getTickCount(), SectionPos.asLong(pos));",
         "*CachePolicyBarrierJoinTest*",
         "the section key and the tick are passed to each other's parameters, which compiles",
     ),

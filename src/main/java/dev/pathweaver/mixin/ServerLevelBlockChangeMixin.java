@@ -38,7 +38,7 @@ public abstract class ServerLevelBlockChangeMixin {
         PathWeaverRuntime runtime = PathWeaverRuntime.get();
         dev.pathweaver.cache.BlockChangeObserver.observe(
             PathWeaverConfig.get(), runtime.isRunning(), runtime.resultCache(),
-            level.dimension().hashCode(), SectionPos.asLong(pos),
-            level.getServer().getTickCount());
+            level.dimension().hashCode(),
+            SectionPos.asLong(pos), level.getServer().getTickCount());
     }
 }
