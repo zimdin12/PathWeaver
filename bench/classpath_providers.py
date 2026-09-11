@@ -21,7 +21,8 @@ INCOMPLETENESS IS NOT SUCCESS. Any entry this cannot classify is counted and rep
 one blocks the uniqueness claim: an unreadable entry is exactly where a competing provider would
 hide. The same applies to finding implausibly few mods, or none matching the prefix.
 
-Exit 0 only when every id matching the prefix has exactly one provider AND nothing was unclassified.
+Exit 0 only when the id itself is declared by something on the classpath, every id in its
+family has exactly one provider, and nothing was left unclassified.
 """
 
 import hashlib
@@ -83,8 +84,17 @@ def scan(entry, providers, problems):
     if zipfile.is_zipfile(entry):
         scan_archive(entry, entry, providers, problems)
         return
-    # Not a jar and not a directory: a loose file. It cannot carry a fabric.mod.json, so it is not a
-    # provider, and it is not a problem either.
+    # A .jar that is not a readable zip is the one case that must not fall through here. is_zipfile
+    # returns False for a truncated, corrupt or half-written archive exactly as it does for a text
+    # file, so the old code filed both as "a loose file, not a provider, not a problem". That is a
+    # wrong zero of the worst kind: the entry the loader may well have read is the entry this could
+    # not open, and it was reported as nothing to see.
+    if os.path.splitext(entry)[1].lower() in (".jar", ".zip"):
+        problems.append("%s: named like an archive but not readable as one; it cannot be ruled out "
+                        "as a provider" % entry)
+        return
+    # Not an archive, not a directory, not named like an archive: a loose file. It cannot carry a
+    # fabric.mod.json, so it is not a provider and not a problem either.
 
 
 def main(argv):
@@ -123,6 +133,15 @@ def main(argv):
     if problems:
         print("  FAIL %d entr(y/ies) could not be classified; an unreadable entry is exactly where a "
               "competing provider would hide" % len(problems))
+        ok = False
+
+    # THE ID THE LOADER REPORTED, not merely something that looks like it. The family scan below is
+    # kept because a sibling id with two providers is worth knowing, but it cannot stand in for this:
+    # with prefix matching alone, an id with NO provider at all passed as long as one of its siblings
+    # had exactly one, and the id with no provider is precisely the one whose selection is unexplained.
+    if prefix not in providers:
+        print("  FAIL no entry on the classpath declares the id %r itself; the loader reported an id "
+              "this enumeration cannot account for" % prefix)
         ok = False
 
     matching = {k: v for k, v in providers.items() if k and k.startswith(prefix)}
