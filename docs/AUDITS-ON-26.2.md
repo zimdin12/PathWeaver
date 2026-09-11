@@ -90,10 +90,10 @@ now, and a mutation reintroducing a drifted copy turns two tests red.
 | `-PauditedRoutingHarness` | AUDITED | 2 passed | 2 passed |
 | `-PnewFamilyHarness` | AUDITED | 2 passed | 2 passed |
 | `-PfabricAggregateHarness` | AUDITED | 2 passed | 2 passed |
-| `-PauditedTierHarness` | AUDITED | 2 passed | 2 passed (since the 0.9 re-pins) |
+| `-PauditedTierHarness` | AUDITED | 2 passed | **1 of 2 FAILS** |
 | unit suite | n/a | 428 passed | 428 passed |
 
-## RESOLVED: `-PauditedTierHarness` used to fail on 26.2
+## `-PauditedTierHarness` fails on 26.2, and this table used not to say so
 
 The five harnesses above the line were the whole matrix. `auditedTierHarness` was not in it, so its
 result on 26.2 was not unknown, it was unasked. Running every harness rather than the recorded five
@@ -120,25 +120,9 @@ containing Lithium or Diagonal Blocks, which is most performance packs. The ship
 the log. It is a real limitation of the stricter tier on that version and the release notes should
 say it rather than let the 26.1.2 result stand in for both.
 
-**Fixed in 0.9, and it turned out to be a version bump after all.** Both audits were re-proved
-against their 26.2 artifacts before being re-pinned, and in both cases the bytes the proof is about
-had not changed:
-
-- Lithium: all eight audited mixin classes byte-identical between `0.24.6+mc26.1.2` and
-  `0.25.3+mc26.2`; nine of twelve pinned artifacts identical. The config declares the same 286
-  mixins with none added or removed. The plugin gained one thing,
-  `if (DISABLE_ALL_MIXINS) return false;` from a test-only system property defaulting false, which
-  can only ever apply fewer mixins.
-- Diagonal Blocks: the audited mixin class and the mixin config are byte-identical; only the
-  repackaged module jar differs.
-
-So what had been refusing on 26.2 was a version label standing in front of matching evidence. The
-structural proofs were re-run regardless, with parser controls, and both hold. All seven audits now
-verify on 26.2 and the scan reports `deniedFamilies=0`.
-
-Each new pin was mutation-verified rather than assumed to gate: corrupting the Lithium module hash,
-the Lithium plugin hash or the Diagonal Blocks module hash, or reverting the Diagonal Blocks version,
-each drops the verified tuples from two to one.
+**Fixing it** means re-deriving the Lithium and Diagonal Blocks audits against their 26.2 artifacts,
+which is the work 0.8.0 did for `servercore` and `rabbit-pathfinding-fix`: exact hashes plus a
+bytecode shape proof, not a version bump. That is its own piece of work and is not attempted here.
 
 `default` and `auditedRouting` used to fail on 26.2. At runtime the scan now emits no audit refusals
 at all, and logs live evidence for the content registry, the land-registry lifecycle and the audited
@@ -166,3 +150,44 @@ Each was stated with more confidence than the evidence carried.
 8. **`dispatched=7, installed=1, discarded=3`** was one run's timing quoted as a property.
 9. **The enumerator gap was described as a `@ModifyConstant` blind spot.** It was every non-`@Inject`
    annotation in one enumerator and every non-`@Redirect` in the other.
+
+## Re-pinning Lithium for 26.2: evidence so far
+
+Work in progress for 0.9. Recorded as it is gathered so the next person does not repeat it.
+
+**The structural proof holds.** Re-run against Lithium `0.25.3+mc26.2`, which is what the 26.2 branch
+resolves, using `tools/audit_field_writes.py`. Every field write is in `<init>`, `<clinit>`,
+`lithium$initializePathNodeTypeCache` or `lithium$initializeFlags`. `WalkNodeEvaluatorMixin`,
+`FlyNodeEvaluatorMixin`, `PathfindingContextMixin`, `PathfindingContextAccessor`, the chunk-access
+`PathNavigationRegionMixin` and the inactive-navigations `PathNavigationMixin` write nothing at all.
+Zero violations.
+
+**Eight of the audited classes did not change at all.** Comparing the pinned 26.1.2 hashes against
+the 26.2 artifact, nine of twelve are byte-identical, and all eight audited mixin classes are among
+them. The proof's subject matter is literally the same bytes.
+
+| pin | 26.1.2 | 26.2 |
+|---|---|---|
+| the eight audited mixin classes | | identical |
+| `lithium-fabric.mixins.json` | | identical |
+| `lithium.mixins.json` | `f9674d7b9bb5` | `14ed3a630a22` |
+| the module jar | `509e7f770c7d` | `fdde92e238e8` |
+| `LithiumMixinPlugin` | `b97aed37b9ed` | `795f0a10e2cb` |
+
+**The mixin config declares the same set.** 286 entries both sides, 21 of them pathfinding-relevant,
+none added and none removed. The whole diff is a `conformVisibility` overwrite option and one
+unrelated sensor mixin renamed from `parent_animal_sensor` to `baby_specific_sensors`. Neither
+touches an audited class.
+
+**Still open before the pin can be written.** `LithiumMixinPlugin` changed bytes, and it is pinned
+precisely because a plugin decides which mixins actually apply. The declared set being identical and
+the audited classes being byte-identical bound the risk to one thing: whether the new plugin switches
+ON a pathfinding mixin the old one left off. That has to be read out of the plugin rather than
+assumed, and it is the next step.
+
+**A design question the evidence raises.** The audit refuses on `MOD_VERSION` before it ever looks at
+a byte. Since the proof's subject matter is byte-identical across these two builds, a version label
+is the only thing refusing, which is the same defect 0.7.0 fixed for 26.1.1: gate on the bytes the
+proof pinned, not on a label. The pin should probably carry a set of known artifact fingerprints
+rather than one version string.
+
