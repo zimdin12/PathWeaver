@@ -13,9 +13,17 @@
 # Only all three together establish that the loader read that file. Without (3) the receipt says
 # UNVERIFIED rather than implying it, because a later enumeration of a build directory that has been
 # rewritten since cannot establish what an already-finished process was able to load.
+#
+# EXIT STATUS. This script used to print a page and exit 0 whatever it had just printed, including
+# rows reading UNVERIFIED. A receipt whose status is 0 no matter what it says cannot be used by
+# anything except a human who reads every line, and it was being cited as though it certified the
+# series. It now exits 0 only when every harness in the roster cleared all three claims above, and 1
+# otherwise, with the reason printed.
 set -u
 cd "$(dirname "$0")/.."
 OUT="${1:-build/harness-0.9.0}"
+unestablished=0
+rows=0
 
 echo "PathWeaver harness series, re-classified from preserved artifacts"
 echo "series    $OUT"
@@ -53,7 +61,19 @@ for entry in \
   batch=$(grep -oE "batch [0-9]+ \([0-9]+ tests\)" "$log" 2>/dev/null | head -1)
   result=$(grep -oE "All [0-9]+ required tests passed|[0-9]+ required tests? failed" "$log" 2>/dev/null | head -1)
 
-  printf '%-16s %s\n' "$h" "$(python bench/manifest_verdict.py "$OUT/$h.manifest.json" "$src" "$loaded" 2>&1)"
+  if [ -f "$log" ]; then
+    rows=$((rows + 1))
+  else
+    printf '%-16s NO LOG in this series directory\n' "$h"
+    unestablished=$((unestablished + 1))
+    continue
+  fi
+  if manifest_says=$(python bench/manifest_verdict.py "$OUT/$h.manifest.json" "$src" "$loaded" 2>&1); then
+    manifest_ok=1
+  else
+    manifest_ok=0
+  fi
+  printf '%-16s %s\n' "$h" "$manifest_says"
   printf '%-16s   %s | %s | loader reported %s\n' "" \
     "${batch:-no batch line}" "${result:-no result line}" "${loaded:-nothing}"
 
@@ -67,12 +87,46 @@ for entry in \
   # The inventory carries a digest per provider manifest precisely so it can be quoted rather than
   # recomputed. If it is absent, that is reported as absent; it is not re-derived.
   inv="$OUT/$h.providers.txt"
+  providers_ok=0
   if [ -f "$inv" ]; then
-    printf '%-16s   providers at launch (from the recorded inventory): %s\n' "" "$(tail -1 "$inv")"
+    recorded=$(tail -1 "$inv")
+    printf '%-16s   providers at launch (from the recorded inventory): %s\n' "" "$recorded"
     printf '%-16s     recorded inventory: %s [sha256 %s]\n' "" "$inv" \
       "$(sha256sum "$inv" | cut -d' ' -f1)"
+    case "$recorded" in
+      *"single candidate provider"*) providers_ok=1 ;;
+    esac
   else
     printf '%-16s   providers at launch: NO RECORDED INVENTORY -- loaded-content identity UNVERIFIED\n' ""
     printf '%-16s     not re-derived: a scan run now would describe the tree now, not that launch\n' ""
   fi
+
+  # The result line is read for a PASS, never for the absence of a failure. A log with no result line
+  # at all has no failure in it either, and that is exactly the run that must not count.
+  case "${result:-}" in
+    "All "*" required tests passed") result_ok=1 ;;
+    *) result_ok=0 ;;
+  esac
+
+  if [ "$manifest_ok" -eq 1 ] && [ "$providers_ok" -eq 1 ] && [ "$result_ok" -eq 1 ]; then
+    printf '%-16s   ESTABLISHED\n' ""
+  else
+    unestablished=$((unestablished + 1))
+    printf '%-16s   NOT ESTABLISHED (manifest=%s providers=%s result=%s)\n' "" \
+      "$manifest_ok" "$providers_ok" "$result_ok"
+  fi
 done
+
+echo
+if [ "$rows" -eq 0 ]; then
+  echo "REFUSING TO CERTIFY: not one harness in the roster left a log in $OUT."
+  echo "That is not a failed series, it is not a series; naming a wrong directory must not read"
+  echo "as evidence about a run."
+  exit 1
+fi
+if [ "$unestablished" -ne 0 ]; then
+  echo "$unestablished of $rows harness rows are NOT ESTABLISHED; this receipt certifies nothing"
+  exit 1
+fi
+echo "all $rows harness rows established: manifest agrees, single recorded provider, tests passed"
+exit 0

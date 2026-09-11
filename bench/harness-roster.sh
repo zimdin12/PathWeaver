@@ -96,7 +96,12 @@ for entry in "${ROSTER[@]}"; do
   ./gradlew --init-script bench/print-classpath.gradle printGametestRuntimeClasspath -q \
     --console=plain > "$OUT/$name.classpath.raw" 2> "$OUT/$name.classpath.err"
   grep -E "^([A-Za-z]:|/)" "$OUT/$name.classpath.raw" > "$OUT/$name.classpath.txt" 2>/dev/null
+  # The exit status is READ, not discarded. It used to be: the scanner's verdict line was printed in
+  # the summary and governed nothing, so a row reading "NOT ESTABLISHED" still carried the verdict
+  # passed:2. A sentence saying the attribution failed, sitting beside a verdict saying the run was
+  # clean, is worse than not printing it, because the clean word is the one that gets quoted.
   python bench/classpath_providers.py "$OUT/$name.classpath.txt" > "$OUT/$name.providers.txt" 2>&1
+  providers_exit=$?
   providers=$(tail -1 "$OUT/$name.providers.txt")
 
   # ---- what it consumed, and whether that is what it was supposed to run ------------------------
@@ -121,6 +126,14 @@ for entry in "${ROSTER[@]}"; do
     verdict="passed:${passed}"
   fi
   [ "$contaminated" -eq 0 ] || verdict="SETUP-INVALID"
+  # A harness whose provider set could not be resolved still produced a real test result, and that
+  # result is kept. What it did NOT produce is the right to say which jar supplied the mod, so the
+  # verdict is marked rather than the count being thrown away. UNATTRIBUTED- sorts and greps
+  # differently from passed:, which is the point: nothing downstream can count it as clean by
+  # matching on the count alone.
+  if [ "$providers_exit" -ne 0 ]; then
+    verdict="UNATTRIBUTED-${verdict}"
+  fi
 
   printf '%-16s %-14s exit=%-3s %s  %s  %s-%s\n' \
     "$name" "$verdict" "$code" "$manifest" "$providers" "$started" "$ended" >> "$OUT/summary.txt"
