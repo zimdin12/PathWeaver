@@ -1,4 +1,4 @@
-PathWeaver 0.9.0 witnesses, 23 entries, HEAD 9be61dc5c782c482bbb41b113437aeb924c6f226
+PathWeaver 0.9.0 witnesses, 28 entries, HEAD 2b60654da0c70cf0368b8cb4cbf23b8f58006111
 
 ====================================================================================================
 expiry-parking
@@ -128,7 +128,7 @@ status-prints-hardcoded-zeros
   3 RESTORED  exit=0 tests=8 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 serializer-checks-the-mode-only
-  file        src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java
+  file        src/main/java/dev/pathweaver/config/ConfigFile.java
   expectation only the cache MODE is checked, so neither numeric field is pinned
   1 GREEN     exit=0 tests=1 skipped=0 failures=0 errors=0
   0 EXPECT    everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault :: 'resultCacheMaxAgeTicks accepted a value of the wrong type'  (1 matching invocation(s) in the baseline)
@@ -139,7 +139,7 @@ serializer-checks-the-mode-only
   3 RESTORED  exit=0 tests=1 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 serializer-skips-max-age-only
-  file        src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java
+  file        src/main/java/dev/pathweaver/config/ConfigFile.java
   expectation resultCacheMaxAgeTicks alone goes unchecked
   1 GREEN     exit=0 tests=1 skipped=0 failures=0 errors=0
   0 EXPECT    everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault :: 'resultCacheMaxAgeTicks accepted a value of the wrong type'  (1 matching invocation(s) in the baseline)
@@ -150,7 +150,7 @@ serializer-skips-max-age-only
   3 RESTORED  exit=0 tests=1 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 serializer-skips-max-entries-only
-  file        src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java
+  file        src/main/java/dev/pathweaver/config/ConfigFile.java
   expectation resultCacheMaxEntries alone goes unchecked
   1 GREEN     exit=0 tests=1 skipped=0 failures=0 errors=0
   0 EXPECT    everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault :: 'resultCacheMaxEntries accepted a value of the wrong type'  (1 matching invocation(s) in the baseline)
@@ -219,8 +219,63 @@ hook-swaps-the-two-long-arguments
   MATCHED     dev.pathweaver.cache.CachePolicyBarrierJoinTest#theSectionKeyAndTheTickReachTheParametersTheyWereComputedFor() :: the two long arguments are in the wrong order
   3 RESTORED  exit=0 tests=17 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
+lod-threshold-off-by-one
+  file        src/main/java/dev/pathweaver/lod/RecomputeThrottle.java
+  expectation a mob at exactly the LOD distance is throttled, one block early
+  1 GREEN     exit=0 tests=15 skipped=0 failures=0 errors=0
+  0 EXPECT    atExactlyTheThresholdTheMobStillRecomputes :: 'at exactly the threshold distance was throttled'  (1 matching invocation(s) in the baseline)
+  2 RED       exit=1 tests=15 skipped=0 failures=1 errors=0
+              dev.pathweaver.lod.RecomputeThrottleTest#atExactlyTheThresholdTheMobStillRecomputes()
+                org.opentest4j.AssertionFailedError: a mob at exactly the threshold distance was throttled ==> expected: &lt;true> but was: &lt;false>
+  MATCHED     dev.pathweaver.lod.RecomputeThrottleTest#atExactlyTheThresholdTheMobStillRecomputes() :: at exactly the threshold distance was throttled
+  3 RESTORED  exit=0 tests=15 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+lod-locks-out-after-a-rollback
+  file        src/main/java/dev/pathweaver/lod/RecomputeThrottle.java
+  expectation a clock that moved backwards blocks every recompute until it catches up
+  1 GREEN     exit=0 tests=15 skipped=0 failures=0 errors=0
+  0 EXPECT    afterTheClockMovesBackwardsRecomputesAreNotLockedOut :: 'locked out every recompute'  (1 matching invocation(s) in the baseline)
+  2 RED       exit=1 tests=15 skipped=0 failures=1 errors=0
+              dev.pathweaver.lod.RecomputeThrottleTest#afterTheClockMovesBackwardsRecomputesAreNotLockedOut()
+                org.opentest4j.AssertionFailedError: time moving backwards locked out every recompute ==> expected: &lt;true> but was: &lt;false>
+  MATCHED     dev.pathweaver.lod.RecomputeThrottleTest#afterTheClockMovesBackwardsRecomputesAreNotLockedOut() :: locked out every recompute
+  3 RESTORED  exit=0 tests=15 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+lod-scans-when-switched-off
+  file        src/main/java/dev/pathweaver/lod/RecomputeThrottle.java
+  expectation the nearest-player scan is paid for even with the feature switched off
+  1 GREEN     exit=0 tests=15 skipped=0 failures=0 errors=0
+  0 EXPECT    withTheFeatureOffTheDistanceIsNeverEvenComputed :: 'with LOD switched off'  (1 matching invocation(s) in the baseline)
+  2 RED       exit=1 tests=15 skipped=0 failures=1 errors=0
+              dev.pathweaver.lod.RecomputeThrottleTest#withTheFeatureOffTheDistanceIsNeverEvenComputed()
+                org.opentest4j.AssertionFailedError: the nearest-player scan ran with LOD switched off, which is a cost for no benefit ==> expected: &lt;0> 
+  MATCHED     dev.pathweaver.lod.RecomputeThrottleTest#withTheFeatureOffTheDistanceIsNeverEvenComputed() :: with LOD switched off
+  3 RESTORED  exit=0 tests=15 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+lod-hook-stops-cancelling
+  file        src/main/java/dev/pathweaver/mixin/PathNavigationMixin.java
+  expectation the throttle decides and the hook never acts on it
+  1 GREEN     exit=0 tests=4 skipped=0 failures=0 errors=0
+  0 EXPECT    theHookActsOnTheAnswerAndDecidesNothingElse :: 'it is allowed two'  (1 matching invocation(s) in the baseline)
+  2 RED       exit=1 tests=4 skipped=0 failures=1 errors=0
+              dev.pathweaver.lod.RecomputeThrottleAdapterTest#theHookActsOnTheAnswerAndDecidesNothingElse()
+                org.opentest4j.AssertionFailedError: the hook makes 3 decisions; it is allowed two, the server-level check and the throttle's answer. A thir
+  MATCHED     dev.pathweaver.lod.RecomputeThrottleAdapterTest#theHookActsOnTheAnswerAndDecidesNothingElse() :: it is allowed two
+  3 RESTORED  exit=0 tests=4 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+cloth-returns-to-the-server-path
+  file        src/main/java/dev/pathweaver/config/PathCacheMode.java
+  expectation a settings enum implements a Cloth GUI interface again, so the config class cannot initialise without Cloth installed
+  1 GREEN     exit=0 tests=4 skipped=0 failures=0 errors=0
+  0 EXPECT    noServerClassNamesAClothGuiType :: 'NoClassDefFoundError on any server without Cloth'  (1 matching invocation(s) in the baseline)
+  2 RED       exit=1 tests=4 skipped=0 failures=1 errors=0
+              dev.pathweaver.config.NoClothOnTheServerPathTest#noServerClassNamesAClothGuiType()
+                org.opentest4j.AssertionFailedError: these classes load on a dedicated server and name a Cloth GUI type, which is a NoClassDefFoundError on 
+  MATCHED     dev.pathweaver.config.NoClothOnTheServerPathTest#noServerClassNamesAClothGuiType() :: NoClassDefFoundError on any server without Cloth
+  3 RESTORED  exit=0 tests=4 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
 serializer-derived-checks
-  file        src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java
+  file        src/main/java/dev/pathweaver/config/ConfigFile.java
   expectation the three resultCache settings accept a wrong type, as in 0.8.0
   1 GREEN     exit=0 tests=1 skipped=0 failures=0 errors=0
   0 EXPECT    everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault :: 'resultCacheMode accepted a value of the wrong type'  (1 matching invocation(s) in the baseline)
@@ -300,6 +355,11 @@ pathfinder-pin-unused
   pin-denial-is-discarded        witnessed
   hook-stops-delegating          witnessed
   hook-swaps-the-two-long-arguments witnessed
+  lod-threshold-off-by-one       witnessed
+  lod-locks-out-after-a-rollback witnessed
+  lod-scans-when-switched-off    witnessed
+  lod-hook-stops-cancelling      witnessed
+  cloth-returns-to-the-server-path witnessed
   serializer-derived-checks      witnessed
   status-sums-the-two-counts     witnessed
   status-saved-capacity          witnessed
