@@ -192,6 +192,37 @@ public class PathWeaverConfig implements ConfigData {
     @ConfigEntry.Category("performance")
     public int resultCacheMaxEntries = 4096;
 
+    /**
+     * Recompute routes less often for mobs far from every player. OFF by default.
+     *
+     * <p>The only setting here that changes what a mob does. Everything else gives the mob the path
+     * it would have had anyway; this gives it that path up to {@link #lodIntervalTicks} later, and
+     * only beyond {@link #lodMinDistanceBlocks}. That is a real behaviour change, bounded and remote,
+     * and a mod that claims not to alter mob behaviour does not get to switch it on for you.
+     *
+     * <p>Turn it on if you run many mobs far from players: mob farms, large penned herds, or a busy
+     * world with a high simulation distance.
+     */
+    @ConfigEntry.Gui.Tooltip(count = 4)
+    @ConfigEntry.Category("performance")
+    public boolean lodEnabled = false;
+
+    /**
+     * How far a mob must be from the nearest player before its recomputes are throttled, in blocks.
+     *
+     * <p>Sixty-four rather than something smaller: a mob inside a player's render distance can be
+     * watched, and a mob that corrects its course visibly late is exactly the kind of thing that
+     * produces a bug report nobody can reproduce.
+     */
+    @ConfigEntry.Gui.Tooltip(count = 2)
+    @ConfigEntry.Category("performance")
+    public int lodMinDistanceBlocks = 64;
+
+    /** Minimum ticks between recomputes for a throttled mob. Half a second by default. */
+    @ConfigEntry.Gui.Tooltip(count = 2)
+    @ConfigEntry.Category("performance")
+    public int lodIntervalTicks = 10;
+
     @ConfigEntry.Gui.Tooltip(count = 3)
     @ConfigEntry.Category("repath")
     // Default 1, not 0.
@@ -476,6 +507,11 @@ public class PathWeaverConfig implements ConfigData {
         if (resultCacheMode == null) resultCacheMode = PathCacheMode.SHADOW;
         resultCacheMaxAgeTicks = Math.clamp(resultCacheMaxAgeTicks, 1, MAX_RESULT_AGE_TICKS);
         resultCacheMaxEntries = Math.clamp(resultCacheMaxEntries, 1, MAX_RESULT_CACHE_ENTRIES);
+        // A distance of zero would throttle every mob in the world including the one standing next to
+        // you, and an interval of zero would throttle nothing while looking like it was enabled.
+        // Both are clamped to values that mean what the setting says.
+        lodMinDistanceBlocks = Math.clamp(lodMinDistanceBlocks, 16, 512);
+        lodIntervalTicks = Math.clamp(lodIntervalTicks, 2, 200);
         // Clamped here with every other int, because a hand-edited negative limit would otherwise
         // read as "off" through one code path and "trip immediately" through another.
         // Zero is a documented choice: never switch a family off. A NEGATIVE is not a choice, and
