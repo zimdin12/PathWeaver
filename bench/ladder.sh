@@ -72,26 +72,36 @@ restore() {
 }
 trap restore EXIT INT TERM HUP
 
-# Whatever pathweaver is resident gets held aside in every arm, so the jar under test is the only one
-# present and the off arm has none. Leaving the resident jar in place would have measured two.
-RESIDENT="$(ls -1 "$SERVER"/mods/pathweaver-*.jar 2>/dev/null | head -1)"
+# Any resident pathfinding mod is held aside in every arm, ours or a competitor's, so the jar under
+# test is the only one present and the off arm has none. Both mixin the same navigation call, so
+# leaving one in place would have priced the pair.
+RESIDENT="$(ls -1 "$SERVER"/mods/pathweaver-*.jar "$SERVER"/mods/pathwright-*.jar 2>/dev/null | head -1)"
 if [ -n "$RESIDENT" ]; then
   mkdir -p "$SERVER/.pw-held"; mv -f "$RESIDENT" "$SERVER/.pw-held/" || exit 8
   HELD="$RESIDENT"
 fi
+ARM_ID="none"
 if [ "$ARM" != "off" ]; then
   [ -f "$ARM" ] || { echo "REFUSING: no jar at $ARM"; exit 8; }
   cp -f "$ARM" "$SERVER/mods/" || exit 8
   INSTALLED="$ARM"
   ENABLED=true
+  # Derived from the filename rather than listed in a table here, so adding an arm does not mean
+  # remembering to update one. pathweaver-0.9.0+26.1.2.jar and pathwright-1.0.3-fabric.jar both
+  # reduce to the id the loader prints at startup.
+  ARM_ID="$(basename "$ARM" | sed 's/-[0-9].*$//')"
 else
   ENABLED=false
 fi
 
 rm -rf "$SERVER/pw-bench"; mkdir -p config
+# PW_CACHE selects the route-cache mode for OUR arm only. The default is SHADOW because that is what
+# the mod ships: the cache measures and does not serve. A competitor arm is left on its own defaults,
+# which is what its users actually run. That asymmetry is real and is reported rather than equalised.
 cat > config/pathweaver.json <<CFG
-{"configVersion":3,"enabled":${ENABLED},"compatibilityTier":"UNSAFE","brainSinkAsync":true,"resultCacheMode":"SHADOW"}
+{"configVersion":3,"enabled":${ENABLED},"compatibilityTier":"UNSAFE","brainSinkAsync":true,"resultCacheMode":"${PW_CACHE:-SHADOW}"}
 CFG
+rm -f config/pathwright.json
 
 python - <<'PY'
 import pathlib
@@ -109,7 +119,7 @@ lines += [f"{k}={v}" for k, v in want.items() if k not in seen]
 p.write_text("\n".join(lines) + "\n")
 PY
 
-echo "arm=$ARM  rungs=${RUNGS[*]}  budget=${BUDGET}s (reserve ${RESERVE}s)"
+echo "arm=$ARM (id=$ARM_ID)  rungs=${RUNGS[*]}  budget=${BUDGET}s (reserve ${RESERVE}s)  pwCache=${PW_CACHE:-SHADOW}"
 
 : > "$IN"; : > "$LOG"; mkdir -p "$SPARKDIR"
 ( tail -f "$IN" & echo $! > "$OUT/$LABEL.tailpid"; wait ) | "$JAVA" -Xmx12G -Xms4G \
@@ -265,9 +275,15 @@ grep -aqiE 'Bench (was slain|died|drowned|fell)' "$LOG" &&
   void "fewer than two rungs, so nothing here can show whether the harness responds to load"
 grep -q 'NO TICK DURATIONS' "$ROWS" && void "a rung produced no tick distribution, which is the measurement"
 case "$ARM" in
-  off) grep -aqE "^\s+- pathweaver [0-9]" "$LOG" && void "the off arm still loaded pathweaver" ;;
-  *)   grep -aqE "^\s+- pathweaver [0-9]" "$LOG" || void "the arm jar never loaded"
-       [ "$DELTA" -le 0 ] && void "the mod loaded but dispatched nothing across the whole ladder" ;;
+  off) grep -aqE "^\s+- (pathweaver|pathwright) [0-9]" "$LOG" &&
+         void "the off arm still loaded a pathfinding mod" ;;
+  *)   grep -aqE "^\s+- $ARM_ID [0-9]" "$LOG" || void "the arm jar never loaded ($ARM_ID)"
+       # Only our own mod publishes a dispatch counter. A competitor has no equivalent, so there is
+       # NO check here that it did any work at all, and saying so is better than letting the absence
+       # of a failure read as a pass.
+       if [ "$ARM_ID" = "pathweaver" ] && [ "$DELTA" -le 0 ]; then
+         void "the mod loaded but dispatched nothing across the whole ladder"
+       fi ;;
 esac
 [ "$TOTAL" -gt "$BUDGET" ] && echo "OVER BUDGET: ${TOTAL}s against a ${BUDGET}s cap."
 echo "run $LABEL complete in ${TOTAL}s, dispatchDelta=$DELTA"
