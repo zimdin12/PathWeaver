@@ -104,6 +104,21 @@ EXPECTED_CAUSE = {
     "hook-swaps-the-two-long-arguments":
         ("theSectionKeyAndTheTickReachTheParametersTheyWereComputedFor",
          "the two long arguments are in the wrong order"),
+    "lod-threshold-off-by-one":
+        ("atExactlyTheThresholdTheMobStillRecomputes",
+         "at exactly the threshold distance was throttled"),
+    "lod-locks-out-after-a-rollback":
+        ("afterTheClockMovesBackwardsRecomputesAreNotLockedOut",
+         "locked out every recompute"),
+    "lod-scans-when-switched-off":
+        ("withTheFeatureOffTheDistanceIsNeverEvenComputed",
+         "with LOD switched off"),
+    "lod-hook-stops-cancelling":
+        ("theHookActsOnTheAnswerAndDecidesNothingElse",
+         "it is allowed two"),
+    "cloth-returns-to-the-server-path":
+        ("noServerClassNamesAClothGuiType",
+         "NoClassDefFoundError on any server without Cloth"),
     "serializer-derived-checks":
         ("everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault",
          "resultCacheMode accepted a value of the wrong type"),

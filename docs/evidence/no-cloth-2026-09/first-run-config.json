@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "configVersion": 3,
+  "allowModdedMobAsync": false,
+  "compatibilityTier": "UNSAFE",
+  "trustedMods": [],
+  "poolThreads": 0,
+  "maxInFlight": 256,
+  "brainSinkAsync": true,
+  "resultCacheMode": "SHADOW",
+  "resultCacheMaxAgeTicks": 40,
+  "resultCacheMaxEntries": 4096,
+  "lodEnabled": false,
+  "lodMinDistanceBlocks": 64,
+  "lodIntervalTicks": 10,
+  "repathToleranceBlocks": 1,
+  "stalenessMoveThreshold": 4.0,
+  "maxResultAgeTicks": 40,
+  "workerFailureLimit": 3,
+  "workerFailureWindowTicks": 1200
+}
