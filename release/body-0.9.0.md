@@ -139,24 +139,24 @@ That is a real behaviour change, which is why it is a setting rather than someth
 
 Everything else keeps the path it would have had, with two stated exceptions: a shared route when route sharing is switched on, and the search running against the world as it was a tick or two earlier rather than at the instant the mob asks. Neither changes where a mob is trying to go.
 
-### Recomputing distant routes less often
+### Redoing distant path searches less often
 
-**New in 0.9.0, and off by default.** A mob following a route re-runs the whole search periodically to
-correct for the world moving. Near a player that correction matters. Sixty-four blocks away, with
-nobody close enough to see it, it is the same search producing nearly the same answer several times a
-second.
+**New in 0.9.0, and off by default.** When a block changes on the route a mob is walking, the game
+redoes that mob's whole path search. It already refuses to do this more than once a second for any one
+mob. But in a place where terrain keeps changing, every mob whose route crosses the change pays that
+cost, whether or not anyone is near enough to see the result.
 
-`lodEnabled` turns that into one refresh every ten ticks beyond 64 blocks. Both numbers are settings.
-A mob that has just picked a new destination is never throttled; only the periodic refresh of a route
-it already has is delayed.
+`lodEnabled` widens the limit for mobs beyond 64 blocks from every player: one search every 40 ticks
+instead of the game's once a second. Both numbers are settings, and anything at or below 21 ticks does
+nothing at all, because that is the game's own floor.
 
 It ships off because it is the one thing here that does not give a mob the path it would have had
-anyway. It gives it that path up to the interval later, which is a real behaviour change even though
-it is bounded and remote. Worth turning on for mob farms, large penned herds, or a high simulation
-distance.
+anyway. A throttled mob keeps walking an out-of-date route for longer after the ground under it
+changes. Worth turning on for mob farms, penned herds near redstone, or a high simulation distance.
 
-There is no benchmark number for it on this page, because it does nothing until you switch it on and
-what it saves then depends entirely on how many distant mobs your world is running.
+There is no benchmark number for it on this page. What it saves depends on how much terrain changes
+around mobs nobody is standing near, which is a property of your world, and for a mob in quiet
+surroundings it saves nothing because the game never redoes its search at all.
 
 ### Route sharing
 
@@ -209,9 +209,9 @@ Whatever version you are on, **mods that modify pathfinding are named at world s
 | `resultCacheMode` | `SHADOW` | Route sharing. `SHADOW` measures, `SERVE` spends it | |
 | `repathToleranceBlocks` | 1 | Reuse a mob's current path when its target moved less than this | |
 | `poolThreads` | auto | Worker threads. Auto is a quarter of your CPU threads, minimum two | restart |
-| `lodEnabled` | off | Refresh distant mobs' routes less often | |
+| `lodEnabled` | off | Redo distant mobs' path searches less often | |
 | `lodMinDistanceBlocks` | 64 | How far from a player that starts | |
-| `lodIntervalTicks` | 10 | How often a throttled route refreshes | |
+| `lodIntervalTicks` | 40 | Ticks between searches for a throttled mob. Below 21 does nothing | |
 
 All of them live in `config/pathweaver.json`. Install ModMenu and Cloth Config if you want to edit them in game instead; neither is required and a server needs neither. The two marked **restart** are read once at startup; the rest take effect as soon as you save.
 

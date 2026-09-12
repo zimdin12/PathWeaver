@@ -48,25 +48,57 @@ tells a server owner to edit was never written.
 
 ### Distance LOD (`lodEnabled`, off by default)
 
-A navigation beyond `lodMinDistanceBlocks` refreshes an existing route at most once every
-`lodIntervalTicks` instead of every time vanilla asks. A mob that has just chosen a new destination is
-never throttled.
+For a navigation beyond `lodMinDistanceBlocks` from every player, a path search is redone at most once
+every `lodIntervalTicks` instead of vanilla's own once every 21. A mob that has just chosen a new
+destination is never affected.
 
 It ships off because it is the only thing in this mod that does not give a mob the path it would have
 had anyway. Everything else is the same answer computed elsewhere; this one is that answer, later.
-A saving with a stated cost is offered rather than taken.
 
 The decision lives in `RecomputeThrottle` as a pure function and the mixin is a pure adapter with
 exactly two branches, which is the shape a test can pin. It is also the one guard in the mod that
 fails **open**, because unlike everything else it guards vanilla's own action rather than ours.
 
-Two things went wrong while building it, both caught:
+**It was built on a mechanism vanilla does not have, and that is the interesting part of this
+release.** The design said mobs re-run the whole search periodically, several times a second, and that
+LOD would cut that to once every ten ticks. Reading the compiled `PathNavigation` instead of the
+design note says otherwise:
+
+```java
+if (level.getGameTime() - timeLastRecompute > 20 && canUpdatePath()) { ...createPath... }
+else { hasDelayedRecomputation = true; }
+```
+
+`recomputePath` is not periodic. It has exactly two callers in the entire game: `ServerLevel`
+calls it when a block changes on a mob's route, and `PathNavigation.tick` retries it after a deferred
+call. A mob in unchanging surroundings never reaches it. And vanilla already caps real searches at one
+per 21 ticks per navigation, so the shipped default of 10 sat **under vanilla's own floor** and could
+not remove a single search. The feature was armed with a number that did nothing, and the page
+described it as halving the work.
+
+Two fixes, and one of them was a second defect found on the way:
+
+- The default is 40, and the clamp floor is now vanilla's period rather than a number chosen here, so
+  an interval that cannot do anything is not accepted as armed.
+- The hook kept its own tick counter, advanced whenever the throttle said yes. That counted *calls*,
+  and vanilla answers most calls by deferring. It also swallowed the recompute that
+  `pathweaver$rearmRecompute` re-arms after a failed async install, because our counter had already
+  moved past it, leaving that mob on a stale route for the rest of the interval. The hook now reads
+  vanilla's `timeLastRecompute` and `getGameTime` and keeps no field of its own.
+
+What now stands in for the review that found this: `VanillaRecomputePeriodPinTest` reads the vanilla
+bytecode and fails if Mojang moves the window that our constant, our clamp floor and the project-page
+figures are all derived from. Watched red against a wrong constant before being trusted green.
+
+Three more things went wrong while building it, all caught:
 
 - The threshold used `<` where it needed `<=` on the squared distance, so a mob at exactly the
   configured distance was throttled one block early. The boundary test caught it.
 - The adapter test could not fail. It asserted that a cancel call existed, and the mutation
   `if (tick < 0) ci.cancel()` passed it. The test was strengthened to count decisions rather than the
   mutation being softened, which is the temptation worth naming.
+- The adapter test checked that the hook *asks* the throttle and never what it asks the throttle
+  about, which is exactly the gap the counter defect lived in. It now pins both time values.
 
 ### Also in this release
 

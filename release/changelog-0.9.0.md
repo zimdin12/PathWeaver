@@ -55,24 +55,31 @@ It now needs Fabric API and nothing else. Install Cloth Config if you want the s
 it the mod reads and writes the same `config/pathweaver.json` and behaves identically. Nothing about
 your existing config file changes and no setting is lost.
 
-## New, and off by default: recompute distant routes less often
+## New, and off by default: redo distant path searches less often
 
-A mob following a route re-runs the whole search periodically to correct for the world moving. Near a
-player that correction matters. Sixty-four blocks away, with nobody close enough to see it, it is the
-same search producing nearly the same answer several times a second.
+When a block changes on the route a mob is walking, the game redoes that mob's whole path search. It
+will not do it more often than once a second for any one mob, but in a place where terrain keeps
+changing, every mob whose route crosses the change pays for it, whether anyone is near enough to see
+it or not.
 
-`lodEnabled` turns that into one refresh every ten ticks for mobs beyond 64 blocks. Both numbers are
-configurable, and a mob that has just picked a new destination is never throttled; only the periodic
-refresh of a route it already has is delayed.
+`lodEnabled` widens that limit for mobs beyond 64 blocks from every player: one search every 40 ticks
+instead of the game's once a second. Both numbers are settings. A mob picking a new destination is
+never affected; this only delays redoing a route the mob already has.
 
 **It ships off, and that is deliberate.** Everything else in this mod gives a mob the path it would
-have had anyway. This gives it that path up to the interval later, which is a real behaviour change
-even though it is bounded and remote. It is a saving with a stated cost, so it is offered rather than
+have had anyway. This lets a distant mob keep walking an out-of-date route for longer after the ground
+under it changes. That is bounded and remote, but it is a real difference, so it is offered rather than
 taken.
 
-Worth turning on for mob farms, large penned herds, or a high simulation distance.
+Worth turning on for mob farms, penned herds near redstone, or a high simulation distance. It does
+nothing at all for mobs whose surroundings are not changing, because the game never redoes their
+search in the first place.
 
 ## Not in this release
 
 No new benchmark numbers for the mod's core. The figures on the project page were measured for 0.9.0
 and nothing here changes what paths your mobs take when LOD is off, which is how it ships.
+
+There is no figure for LOD either, and it would be dishonest to invent one: what it saves depends
+entirely on how much terrain changes around mobs nobody is standing near, which is a property of your
+world rather than of this mod.
