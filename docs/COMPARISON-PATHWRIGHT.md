@@ -1,7 +1,10 @@
 # Pathwright, read and tested
 
-**Internal. Nothing here is published without Steven's decision, and the load failure below should
-go to its author as a bug report before it is ever used as a talking point.**
+**Internal. Nothing here is published without Steven's decision.** The recommendation below to send
+the load failure to its author was put to Steven on 2026-09-12 and declined: he does not want to spend
+our work on a competitor's product. That is his call and it stands. The consequence is recorded in
+"What to do about it": the failure stays here as a diagnosis and is not used as a talking point
+either, because a crash we did not report is not an argument we get to make.
 
 Pathwright 1.0.3, `sha256 6afd2c84890e3f12a0f01a76d4d7d8f0a454fbf7501c5ae035415a12b1f21cfe`, the
 Fabric build advertised for 26.1 / 26.1.1 / 26.1.2, downloaded from Modrinth 2026-09-12. 537
@@ -106,12 +109,14 @@ Saying only the unflattering things would make this document useless.
 
 ## What to do about it
 
-1. **Report the load failure to the author.** It is a one-line fix on their side and the mod is
-   MIT-licensed and evidently maintained by someone doing sincere work. Publishing "the competitor is
-   broken" while sitting on the diagnosis would be a shabby way to compete, and the claim decays the
-   moment they fix it.
-2. **Take the two good ideas.** Distance LOD belongs on our roadmap on its merits. NeoForge closes a
-   distribution gap.
-3. **Fix the Cloth Config dependency**, so a server owner needs Fabric API and nothing else.
-4. **Do not put a comparison on the Modrinth page.** Leading with a competitor's crash reads as
-   punching down, and our own measurement is the stronger argument anyway.
+1. ~~**Report the load failure to the author.**~~ **Declined by Steven, 2026-09-12.** The
+   recommendation was that it is a one-line fix on their side and that sitting on a diagnosis while
+   competing is shabby. He does not want to spend our time improving a competitor's mod, which is a
+   fair position and his to take. It is struck through rather than deleted so the decision is visible
+   and so nobody re-derives the recommendation next quarter without knowing it was already answered.
+2. **Take the good ideas.** Done in 0.9.0: distance LOD shipped, off by default, on its own merits
+   rather than because they had it. NeoForge was measured and dropped, see `NEOFORGE-0.9.0.md`.
+3. **Fix the Cloth Config dependency.** Done in 0.9.0. Fabric API and nothing else.
+4. **Do not put a comparison on the Modrinth page.** Unchanged, and it now matters more, not less.
+   Since we are not reporting the crash, leading with it would be using a fault we chose not to help
+   fix. Our own measurement is the stronger argument anyway, and it does not depend on them at all.
