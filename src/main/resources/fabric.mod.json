@@ -3,8 +3,10 @@
   "id": "pathweaver",
   "version": "${version}",
   "name": "PathWeaver",
-  "description": "Experimental off-thread A* for all six vanilla mob evaluators. Ships with compatibility checking OFF, so it runs other mods' uninspected pathfinding code on worker threads — back up your worlds, or set compatibilityTier=AUDITED.",
-  "authors": ["Zimdin"],
+  "description": "Experimental off-thread A* for all six vanilla mob evaluators. Ships with compatibility checking OFF, so it runs other mods' uninspected pathfinding code on worker threads \u2014 back up your worlds, or set compatibilityTier=AUDITED.",
+  "authors": [
+    "Zimdin"
+  ],
   "contact": {
     "homepage": "https://modrinth.com/mod/pathweaver",
     "sources": "https://github.com/Zimdin12/PathWeaver",
@@ -14,19 +16,25 @@
   "icon": "assets/pathweaver/icon.png",
   "environment": "*",
   "entrypoints": {
-    "main": ["dev.pathweaver.PathWeaver"],
-    "modmenu": ["dev.pathweaver.config.PathWeaverModMenu"]
+    "main": [
+      "dev.pathweaver.PathWeaver"
+    ],
+    "modmenu": [
+      "dev.pathweaver.config.PathWeaverModMenu"
+    ]
   },
-  "mixins": ["pathweaver.mixins.json"],
+  "mixins": [
+    "pathweaver.mixins.json"
+  ],
   "depends": {
     "minecraft": ">=26.2 <26.3",
     "java": ">=25",
     "fabricloader": ">=0.19",
-    "fabric-api": "*",
-    "cloth-config": ">=26.1"
+    "fabric-api": "*"
   },
   "suggests": {
     "lithium": "*",
-    "modmenu": "*"
+    "modmenu": "*",
+    "cloth-config": ">=26.1"
   }
 }

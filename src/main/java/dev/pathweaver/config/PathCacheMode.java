@@ -1,6 +1,5 @@
 package dev.pathweaver.config;
 
-import me.shedaniel.clothconfig2.gui.entries.SelectionListEntry;
 
 /**
  * What the shared result cache is allowed to do with a search another mob already ran.
@@ -10,7 +9,7 @@ import me.shedaniel.clothconfig2.gui.entries.SelectionListEntry;
  * behind it. The dispatch interceptor is a mixin and must not do that, which is why
  * {@link PathWeaverConfig#resultCacheServes()} exists as a primitive.
  */
-public enum PathCacheMode implements SelectionListEntry.Translatable {
+public enum PathCacheMode {
     /** Not consulted, not filled, no key built. Costs nothing and measures nothing. */
     OFF,
 
@@ -36,7 +35,17 @@ public enum PathCacheMode implements SelectionListEntry.Translatable {
     /** Hits are served: the mob gets its own copy of the earlier route and no search runs. */
     SERVE;
 
-    @Override
+    /**
+     * The translation key for this constant on the settings screen.
+     *
+     * <p>No longer an override of a Cloth interface. That interface was on the enum itself, so
+     * initialising PathWeaverConfig, which has a field of this type, resolved a Cloth GUI class and
+     * threw NoClassDefFoundError on any server without Cloth installed. The mod could not start, and
+     * no unit test saw it because the test classpath has Cloth on it. Only booting a real server
+     * without the library found it.
+     *
+     * <p>ClothScreen calls this when it builds an enum selector; nothing else needs it.
+     */
     public String getKey() {
         return TRANSLATION_PREFIX + name();
     }

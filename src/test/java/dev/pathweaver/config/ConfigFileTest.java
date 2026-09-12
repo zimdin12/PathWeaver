@@ -2,7 +2,6 @@ package dev.pathweaver.config;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import me.shedaniel.autoconfig.serializer.ConfigSerializer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -12,7 +11,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class PathWeaverConfigSerializerTest {
+class ConfigFileTest {
     @TempDir Path tempDir;
 
     @Test void migratesLegacyTrueFalseToEnabled() throws Exception { assertLegacy(true, false, true); }
@@ -37,7 +36,7 @@ class PathWeaverConfigSerializerTest {
         Files.writeString(path, """
             {"configVersion":2,"enabled":false,"poolThreads":3,"maxInFlight":17}
             """);
-        PathWeaverConfigSerializer serializer = new PathWeaverConfigSerializer(path);
+        ConfigFile serializer = new ConfigFile(path);
         PathWeaverConfig first = serializer.deserialize();
         serializer.serialize(first);
         String once = Files.readString(path);
@@ -51,7 +50,7 @@ class PathWeaverConfigSerializerTest {
     @Test void migratedSaveRemovesLegacyKeysAndWritesV2() throws Exception {
         Path path = configPath();
         Files.writeString(path, "{\"asyncEnabled\":true,\"syncFallbackOnly\":false}");
-        PathWeaverConfigSerializer serializer = new PathWeaverConfigSerializer(path);
+        ConfigFile serializer = new ConfigFile(path);
         serializer.serialize(serializer.deserialize());
         JsonObject saved = JsonParser.parseString(Files.readString(path)).getAsJsonObject();
         assertEquals(PathWeaverConfig.CURRENT_CONFIG_VERSION,
@@ -69,7 +68,7 @@ class PathWeaverConfigSerializerTest {
              "poolThreads":999,"maxInFlight":0,"repathToleranceBlocks":7,
              "stalenessMoveThreshold":5.5,"maxResultAgeTicks":77}
             """);
-        PathWeaverConfig c = new PathWeaverConfigSerializer(path).deserialize();
+        PathWeaverConfig c = new ConfigFile(path).deserialize();
         assertTrue(c.enabled);
         assertTrue(c.allowModdedMobAsync);
         assertEquals(PathWeaverConfig.MAX_POOL_THREADS, c.poolThreads);
@@ -79,20 +78,9 @@ class PathWeaverConfigSerializerTest {
         assertEquals(77, c.maxResultAgeTicks);
     }
 
-    @Test void malformedToggleFailsClosedThroughExistingLoadFailureSignal() throws Exception {
-        Path path = configPath();
-        Files.writeString(path, "{\"asyncEnabled\":\"yes\"}");
-        java.util.concurrent.atomic.AtomicBoolean failed = new java.util.concurrent.atomic.AtomicBoolean();
-        var tracked = new LoadFailureTrackingSerializer<>(
-            new PathWeaverConfigSerializer(path), failed);
-        assertThrows(ConfigSerializer.SerializationException.class, tracked::deserialize);
-        assertTrue(failed.get());
-        PathWeaverConfig previous = PathWeaverConfig.get();
-        try {
-            PathWeaverConfig.publishLoaded(tracked.createDefault(), failed.get());
-            assertFalse(PathWeaverConfig.get().enabled);
-        } finally { PathWeaverConfig.set(previous); }
-    }
+    // The malformed-file case moved to ConfigLoadTest, which owns the "was this load a failure"
+    // question now that Cloth no longer answers it by substituting defaults in silence.
+
 
     /**
      * The whole point of the version 3 bump. Without it the new default reaches nobody who has ever
@@ -103,7 +91,7 @@ class PathWeaverConfigSerializerTest {
         Path path = configPath();
         Files.writeString(path,
             "{\"configVersion\":2,\"enabled\":true,\"repathToleranceBlocks\":0}");
-        PathWeaverConfig migrated = new PathWeaverConfigSerializer(path).deserialize();
+        PathWeaverConfig migrated = new ConfigFile(path).deserialize();
         assertEquals(1, migrated.repathToleranceBlocks);
         assertEquals(PathWeaverConfig.CURRENT_CONFIG_VERSION, migrated.configVersion);
     }
@@ -118,7 +106,7 @@ class PathWeaverConfigSerializerTest {
             Files.writeString(path, "{\"configVersion\":2,\"enabled\":true,"
                 + "\"repathToleranceBlocks\":" + stored + "}");
             assertEquals(stored,
-                new PathWeaverConfigSerializer(path).deserialize().repathToleranceBlocks,
+                new ConfigFile(path).deserialize().repathToleranceBlocks,
                 "a deliberate tolerance of " + stored + " was overwritten");
         }
     }
@@ -132,30 +120,30 @@ class PathWeaverConfigSerializerTest {
         Files.writeString(path,
             "{\"configVersion\":" + PathWeaverConfig.CURRENT_CONFIG_VERSION
                 + ",\"enabled\":true,\"repathToleranceBlocks\":0}");
-        assertEquals(0, new PathWeaverConfigSerializer(path).deserialize().repathToleranceBlocks);
+        assertEquals(0, new ConfigFile(path).deserialize().repathToleranceBlocks);
     }
 
     /** A legacy file that never had the key must not have one invented for it. */
     @Test void anAbsentToleranceIsNotMigratedButTakesTheNewDefault() throws Exception {
         Path path = configPath();
         Files.writeString(path, "{\"configVersion\":2,\"enabled\":true}");
-        assertEquals(1, new PathWeaverConfigSerializer(path).deserialize().repathToleranceBlocks);
+        assertEquals(1, new ConfigFile(path).deserialize().repathToleranceBlocks);
     }
 
     @Test void futureSchemaFailsClosedRatherThanGuessing() throws Exception {
         Path path = configPath();
         Files.writeString(path, "{\"configVersion\":"
             + (PathWeaverConfig.CURRENT_CONFIG_VERSION + 1) + ",\"enabled\":true}");
-        assertThrows(ConfigSerializer.SerializationException.class,
-            () -> new PathWeaverConfigSerializer(path).deserialize());
+        assertThrows(ConfigFile.ConfigIoException.class,
+            () -> new ConfigFile(path).deserialize());
     }
 
     @Test void ambiguousMixedSchemaFailsClosedWithoutOverwritingSource() throws Exception {
         Path path = configPath();
         String mixed = "{\"configVersion\":2,\"enabled\":true,\"syncFallbackOnly\":true}";
         Files.writeString(path, mixed);
-        assertThrows(ConfigSerializer.SerializationException.class,
-            () -> new PathWeaverConfigSerializer(path).deserialize());
+        assertThrows(ConfigFile.ConfigIoException.class,
+            () -> new ConfigFile(path).deserialize());
         assertEquals(mixed, Files.readString(path));
     }
 
@@ -164,8 +152,8 @@ class PathWeaverConfigSerializerTest {
         String malformed = "{\"configVersion\":2,\"enabled\":true,"
             + "\"allowModdedMobAsync\":\"true\"}";
         Files.writeString(path, malformed);
-        assertThrows(ConfigSerializer.SerializationException.class,
-            () -> new PathWeaverConfigSerializer(path).deserialize());
+        assertThrows(ConfigFile.ConfigIoException.class,
+            () -> new ConfigFile(path).deserialize());
         assertEquals(malformed, Files.readString(path));
     }
 
@@ -273,26 +261,26 @@ class PathWeaverConfigSerializerTest {
         Path path = configPath();
         Files.writeString(path,
             "{\"configVersion\":2,\"enabled\":true,\"compatibilityTier\":\"EVERYTHING\"}");
-        assertThrows(Exception.class, () -> new PathWeaverConfigSerializer(path).deserialize());
+        assertThrows(Exception.class, () -> new ConfigFile(path).deserialize());
     }
 
     @Test void migratedTierSurvivesASaveReloadRoundTrip() throws Exception {
         Path path = configPath();
         Files.writeString(path,
             "{\"configVersion\":2,\"enabled\":true,\"overrideCompatibilityScan\":true}");
-        PathWeaverConfigSerializer serializer = new PathWeaverConfigSerializer(path);
+        ConfigFile serializer = new ConfigFile(path);
         PathWeaverConfig migrated = serializer.deserialize();
         serializer.serialize(migrated);
         String saved = Files.readString(path);
         assertFalse(saved.contains("overrideCompatibilityScan"), saved);
         assertEquals(CompatibilityTier.UNSAFE,
-            new PathWeaverConfigSerializer(path).deserialize().compatibilityTier);
+            new ConfigFile(path).deserialize().compatibilityTier);
     }
 
     private void assertTier(String json, CompatibilityTier expected) throws Exception {
         Path path = configPath();
         Files.writeString(path, json);
-        assertEquals(expected, new PathWeaverConfigSerializer(path).deserialize().compatibilityTier,
+        assertEquals(expected, new ConfigFile(path).deserialize().compatibilityTier,
             json);
     }
 
@@ -303,7 +291,7 @@ class PathWeaverConfigSerializerTest {
     private void assertMigrates(String json, boolean expected) throws Exception {
         Path path = configPath();
         Files.writeString(path, json);
-        PathWeaverConfig c = new PathWeaverConfigSerializer(path).deserialize();
+        PathWeaverConfig c = new ConfigFile(path).deserialize();
         assertEquals(expected, c.enabled, json);
         // Derived, not the literal it used to be. Eight tests pinned "2" by hand and every one of
         // them had to be edited by the version-3 bump, which is a list you must remember to update:
@@ -329,7 +317,7 @@ class PathWeaverConfigSerializerTest {
         Files.writeString(path, """
             {"configVersion":2,"enabled":true,"trustedMods":[1,2]}
             """);
-        PathWeaverConfigSerializer serializer = new PathWeaverConfigSerializer(path);
+        ConfigFile serializer = new ConfigFile(path);
         assertThrows(Exception.class, serializer::deserialize);
     }
 }

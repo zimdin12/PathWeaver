@@ -1,6 +1,5 @@
 package dev.pathweaver.config;
 
-import me.shedaniel.clothconfig2.gui.entries.SelectionListEntry;
 
 /**
  * How much risk the server owner is willing to accept from mods that modify pathfinding.
@@ -16,7 +15,7 @@ import me.shedaniel.clothconfig2.gui.entries.SelectionListEntry;
  * safety option, it is noise. What remains is an honest binary: run where there is evidence, or run
  * regardless.
  */
-public enum CompatibilityTier implements SelectionListEntry.Translatable {
+public enum CompatibilityTier {
     /**
      * Also allow mods whose bytecode has been audited to perform no shared-state writes on the
      * search path, but which do add reads a worker cannot be proven to see consistently.
@@ -81,7 +80,17 @@ public enum CompatibilityTier implements SelectionListEntry.Translatable {
      * because the tier is written into log lines and diagnostics where a translation key would be
      * unreadable.
      */
-    @Override
+    /**
+     * The translation key for this constant on the settings screen.
+     *
+     * <p>No longer an override of a Cloth interface. That interface was on the enum itself, so
+     * initialising PathWeaverConfig, which has a field of this type, resolved a Cloth GUI class and
+     * threw NoClassDefFoundError on any server without Cloth installed. The mod could not start, and
+     * no unit test saw it because the test classpath has Cloth on it. Only booting a real server
+     * without the library found it.
+     *
+     * <p>ClothScreen calls this when it builds an enum selector; nothing else needs it.
+     */
     public String getKey() {
         return TRANSLATION_PREFIX + name();
     }

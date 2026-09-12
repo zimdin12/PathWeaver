@@ -38,6 +38,11 @@ public final class ConfigFile {
         this.path = path;
     }
 
+    /** Whether a settings file is already on disk, as opposed to this being a first run. */
+    public boolean exists() {
+        return Files.exists(path);
+    }
+
     public void serialize(PathWeaverConfig config) throws ConfigIoException {
         try {
             PathWeaverConfig current = config == null ? createDefault() : config;
