@@ -56,17 +56,7 @@ mkdir -p "$OUT"
 # The expectation is DERIVED from that file rather than written out here, because two harnesses share
 # a mod id (breaker reuses the stock one) and a list of ids would have called a swapped breaker run
 # correct. Content distinguishes them; an id does not.
-ROSTER=(
-  "stock::src/gametest/resources/fabric.mod.json"
-  "auditedTier:-PauditedTierHarness:src/gametest/auditedResources/fabric.mod.json"
-  "unsafeTier:-PunsafeTierHarness:src/gametest/unsafeResources/fabric.mod.json"
-  "newFamily:-PnewFamilyHarness:src/gametest/newFamilyResources/fabric.mod.json"
-  "auditedRouting:-PauditedRoutingHarness:src/gametest/auditedRoutingResources/fabric.mod.json"
-  "refused:-PrefusedHarness:src/gametest/refusedResources/fabric.mod.json"
-  "breaker:-PbreakerHarness:src/gametest/breakerResources/fabric.mod.json"
-  "fabricAggregate:-PfabricAggregateHarness:src/gametest/aggregateResources/fabric.mod.json"
-  "lod:-PlodHarness:src/gametest/lodResources/fabric.mod.json"
-)
+. "$(dirname "$0")/lib/roster.sh"
 
 # The identity this series ran at, written once, so a receipt never has to guess it from the
 # checkout it happens to be printed from.
