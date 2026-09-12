@@ -1,0 +1,6 @@
+reg-r1-off   34%, 33%, 34%  (system)
+reg-r1-v080  33%, 33%, 34%  (system)
+reg-r1-v090  37%, 35%, 35%  (system)
+reg-r2-v090  37%, 35%, 37%  (system)
+reg-r2-v080  36%, 36%, 36%  (system)
+reg-r2-off   65%, 64%, 56%  (system)

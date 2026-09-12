@@ -1,0 +1,6 @@
+   100  zombies=100    total=153    dispatched=n/a      at= 97s  2.1/2.8/4.0/4.4; 0.7/2.7/5.3/3180.6
+   500  zombies=500    total=553    dispatched=n/a      at=135s  5.7/7.2/9.6/21.8; 1.8/6.5/9.3/85.4
+  1000  zombies=1000   total=1053   dispatched=n/a      at=173s  10.8/13.3/16.6/26.9; 5.3/11.9/15.6/75.6
+  2500  zombies=2500   total=2553   dispatched=n/a      at=219s  29.6/33.2/41.1/56.9; 10.8/32.0/38.9/208.6
+  5000  zombies=5000   total=5053   dispatched=n/a      at=270s  71.0/77.2/94.2/105.3; 28.6/47.2/85.6/307.2
+ 10000  zombies=10000  total=10053  dispatched=n/a      at=339s  177.1/192.4/221.1/244.3; 29.7/77.1/201.3/475.1
