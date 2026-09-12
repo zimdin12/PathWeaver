@@ -45,17 +45,11 @@ echo "and names individual tests only when one fails. Batch size plus the select
 echo "bounded selector claim, not an observed set."
 echo
 
-for entry in \
-  "stock:src/gametest/resources/fabric.mod.json" \
-  "auditedTier:src/gametest/auditedResources/fabric.mod.json" \
-  "unsafeTier:src/gametest/unsafeResources/fabric.mod.json" \
-  "newFamily:src/gametest/newFamilyResources/fabric.mod.json" \
-  "auditedRouting:src/gametest/auditedRoutingResources/fabric.mod.json" \
-  "refused:src/gametest/refusedResources/fabric.mod.json" \
-  "breaker:src/gametest/breakerResources/fabric.mod.json" \
-  "fabricAggregate:src/gametest/aggregateResources/fabric.mod.json"; do
+# The roster the series ran, from the one definition both scripts read. See bench/lib/roster.sh.
+. "$(dirname "$0")/lib/roster.sh"
+for entry in "${ROSTER[@]}"; do
   h="${entry%%:*}"
-  src="${entry#*:}"
+  src="${entry##*:}"
   log="$OUT/$h.log"
   loaded=$(grep -oE "pathweaver_gametest[a-z_]*" "$log" 2>/dev/null | head -1)
   batch=$(grep -oE "batch [0-9]+ \([0-9]+ tests\)" "$log" 2>/dev/null | head -1)

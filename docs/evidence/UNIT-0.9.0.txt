@@ -5,15 +5,15 @@ directory before anything can overwrite it, and fails closed rather than reporti
 if Gradle produced no XML or the copy came up short.
 
 The raw XML is NOT in this repository. build/ is gitignored, so it exists only on the
-machine that ran it, at build/unit-66fbaf7-190001/xml/.
+machine that ran it, at build/unit-d05d84d-233444/xml/.
 What is below is the parse of that XML, not a raw Gradle transcript.
 
 PathWeaver unit suite
-commit       66fbaf75b05334f009805ae249f8a4adaddc0886
+commit       d05d84df5827c4efb9eacaa6216730065a5eeb55
 command      ./gradlew test --rerun-tasks
 gradle exit  0
-raw XML      build/unit-66fbaf7-190001/xml/ (kept, pass or fail)
-totals       suites=67 tests=508 failures=0 errors=0 skipped=0
+raw XML      build/unit-d05d84d-233444/xml/ (kept, pass or fail)
+totals       suites=67 tests=509 failures=0 errors=0 skipped=0
 
   dev.pathweaver.LowCoreAdviceTest                               tests=7    fail=0 err=0 skip=0
   dev.pathweaver.PathWeaverRuntimeTest                           tests=6    fail=0 err=0 skip=0
@@ -67,7 +67,7 @@ totals       suites=67 tests=508 failures=0 errors=0 skipped=0
   dev.pathweaver.gate.ScanFailurePredicateTest                   tests=3    fail=0 err=0 skip=0
   dev.pathweaver.gate.TrustedModScopeTest                        tests=6    fail=0 err=0 skip=0
   dev.pathweaver.gate.WorkerFailureBreakerTest                   tests=22   fail=0 err=0 skip=0
-  dev.pathweaver.lod.RecomputeThrottleAdapterTest                tests=5    fail=0 err=0 skip=0
+  dev.pathweaver.lod.RecomputeThrottleAdapterTest                tests=6    fail=0 err=0 skip=0
   dev.pathweaver.lod.RecomputeThrottleTest                       tests=18   fail=0 err=0 skip=0
   dev.pathweaver.lod.VanillaRecomputePeriodPinTest               tests=2    fail=0 err=0 skip=0
   dev.pathweaver.mixin.DispatchAttributionContractTest           tests=1    fail=0 err=0 skip=0

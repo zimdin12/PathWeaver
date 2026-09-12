@@ -65,6 +65,14 @@ check "a manifest that disagrees with the harness is refused" 1 "$SCRATCH/bad-ma
 mkdir -p "$SCRATCH/empty"
 check "a directory that is not a series is refused, not blamed" 1 "$SCRATCH/empty"
 
+# The last harness the roster defines, whatever it is. The receipt once kept a private list that
+# stopped one short of the roster, and a series missing the harness it did not know about passed.
+. bench/lib/roster.sh
+last="${ROSTER[${#ROSTER[@]}-1]%%:*}"
+cp -r "$SCRATCH/good" "$SCRATCH/no-last-harness"
+rm -f "$SCRATCH/no-last-harness/$last.log"
+check "a series missing the roster's last harness ($last) is refused" 1 "$SCRATCH/no-last-harness"
+
 echo
 if [ "$failures" -eq 0 ]; then
   echo "  all control cases behaved as required"
