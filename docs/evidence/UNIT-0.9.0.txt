@@ -5,13 +5,15 @@ directory before anything can overwrite it, and fails closed rather than reporti
 if Gradle produced no XML or the copy came up short.
 
 The raw XML is NOT in this repository. build/ is gitignored, so it exists only on the
-machine that ran it, at build/unit-d1c71e4-162452/xml/.
+machine that ran it, at build/unit-66fbaf7-190001/xml/.
+What is below is the parse of that XML, not a raw Gradle transcript.
 
-commit       d1c71e462efcb62f53de484fcabe41c7dd4fdb78
+PathWeaver unit suite
+commit       66fbaf75b05334f009805ae249f8a4adaddc0886
 command      ./gradlew test --rerun-tasks
 gradle exit  0
-raw XML      build/unit-d1c71e4-162452/xml/ (kept, pass or fail)
-totals       suites=66 tests=502 failures=0 errors=0 skipped=0
+raw XML      build/unit-66fbaf7-190001/xml/ (kept, pass or fail)
+totals       suites=67 tests=508 failures=0 errors=0 skipped=0
 
   dev.pathweaver.LowCoreAdviceTest                               tests=7    fail=0 err=0 skip=0
   dev.pathweaver.PathWeaverRuntimeTest                           tests=6    fail=0 err=0 skip=0
@@ -65,8 +67,9 @@ totals       suites=66 tests=502 failures=0 errors=0 skipped=0
   dev.pathweaver.gate.ScanFailurePredicateTest                   tests=3    fail=0 err=0 skip=0
   dev.pathweaver.gate.TrustedModScopeTest                        tests=6    fail=0 err=0 skip=0
   dev.pathweaver.gate.WorkerFailureBreakerTest                   tests=22   fail=0 err=0 skip=0
-  dev.pathweaver.lod.RecomputeThrottleAdapterTest                tests=4    fail=0 err=0 skip=0
-  dev.pathweaver.lod.RecomputeThrottleTest                       tests=15   fail=0 err=0 skip=0
+  dev.pathweaver.lod.RecomputeThrottleAdapterTest                tests=5    fail=0 err=0 skip=0
+  dev.pathweaver.lod.RecomputeThrottleTest                       tests=18   fail=0 err=0 skip=0
+  dev.pathweaver.lod.VanillaRecomputePeriodPinTest               tests=2    fail=0 err=0 skip=0
   dev.pathweaver.mixin.DispatchAttributionContractTest           tests=1    fail=0 err=0 skip=0
   dev.pathweaver.mixin.DispatchGatePresenceContractTest          tests=4    fail=0 err=0 skip=0
   dev.pathweaver.mixin.LandPathTypeRegistryMixinStructureTest    tests=1    fail=0 err=0 skip=0
