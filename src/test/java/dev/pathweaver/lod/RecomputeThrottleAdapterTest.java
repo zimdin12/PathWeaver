@@ -144,6 +144,40 @@ class RecomputeThrottleAdapterTest {
     }
 
     /**
+     * A refused refresh is kept pending, the way vanilla keeps its own: true is written into
+     * {@code hasDelayedRecomputation} before the call is cancelled.
+     *
+     * <p>Catches the defect the distance-LOD campaign found. The hook cancelled without the flag, so
+     * nothing retried a throttled refresh and a block changed once near a distant mob's route was never
+     * acted on. {@code LodDeferralGameTest} proves the behaviour in a running server; this is the cheap
+     * standing check that the line doing it is still there and still comes first.
+     */
+    @Test
+    void aRefusedRefreshIsMarkedPendingBeforeItIsCancelled() {
+        int flagWrite = -1;
+        int cancel = -1;
+        int i = 0;
+        for (AbstractInsnNode insn : hook().instructions) {
+            if (insn instanceof FieldInsnNode field && insn.getOpcode() == org.objectweb.asm.Opcodes.PUTFIELD
+                    && "hasDelayedRecomputation".equals(field.name)) {
+                AbstractInsnNode value = insn.getPrevious();
+                while (value != null && value.getOpcode() == -1) value = value.getPrevious();
+                if (value != null && value.getOpcode() == org.objectweb.asm.Opcodes.ICONST_1) flagWrite = i;
+            }
+            if (insn instanceof MethodInsnNode call && "cancel".equals(call.name)
+                    && call.owner.endsWith("CallbackInfo")) {
+                cancel = i;
+            }
+            i++;
+        }
+        assertTrue(flagWrite >= 0,
+            "the hook cancels a refused refresh without marking it pending, so nothing will retry it and "
+                + "the block change is dropped rather than delayed");
+        assertTrue(flagWrite < cancel,
+            "the pending flag is written after the cancel instead of before it");
+    }
+
+    /**
      * The hook times the throttle on vanilla's stamp and vanilla's clock, and keeps no counter.
      *
      * <p>This is the assertion that was missing, and its absence is why 0.9.0 shipped a throttle that

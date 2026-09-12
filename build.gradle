@@ -457,6 +457,27 @@ if (providers.gradleProperty("breakerHarness").isPresent()) {
     }
 }
 
+// The LOD harness runs alone. Its test switches distance LOD on through the global config, which every
+// other test in a shared harness reads concurrently; beside them it would be throttling their routes.
+// No test mixins: it asserts vanilla recompute behaviour and must not have anything else in that path.
+if (providers.gradleProperty("lodHarness").isPresent()) {
+    tasks.register("prepareLodGameTestHarness") {
+        dependsOn tasks.named("processGametestResources")
+        outputs.upToDateWhen { false }
+        doLast {
+            copy {
+                from file("src/gametest/lodResources/fabric.mod.json")
+                into layout.buildDirectory.dir("resources/gametest")
+            }
+            delete layout.buildDirectory.file(
+                "resources/gametest/pathweaver-gametest.mixins.json")
+        }
+    }
+    tasks.named("runGameTest") {
+        dependsOn tasks.named("prepareLodGameTestHarness")
+    }
+}
+
 if (providers.gradleProperty("fabricAggregateHarness").isPresent()) {
     tasks.register("prepareFabricAggregateGameTestHarness") {
         dependsOn tasks.named("processGametestResources")

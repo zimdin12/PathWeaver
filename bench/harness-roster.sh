@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# The frozen 0.9.0 harness roster: eight harnesses, this order, all eight required green.
+# The frozen 0.9.0 harness roster: nine harnesses, this order, all nine required green. The ninth, lod,
+# was added when distance LOD was found dropping refreshes instead of delaying them.
 #
 # cantReachHarness is NOT here. It is an on-demand reproducer for a gate waived as blocking in 0.6
 # (DESIGN.md 12, CHANGELOG 203). It is never counted toward a release, green or not, and a roster
@@ -64,6 +65,7 @@ ROSTER=(
   "refused:-PrefusedHarness:src/gametest/refusedResources/fabric.mod.json"
   "breaker:-PbreakerHarness:src/gametest/breakerResources/fabric.mod.json"
   "fabricAggregate:-PfabricAggregateHarness:src/gametest/aggregateResources/fabric.mod.json"
+  "lod:-PlodHarness:src/gametest/lodResources/fabric.mod.json"
 )
 
 # The identity this series ran at, written once, so a receipt never has to guess it from the

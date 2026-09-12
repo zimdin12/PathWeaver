@@ -55,9 +55,13 @@ That explains a ratio below 0.525, and so does a second effect the model left ou
 short, and one that ends between tick 21 and tick 40 after its last refresh is refreshed by vanilla and
 never by LOD. The data cannot say which of the two dominates.
 
-**Status of the defect: established from code that was read, not yet observed in a running game.** The
-project page, the changelog and the in-game tooltip all describe LOD as delaying a refresh "up to" the
-interval. For a change that is not repeated, that is false.
+**Status of the defect, as written at the time: established from code that was read, not yet observed
+in a running game.** *Update 2026-09-13: since observed and fixed. `LodDeferralGameTest` failed on the
+tagged code with exactly this cause, passed with the flag set before cancelling, failed again with only
+that line reverted, and passed restored; see `docs/evidence/lod-deferral-2026-09-13/`. This campaign
+measured the defective hook, and the rerun on the fixed jar supersedes it for LOD's size.* The project
+page, the changelog and the in-game tooltip all described LOD as delaying a refresh "up to" the interval,
+and for a change that is not repeated that was false until the fix.
 
 ## What it means, in the configuration that ships
 

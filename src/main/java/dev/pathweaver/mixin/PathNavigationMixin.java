@@ -321,6 +321,13 @@ public abstract class PathNavigationMixin implements PWNavigation {
                 this.timeLastRecompute)) {
             return;
         }
+        // DEFER, exactly as vanilla defers inside its own 21-tick floor, then cancel. Vanilla's else
+        // branch sets this flag so PathNavigation.tick retries until the search happens, and
+        // shouldRecomputePath stops further block changes piling up while one is pending. Cancelling
+        // without it dropped the refresh: nothing retried, and a block changed once near a distant
+        // mob's route was never acted on. The distance-LOD campaign found that as a ratio below what
+        // the refresh floor allows; LodDeferralGameTest watches it in a running server.
+        this.hasDelayedRecomputation = true;
         ci.cancel();
     }
 

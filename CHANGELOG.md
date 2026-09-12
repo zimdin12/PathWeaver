@@ -86,7 +86,17 @@ Two fixes, and one of them was a second defect found on the way:
   moved past it, leaving that mob on a stale route for the rest of the interval. The hook now reads
   vanilla's `timeLastRecompute` and `getGameTime` and keeps no field of its own.
 
-What now stands in for the review that found this: `VanillaRecomputePeriodPinTest` reads the vanilla
+**And a third, found by measuring it.** The preregistered LOD campaign
+(`docs/evidence/lod-2026-09/`) saw LOD remove more recompute work than its refresh floor allows.
+Following that up found that the hook cancelled a refused refresh without setting
+`hasDelayedRecomputation`, the flag vanilla uses to retry its own. So a throttled refresh was not
+delayed, it was dropped, and a block changed once near a distant mob's route was never acted on. The
+hook now marks the refresh pending before cancelling, exactly as vanilla does inside its 21-tick floor.
+`LodDeferralGameTest` watches it in a running server, in its own harness: red on the tagged code, green
+with the fix, red again with only that line reverted, green restored. The throttled refresh now arrives
+at about tick 40, as the setting says.
+
+What now stands in for the review that found the first two: `VanillaRecomputePeriodPinTest` reads the vanilla
 bytecode and fails if Mojang moves the window that our constant, our clamp floor and the project-page
 figures are all derived from. Watched red against a wrong constant before being trusted green.
 
