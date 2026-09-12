@@ -9,15 +9,22 @@
 set -u
 cd "$(dirname "$0")/.."
 JAR="${1:?jar under test}"
+export PW_OUT="${PW_OUT:-$(pwd)/bench/lod}"
+mkdir -p "$PW_OUT"
+# The machine is recorded for the whole campaign, so a slow run can be put down to the clock.
+LOAD="$PW_OUT/machine-load.csv"
+rm -f "$LOAD.stop"
+pwsh -NoProfile -File bench/machine-load.ps1 "$LOAD" 10 &
+trap 'touch "$LOAD.stop"' EXIT
 
 run() {  # label async lod churn
   local label="$1"
   echo "=== $label  async=$2 lod=$3 churn=$4  $(date -u +%H:%M:%S)"
   bash bench/lod-bench.sh "$label" "$JAR" "$2" "$3" "$4"
-  if [ ! -f "bench/lod/$label.row.txt" ]; then
+  if [ ! -f "$PW_OUT/$label.row.txt" ]; then
     echo "  $label produced no row; repeating once as $label-retry"
     bash bench/lod-bench.sh "$label-retry" "$JAR" "$2" "$3" "$4"
-    [ -f "bench/lod/$label-retry.row.txt" ] || { echo "CAMPAIGN STOPPED: $label voided twice"; exit 3; }
+    [ -f "$PW_OUT/$label-retry.row.txt" ] || { echo "CAMPAIGN STOPPED: $label voided twice"; exit 3; }
   fi
 }
 
