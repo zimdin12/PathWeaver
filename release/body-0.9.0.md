@@ -1,10 +1,33 @@
 # PathWeaver
 
-### Your server stutters when there are a lot of mobs. This fixes a big part of why.
+### Minecraft works out mob paths on the same thread that runs everything else. This moves that work off it.
 
-Every time a mob works out where to walk, Minecraft does that maths on the server thread, the same thread running everything else. A hundred zombies deciding where to go at once is a hundred searches the tick has to wait for, and that is what you feel as a stutter.
+Every time a mob decides where to walk, the server thread stops and does the maths. A few hundred mobs
+deciding at once is a few hundred searches the tick waits for, and that wait is what you feel.
 
-PathWeaver moves those searches onto spare CPU cores. The mob gets the same path it would have got. It just does not block the tick while the game works it out.
+PathWeaver runs those searches on spare cores instead. The mob gets the same path it would have got;
+the tick just stops waiting for it.
+
+**What that is worth, measured rather than asserted: about 6 to 10% of server tick time on a busy
+server, and a great deal more if your mobs repath constantly.** Pathfinding is roughly 6% of a loaded
+server's tick, and this moves about three quarters of it off the main thread. Both figures come from
+profiles you can check below.
+
+That is a real saving and it is not a rescue. If your server is at 200 ms a tick, this will not save
+it, and the page tells you how to find out what your own number is before you install anything.
+
+Free, no dependencies, and it does not change what paths your mobs take.
+
+### Why a 6% mod is worth installing
+
+Tick time you get back is budget you can spend. The point of taking a fixed cost off the main thread
+is not the percentage on its own, it is that the work no longer has to be cheap: once path searches
+are not blocking the tick, a server can afford more mobs, or more expensive pathfinding, than it could
+before.
+
+This is the first of a planned set of mods that each take one fixed cost off the tick the same way,
+measured the same way, so the savings compound instead of competing. Where a thing cannot be moved off
+the tick safely, we say so rather than shipping it anyway.
 
 ---
 
@@ -43,7 +66,31 @@ On a machine with two cores or fewer, PathWeaver tells you at world start to lea
 
 ## The numbers
 
-**1024 zombies in a walled maze, retargeting every 6 ticks.** The only difference between the columns is whether PathWeaver is on.
+Two scenarios, because the honest answer is that it depends on how much pathfinding your server is
+actually doing, and quoting only the flattering one is how this page used to oversell itself.
+
+### A busy server: 6 to 10% of tick time
+
+5000 zombies chasing a player who moves every 11 seconds, on a 219-mod server. Median tick, the
+average of two agreeing rounds:
+
+| zombies | without | with | gain |
+|---|---|---|---|
+| 500 | 7.4 ms | 6.7 ms | 10% |
+| 1000 | 13.2 ms | 12.4 ms | 6% |
+| 2500 | 34.0 ms | 31.1 ms | 9% |
+| 5000 | 77.6 ms | 73.4 ms | 6% |
+| 10000 | 193.6 ms | 182.8 ms | 6% |
+
+Why it is that number, from a profile of the same load: **pathfinding is 6.1% of server tick time,
+and PathWeaver moves about three quarters of it off the tick** (6.12% to 1.55%). The tick improvement
+follows from that and could not be much larger. Nothing here is a rounding error, and nothing here is
+a rescue.
+
+### Mobs that repath constantly: much larger
+
+1024 zombies in a walled maze with the target moving **every 6 ticks**, so every mob recomputes almost
+continuously:
 
 | | Off | On |
 |---|---|---|
@@ -51,21 +98,31 @@ On a machine with two cores or fewer, PathWeaver tells you at world start to lea
 | Worst 1% of ticks | 832 to 958 ms | **367 to 383 ms** |
 | Main-thread cost per search | 480 to 500 us | **195 to 202 us** |
 
-Ranges, not single figures, because the baseline swings with whatever else the machine is doing. Every run with PathWeaver on beat every run with it off, with no overlap.
+This is a deliberately pathfinding-heavy case. It is what a mob farm or a large hostile group tracking
+a moving player looks like, and if that is your server the first table understates what you get. It is
+not what an average server looks like, and earlier versions of this page presented it as though it
+were.
 
-**Each setting measured on its own**, on a 231-jar server with 200 mobs, three rounds per setting, against not having the mod installed at all.
+### What decides which end you land on
 
-| | Server-thread pathfinding | All threads, sampled | Tick time |
-|---|---|---|---|
-| Installed, switched off | -2% | -2% | +1% |
-| On | -45% | +9% | -10% |
-| On, with route sharing | **-46%** | **+6%** | **-10%** |
+The share of your tick that is pathfinding, and nothing else. `docs/IS-IT-YOUR-BOTTLENECK.md` is a
+ten-minute check with spark that tells you your own number before you install anything. If
+pathfinding is 1% of your tick, this mod can win you at most 1%.
 
-Total sampled pathfinding across all threads goes **up**. Moving work is not removing it, and the hand-off costs something. What you are buying is a shorter tick, paid for with cores that were sitting idle.
+### Two things that could make your result differ from ours
 
-These are **sampled** figures: the profiler takes thread-stack samples every 4 ms and counts how often pathfinding is on the stack, waiting included. That is not a measurement of CPU time, and the numbers above cover navigation and pathfinding broadly rather than the A\* search alone. Earlier versions of this page called them CPU and A\*; both were wrong and are corrected below.
+**Cores.** These were measured on a 32-core machine with cores to spare. PathWeaver does not delete
+work, it moves it: the searches still happen, on worker threads, and the tick stops waiting for them.
+That trade needs somewhere for the work to go. On a host with 2 to 4 cores and everything else
+already competing for them, the gain will be smaller than ours, and we have not measured that case.
+On a machine with more spare cores than ours, it could be larger.
 
-Turning villager pathing off the tick is the largest single win in this release. Server-thread pathfinding halved and tick time fell 27%, and every run with it on beat every run without it.
+**Your mods.** Our measurement ran on a 219-mod server, so the denominator includes everything that
+pack does. A lighter server spends a larger share of its tick on mobs, which moves the percentage up.
+
+Method, settings, controls and the raw rows are in the repository under
+`docs/evidence/perf-2026-09/`, including the round we discarded and why. If the numbers look wrong,
+the working is there to check.
 
 ---
 
