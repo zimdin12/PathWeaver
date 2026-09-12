@@ -7,10 +7,15 @@ Answers three questions the aggregate number cannot:
 
 Usage: python bench/deep_report.py off=bench/deep/off.sparkprofile sync=... async=...
 """
+import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, r"C:\Users\Administrator\AppData\Roaming\.minecraft-dev\benchmarks\spark-proto-py")
+# The generated spark protobuf bindings live outside this repository. Point SPARK_PROTO_PY
+# at them; the default is only a convenience for the machine they were generated on.
+sys.path.insert(0, os.environ.get(
+    "SPARK_PROTO_PY",
+    os.path.expanduser("~/AppData/Roaming/.minecraft-dev/benchmarks/spark-proto-py")))
 from spark import spark_sampler_pb2  # noqa: E402
 
 # One entry per evaluator family the mod claims to touch, so a regression can be attributed rather

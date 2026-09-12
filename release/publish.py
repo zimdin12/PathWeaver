@@ -35,7 +35,7 @@ JAR = f"build/libs/pathweaver-{VERSION}+{MC}.jar"
 TITLE = "0.6.1 — Notice, instead of predicting"
 
 TOK = os.environ["MODRINTH_PAT"]
-H = {"Authorization": TOK, "User-Agent": "CasualZ/pathweaver-publish (steven.zimdin@gmail.com)"}
+H = {"Authorization": TOK, "User-Agent": "CasualZ/pathweaver-publish (+https://github.com/zimdin12/PathWeaver)"}
 
 
 def run(*args):

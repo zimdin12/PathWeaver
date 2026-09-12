@@ -10,13 +10,19 @@
 # Every number this produces is guarded by a control that can actually fail. Four separate runs were
 # thrown away before these existed, each looking perfectly healthy: a paused server, mobs summoned
 # inside the floor, a population that never ticked, and a profile of a single idle thread.
+# PATHS COME FROM THE ENVIRONMENT. This repository is public; a hard-coded home directory
+# publishes the layout of one machine and works on no other. Override PW_SERVER, PW_JAVA or
+# PW_OUT to point these somewhere else.
 set -u
 
-SERVER="/c/Users/Administrator/AppData/Roaming/.minecraft_server"
-JAVA="/c/Program Files/Eclipse Adoptium/jdk-25.0.3.9-hotspot/bin/java.exe"
+SERVER="${PW_SERVER:-$HOME/AppData/Roaming/.minecraft_server}"
+# The Adoptium patch version moves, so it is discovered rather than pinned, and a miss is fatal
+# rather than a path that does not exist being handed to the launcher.
+JAVA="${PW_JAVA:-$(ls -1d "/c/Program Files/Eclipse Adoptium/jdk-25"*/bin/java.exe 2>/dev/null | tail -1)}"
+[ -x "$JAVA" ] || { echo "No JDK 25 found. Set PW_JAVA to a java executable." >&2; exit 7; }
 LABEL="${1:-run}"
 OUT="${2:-}"
-[ -z "$OUT" ] && OUT="/c/Users/Administrator/AppData/Roaming/.minecraft/modding/PathWeaver/bench/out"
+[ -z "$OUT" ] && OUT="$(cd "$(dirname "$0")/.." && pwd)/bench/out"
 BRAIN_SINK="${3:-true}"
 MODE="${4:-full}"
 SETTLE="${5:-90}"

@@ -3,7 +3,7 @@ import json, os, sys, requests
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 TOK = os.environ["MODRINTH_PAT"]
-H = {"Authorization": TOK, "User-Agent": "CasualZ/pathweaver-publish (steven.zimdin@gmail.com)"}
+H = {"Authorization": TOK, "User-Agent": "CasualZ/pathweaver-publish (+https://github.com/zimdin12/PathWeaver)"}
 PID = "ZQJOU3vB"
 
 body = open("build/publish/body.md", encoding="utf-8").read()
