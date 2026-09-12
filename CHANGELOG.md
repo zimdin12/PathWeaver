@@ -1,5 +1,96 @@
 # Changelog
 
+## 0.9.0 — Correctness, one dependency less, and a setting that costs something
+
+### Measured
+
+No new core benchmark. The 6-10% of tick figure on the project page was measured for this build and
+nothing here changes what paths mobs take at the shipped defaults, so re-running the campaign would
+have produced the same number with a later timestamp. The method, the settings, the commit and a
+discarded round are in `docs/PERFORMANCE-2026-09.md`.
+
+Distance LOD is unmeasured on purpose. It ships off, so its cost and its saving are both zero until
+somebody turns it on, and a benchmark of a feature in its non-default state would be a number nobody
+could act on.
+
+### Evidence
+
+28 witnesses, each a four-state run: green, then cause-specific red on reverting exactly the
+production change, then green again on restoring it. 502 unit tests across 66 suites. Eight game-test
+harnesses, one attempt each, no reruns. Both branches.
+
+Five of those witnesses are new and all five exist because something got past the ordinary tests.
+
+### Cloth Config is now optional
+
+The mod needs Fabric API and nothing else. Cloth Config draws the settings screen; without it the mod
+reads and writes the same `config/pathweaver.json`.
+
+**This was green and still broke the server.** Dropping the declared dependency and the AutoConfig
+base class was not enough: `CompatibilityTier` and `PathCacheMode` implemented
+`SelectionListEntry.Translatable`, a Cloth GUI interface, so initialising `PathWeaverConfig` resolved
+a GUI class and threw `NoClassDefFoundError` before the server finished booting. Every unit test
+passed throughout and always would, because the test classpath has Cloth on it. Only booting a real
+server without the library found it.
+
+The distinction that made this invisible is worth writing down: the JVM silently drops an annotation
+whose type it cannot resolve, so the `@ConfigEntry` annotations are harmless with Cloth absent, while
+a missing *interface* is a hard failure. Same library, same file, opposite outcomes.
+
+What now stands in for that boot is `NoClothOnTheServerPathTest`, which reads the compiled bytes of
+the classes a server loads and refuses a `clothconfig2` reference in any of them, with `ClothScreen`
+as a positive control so a silent search cannot pass for a clean one. The boot logs are in
+`docs/evidence/no-cloth-2026-09/`.
+
+The same boot found a second defect nothing else could: AutoConfig used to create the config file on
+first run, and after the change nothing did. The mod worked perfectly and the file the project page
+tells a server owner to edit was never written.
+
+### Distance LOD (`lodEnabled`, off by default)
+
+A navigation beyond `lodMinDistanceBlocks` refreshes an existing route at most once every
+`lodIntervalTicks` instead of every time vanilla asks. A mob that has just chosen a new destination is
+never throttled.
+
+It ships off because it is the only thing in this mod that does not give a mob the path it would have
+had anyway. Everything else is the same answer computed elsewhere; this one is that answer, later.
+A saving with a stated cost is offered rather than taken.
+
+The decision lives in `RecomputeThrottle` as a pure function and the mixin is a pure adapter with
+exactly two branches, which is the shape a test can pin. It is also the one guard in the mod that
+fails **open**, because unlike everything else it guards vanilla's own action rather than ours.
+
+Two things went wrong while building it, both caught:
+
+- The threshold used `<` where it needed `<=` on the squared distance, so a mob at exactly the
+  configured distance was throttled one block early. The boundary test caught it.
+- The adapter test could not fail. It asserted that a cancel call existed, and the mutation
+  `if (tick < 0) ci.cancel()` passed it. The test was strengthened to count decisions rather than the
+  mutation being softened, which is the temptation worth naming.
+
+### Also in this release
+
+- `/pathweaver status` no longer adds cache hits that saved nothing to the count of searches that did
+  not run, and reports the capacity in use rather than the one in the settings file.
+- Route sharing and the master switch now discard what was learned under the previous settings,
+  including searches in flight when the switch moved.
+- A finished search arriving at exactly `maxResultAgeTicks` is collected instead of being computed and
+  thrown away.
+- A result set aside for a villager is re-checked against a clock that moved backwards at collection
+  time, not only on arrival.
+- Every persisted setting is type-checked on read, derived from the settings themselves rather than a
+  list that had already fallen behind three times.
+- The Lithium audit pins the vanilla class it inspects by hash, like the other six.
+- The route-sharing tooltip says what actually holds rather than "never a stale one".
+
+### Not in this release
+
+NeoForge. It was on the list because a competitor ships it, it is not blocked on the loader, and it
+was still dropped: the compatibility gate is a 1107-line reader of `fabric.mod.json`, two of the seven
+audits pin Fabric API modules with no NeoForge equivalent, and all nine game-test harnesses are Fabric
+GameTest. That is a second gate rather than a port. The measurement behind the decision is in
+`docs/NEOFORGE-0.9.0.md`.
+
 ## 0.8.0 — The villager release, and what it cost to get right
 
 ### Measured
