@@ -271,6 +271,13 @@ class ModMenuIntegrationContractTest {
         expectedCategories.put("resultCacheMode", "performance");
         expectedCategories.put("resultCacheMaxAgeTicks", "performance");
         expectedCategories.put("resultCacheMaxEntries", "performance");
+        // Performance, with the rest of the dials that trade behaviour for tick time, and NOT under
+        // general beside the safety switches. These three are the only settings in the mod that
+        // change what a mob does, and filing them next to the master switch would suggest they are
+        // safety controls rather than a saving with a stated cost.
+        expectedCategories.put("lodEnabled", "performance");
+        expectedCategories.put("lodMinDistanceBlocks", "performance");
+        expectedCategories.put("lodIntervalTicks", "performance");
         expectedCategories.put("repathToleranceBlocks", "repath");
         expectedCategories.put("stalenessMoveThreshold", "repath");
         expectedCategories.put("maxResultAgeTicks", "repath");

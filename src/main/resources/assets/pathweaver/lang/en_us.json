@@ -71,5 +71,16 @@
   "text.autoconfig.pathweaver.option.resultCacheMaxAgeTicks.@Tooltip[2]": "It bounds drift the cache cannot see, such as a door another mob has opened since.",
   "text.autoconfig.pathweaver.option.resultCacheMaxEntries": "Shared routes kept",
   "text.autoconfig.pathweaver.option.resultCacheMaxEntries.@Tooltip[0]": "How many routes to hold before the least recently used one is dropped. Default 4096.",
-  "text.autoconfig.pathweaver.option.resultCacheMaxEntries.@Tooltip[1]": "Each entry is one route plus its list of world sections. Raise it on worlds with many mobs."
+  "text.autoconfig.pathweaver.option.resultCacheMaxEntries.@Tooltip[1]": "Each entry is one route plus its list of world sections. Raise it on worlds with many mobs.",
+  "text.autoconfig.pathweaver.option.lodEnabled": "Recompute distant routes less often",
+  "text.autoconfig.pathweaver.option.lodEnabled.@Tooltip[0]": "Mobs far from every player refresh their route every few ticks, not every tick. Off by default.",
+  "text.autoconfig.pathweaver.option.lodEnabled.@Tooltip[1]": "The one setting here that changes what a mob does: a throttled mob corrects course later.",
+  "text.autoconfig.pathweaver.option.lodEnabled.@Tooltip[2]": "A mob picking a new destination is never throttled. Only the refresh of a route it has.",
+  "text.autoconfig.pathweaver.option.lodEnabled.@Tooltip[3]": "Worth turning on for mob farms, large penned herds, or a high simulation distance.",
+  "text.autoconfig.pathweaver.option.lodMinDistanceBlocks": "Throttle beyond this distance",
+  "text.autoconfig.pathweaver.option.lodMinDistanceBlocks.@Tooltip[0]": "How far a mob must be from the nearest player before its refreshes are throttled. Default 64.",
+  "text.autoconfig.pathweaver.option.lodMinDistanceBlocks.@Tooltip[1]": "Mobs closer than this are never throttled, so anything near you behaves as it does now.",
+  "text.autoconfig.pathweaver.option.lodIntervalTicks": "Ticks between distant refreshes",
+  "text.autoconfig.pathweaver.option.lodIntervalTicks.@Tooltip[0]": "Minimum ticks between route refreshes for a throttled mob. Default 10, half a second.",
+  "text.autoconfig.pathweaver.option.lodIntervalTicks.@Tooltip[1]": "Higher saves more and delays corrections further. This is the behaviour change you accept."
 }
