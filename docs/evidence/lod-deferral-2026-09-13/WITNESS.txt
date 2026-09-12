@@ -1,0 +1,21 @@
+LodDeferralGameTest, four-state witness on mc-26.2, run 2026-09-13 in the lod harness (./gradlew runGameTest -PlodHarness --rerun-tasks).
+Lines kept: the harness's own pass/fail verdict and the failure message. Full logs are not committed.
+
+== 1-unfixed  (the LOD hook as it was at 2c52881, before the fix (it writes the flag in exactly 1 place, the async restore, not the LOD hook))
+   gradle exit: 1
+   1 required tests failed :(
+   - pathweaver_gametest_lod:lod_deferral_game_test_a_throttled_refresh_is_delayed_not_dropped: LOD throttled the refresh and did not keep it pending: hasDelayedRecomputation is false, so nothing will ever retry it and the block change is dropped rather than d
+
+== 2-fixed  (hasDelayedRecomputation set before cancel)
+   gradle exit: 0
+   All 2 required tests passed :)
+
+== 3-reverted  (exactly that one line removed again: 330d329 <         this.hasDelayedRecomputation = true; )
+   gradle exit: 1
+   1 required tests failed :(
+   - pathweaver_gametest_lod:lod_deferral_game_test_a_throttled_refresh_is_delayed_not_dropped: LOD throttled the refresh and did not keep it pending: hasDelayedRecomputation is false, so nothing will ever retry it and the block change is dropped rather than d
+
+== 4-restored  (the file restored, restored-identical=yes)
+   gradle exit: 0
+   All 2 required tests passed :)
+

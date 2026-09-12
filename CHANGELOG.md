@@ -87,7 +87,7 @@ Two fixes, and one of them was a second defect found on the way:
   vanilla's `timeLastRecompute` and `getGameTime` and keeps no field of its own.
 
 **And a third, found by measuring it.** The preregistered LOD campaign
-(`docs/evidence/lod-2026-09/`) saw LOD remove more recompute work than its refresh floor allows.
+(`docs/evidence/lod-2026-09/` on the master branch) saw LOD remove more recompute work than its refresh floor allows.
 Following that up found that the hook cancelled a refused refresh without setting
 `hasDelayedRecomputation`, the flag vanilla uses to retry its own. So a throttled refresh was not
 delayed, it was dropped, and a block changed once near a distant mob's route was never acted on. The

@@ -4,7 +4,6 @@ import dev.pathweaver.config.PathWeaverConfig;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.level.block.Blocks;
@@ -109,7 +108,7 @@ public final class LodDeferralGameTest {
             for (int x = 0; x <= 12; x++) {
                 for (int z = 0; z <= 4; z++) helper.setBlock(x, 1, z, Blocks.STONE);
             }
-            mob = helper.spawnWithNoFreeWill(EntityType.ZOMBIE, 1, 2, 2);
+            mob = helper.spawnWithNoFreeWill(VanillaTypes.mob(VanillaTypes.ZOMBIE), 1, 2, 2);
             mob.setOnGround(true);
             nav = mob.getNavigation();
             BlockPos target = helper.absolutePos(new BlockPos(10, 2, 2));
@@ -122,7 +121,7 @@ public final class LodDeferralGameTest {
             before = nav.getPath();
             stampNow();
             event = helper.getTick();
-            helper.setBlock(onRoute, Blocks.WHITE_CARPET);   // a collision change, so vanilla looks at routes
+            helper.setBlock(onRoute, Blocks.STONE_SLAB);   // a collision change, so vanilla looks at routes; a name both versions have
             stage = 2;
         }
 
