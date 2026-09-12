@@ -25,6 +25,8 @@
 # publishes the layout of one machine and works on no other. Override PW_SERVER, PW_JAVA or
 # PW_OUT to point these somewhere else.
 set -u
+# Hold and restore live in one place; see bench/lib/hold.sh for the bug that made that matter.
+. "$(cd "$(dirname "$0")" && pwd)/lib/hold.sh"
 SERVER="${PW_SERVER:-$HOME/AppData/Roaming/.minecraft_server}"
 # The Adoptium patch version moves, so it is discovered rather than pinned, and a miss is fatal
 # rather than a path that does not exist being handed to the launcher.
@@ -57,12 +59,10 @@ fi
 [ -f config/pathweaver.json ] && [ ! -f config/pathweaver.json.pristine ] &&
   cp -f config/pathweaver.json config/pathweaver.json.pristine
 
-HELD_JAR=""
+pw_hold_init "$SERVER" || exit 8
 restore() {
   for pid in "${TAILPID:-}" "${SERVERPID:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null; done
-  if [ -n "$HELD_JAR" ] && [ -f "$SERVER/.pw-held/$(basename "$HELD_JAR")" ]; then
-    mv -f "$SERVER/.pw-held/$(basename "$HELD_JAR")" "$HELD_JAR" && rmdir "$SERVER/.pw-held" 2>/dev/null
-  fi
+  pw_hold_restore
   [ -f "$SERVER/server.properties.pristine" ] &&
     cp -f "$SERVER/server.properties.pristine" "$SERVER/server.properties"
   [ -f "$SERVER/config/pathweaver.json.pristine" ] &&
@@ -94,10 +94,9 @@ CFG
 # The OFF arm removes the jar rather than setting enabled=false. A disabled mod still routes every
 # createPath through the mixin wrapper, so it prices the feature being off, not the mod being absent.
 if [ "$ARM" = "off" ]; then
-  HELD_JAR="$(ls -1 "$SERVER"/mods/pathweaver-*.jar 2>/dev/null | head -1)"
-  [ -z "$HELD_JAR" ] && { echo "REFUSING: no pathweaver jar to remove"; exit 8; }
-  mkdir -p "$SERVER/.pw-held"; mv -f "$HELD_JAR" "$SERVER/.pw-held/" || exit 8
-  echo "off arm: held $(basename "$HELD_JAR") out of mods/"
+  ls "$SERVER"/mods/pathweaver-*.jar >/dev/null 2>&1 || { echo "REFUSING: no pathweaver jar to remove"; exit 8; }
+  pw_hold_residents || exit 8
+  echo "off arm: held ${#PW_HELD[@]} pathfinding jar(s) out of mods/"
 fi
 echo "arm=$ARM mobs=$MOBS settle=${SETTLE}s sample=${SAMPLE}s  budget=${BUDGET}s"
 

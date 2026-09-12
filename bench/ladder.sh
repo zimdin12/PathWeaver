@@ -23,6 +23,8 @@
 # publishes the layout of one machine and works on no other. Override PW_SERVER, PW_JAVA or
 # PW_OUT to point these somewhere else.
 set -u
+# Hold and restore live in one place; see bench/lib/hold.sh for the bug that made that matter.
+. "$(cd "$(dirname "$0")" && pwd)/lib/hold.sh"
 SERVER="${PW_SERVER:-$HOME/AppData/Roaming/.minecraft_server}"
 # The Adoptium patch version moves, so it is discovered rather than pinned, and a miss is fatal
 # rather than a path that does not exist being handed to the launcher.
@@ -56,15 +58,13 @@ fi
   cp -f config/pathweaver.json config/pathweaver.json.pristine
 
 # ---- the arm, and putting the server back exactly as it was found -------------------------------
-HELD=""          # jar moved out of mods/ for this run
 INSTALLED=""     # jar copied into mods/ for this run
 restore() {
   for pid in "${TAILPID:-}" "${SERVERPID:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null; done
+  # The installed arm jar comes out BEFORE the held jar goes back: they can share a filename, and the
+  # other order would overwrite the operator's jar with the one under test.
   [ -n "$INSTALLED" ] && rm -f "$SERVER/mods/$(basename "$INSTALLED")"
-  if [ -n "$HELD" ] && [ -f "$SERVER/.pw-held/$(basename "$HELD")" ]; then
-    mv -f "$SERVER/.pw-held/$(basename "$HELD")" "$HELD"
-  fi
-  rmdir "$SERVER/.pw-held" 2>/dev/null
+  pw_hold_restore
   [ -f "$SERVER/server.properties.pristine" ] &&
     cp -f "$SERVER/server.properties.pristine" "$SERVER/server.properties"
   [ -f "$SERVER/config/pathweaver.json.pristine" ] &&
@@ -75,11 +75,8 @@ trap restore EXIT INT TERM HUP
 # Any resident pathfinding mod is held aside in every arm, ours or a competitor's, so the jar under
 # test is the only one present and the off arm has none. Both mixin the same navigation call, so
 # leaving one in place would have priced the pair.
-RESIDENT="$(ls -1 "$SERVER"/mods/pathweaver-*.jar "$SERVER"/mods/pathwright-*.jar 2>/dev/null | head -1)"
-if [ -n "$RESIDENT" ]; then
-  mkdir -p "$SERVER/.pw-held"; mv -f "$RESIDENT" "$SERVER/.pw-held/" || exit 8
-  HELD="$RESIDENT"
-fi
+pw_hold_init "$SERVER" || exit 8
+pw_hold_residents || exit 8
 ARM_ID="none"
 if [ "$ARM" != "off" ]; then
   [ -f "$ARM" ] || { echo "REFUSING: no jar at $ARM"; exit 8; }

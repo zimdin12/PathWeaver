@@ -17,6 +17,8 @@
 # publishes the layout of one machine and works on no other. Override PW_SERVER, PW_JAVA or
 # PW_OUT to point these somewhere else.
 set -u
+# Hold and restore live in one place; see bench/lib/hold.sh for the bug that made that matter.
+. "$(cd "$(dirname "$0")" && pwd)/lib/hold.sh"
 
 SERVER="${PW_SERVER:-$HOME/AppData/Roaming/.minecraft_server}"
 # The Adoptium patch version moves, so it is discovered rather than pinned, and a miss is fatal
@@ -67,9 +69,7 @@ restore() {
   # Put the mod back before anything else. This runs on every exit path including a kill, because
   # leaving the operator's server without a jar it is meant to have is a worse failure than any
   # measurement being lost.
-  if [ -f "$SERVER/.pw-held/$(basename "${HELD_JAR:-none}")" ] 2>/dev/null; then
-    mv -f "$SERVER/.pw-held/$(basename "$HELD_JAR")" "$HELD_JAR" && rmdir "$SERVER/.pw-held" 2>/dev/null
-  fi
+  pw_hold_restore
   [ -f "$SERVER/server.properties.pristine" ] &&
     cp -f "$SERVER/server.properties.pristine" "$SERVER/server.properties"
   [ -f "$SERVER/config/pathweaver.json.pristine" ] &&
@@ -108,13 +108,11 @@ CFG
 # and falls through a flag check, so it prices the feature being disabled, NOT the mod being absent.
 # It carried ~592 ms of PathWeaver frames with the feature switched off. Only pulling the jar
 # measures what the pack costs without this mod at all.
-HELD_JAR=""
+pw_hold_init "$SERVER" || exit 8
 if [ "$ARM" = "vanilla" ]; then
-  HELD_JAR="$(ls -1 "$SERVER"/mods/pathweaver-*.jar 2>/dev/null | head -1)"
-  [ -z "$HELD_JAR" ] && { echo "REFUSING: no pathweaver jar found to remove"; exit 8; }
-  mkdir -p "$SERVER/.pw-held"
-  mv -f "$HELD_JAR" "$SERVER/.pw-held/" || { echo "REFUSING: could not move the jar aside"; exit 8; }
-  echo "vanilla arm: held $(basename "$HELD_JAR") out of mods/"
+  ls "$SERVER"/mods/pathweaver-*.jar >/dev/null 2>&1 || { echo "REFUSING: no pathweaver jar found to remove"; exit 8; }
+  pw_hold_residents || exit 8
+  echo "vanilla arm: held ${#PW_HELD[@]} pathfinding jar(s) out of mods/"
 fi
 echo "arm=$ARM enabled=$ENABLED brainSinkAsync=$SINK resultCacheMode=$CACHE"
 

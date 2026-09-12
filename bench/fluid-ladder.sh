@@ -21,6 +21,8 @@
 #
 # PATHS COME FROM THE ENVIRONMENT, as with every script here. PW_SERVER, PW_JAVA.
 set -u
+# Hold and restore live in one place; see bench/lib/hold.sh for the bug that made that matter.
+. "$(cd "$(dirname "$0")" && pwd)/lib/hold.sh"
 SERVER="${PW_SERVER:-$HOME/AppData/Roaming/.minecraft_server}"
 JAVA="${PW_JAVA:-$(ls -1d "/c/Program Files/Eclipse Adoptium/jdk-25"*/bin/java.exe 2>/dev/null | tail -1)}"
 [ -x "$JAVA" ] || { echo "No JDK 25 found. Set PW_JAVA." >&2; exit 7; }
@@ -49,25 +51,15 @@ fi
 
 # Every pathfinding mod is held aside. This measures fluids, and a mob mod in the mix would put its
 # own cost in the denominator for no reason.
-HELD=""
 restore() {
   for pid in "${TAILPID:-}" "${SERVERPID:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null; done
-  if [ -n "$HELD" ]; then
-    printf '%s' "$HELD" | tr ':' '\n' | while read -r h; do
-      [ -n "$h" ] && [ -f "$SERVER/.pw-held/$(basename "$h")" ] &&
-        mv -f "$SERVER/.pw-held/$(basename "$h")" "$h"
-    done
-  fi
-  rmdir "$SERVER/.pw-held" 2>/dev/null
+  pw_hold_restore
   [ -f "$SERVER/server.properties.pristine" ] &&
     cp -f "$SERVER/server.properties.pristine" "$SERVER/server.properties"
 }
 trap restore EXIT INT TERM HUP
-for resident in "$SERVER"/mods/pathweaver-*.jar "$SERVER"/mods/pathwright-*.jar; do
-  [ -f "$resident" ] || continue
-  mkdir -p "$SERVER/.pw-held"; mv -f "$resident" "$SERVER/.pw-held/" || exit 8
-  HELD="$HELD${HELD:+:}$resident"
-done
+pw_hold_init "$SERVER" || exit 8
+pw_hold_residents || exit 8
 
 rm -rf "$SERVER/pw-bench"
 python - <<'PY'
