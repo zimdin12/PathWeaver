@@ -387,8 +387,8 @@ WITNESSES = [
     (
         "lod-drops-instead-of-deferring",
         "src/main/java/dev/pathweaver/mixin/PathNavigationMixin.java",
-        "        this.hasDelayedRecomputation = true;
-        ci.cancel();",
+        "        this.hasDelayedRecomputation = true;\n"
+        "        ci.cancel();",
         "        ci.cancel();",
         "*RecomputeThrottleAdapterTest*",
         "a throttled refresh is cancelled without being marked pending, so it is dropped rather than "
