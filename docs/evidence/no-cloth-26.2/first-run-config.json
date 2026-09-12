@@ -12,7 +12,7 @@
   "resultCacheMaxEntries": 4096,
   "lodEnabled": false,
   "lodMinDistanceBlocks": 64,
-  "lodIntervalTicks": 10,
+  "lodIntervalTicks": 40,
   "repathToleranceBlocks": 1,
   "stalenessMoveThreshold": 4.0,
   "maxResultAgeTicks": 40,
