@@ -3,6 +3,7 @@ package dev.pathweaver.lod;
 import dev.pathweaver.config.PathWeaverConfig;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -148,6 +149,40 @@ class RecomputeThrottleTest {
     void withNoPlayersInTheLevelDistantMobsAreThrottled() {
         assertFalse(RecomputeThrottle.allows(on(64, 10), Double.MAX_VALUE, 1000L, 999L),
             "a level with no players did not throttle, so the sentinel is not being compared");
+    }
+
+    /**
+     * Catches: the distance scan being paid for by servers that never turned LOD on.
+     *
+     * <p>Finding the nearest player is a scan over the level's players. The hook passes it as a
+     * supplier precisely so that with the feature off it is never evaluated, and that is a property
+     * worth a test rather than a comment: it is invisible in behaviour and only shows up as tick time
+     * on somebody else's server.
+     */
+    @Test
+    void withTheFeatureOffTheDistanceIsNeverEvenComputed() {
+        PathWeaverConfig off = new PathWeaverConfig();
+        int[] calls = {0};
+        boolean allowed = RecomputeThrottle.allows(off, () -> { calls[0]++; return 0.0; }, 1000L, 1L);
+        assertTrue(allowed, "a disabled LOD refused a recompute");
+        assertEquals(0, calls[0],
+            "the nearest-player scan ran with LOD switched off, which is a cost for no benefit");
+    }
+
+    /** The same, for a missing config: nothing is read and nothing is scanned. */
+    @Test
+    void withNoConfigTheDistanceIsNeverComputedEither() {
+        int[] calls = {0};
+        assertTrue(RecomputeThrottle.allows(null, () -> { calls[0]++; return 0.0; }, 1000L, 1L));
+        assertEquals(0, calls[0], "a missing config still triggered the nearest-player scan");
+    }
+
+    /** And the positive control: with LOD on, the distance IS consulted exactly once. */
+    @Test
+    void withTheFeatureOnTheDistanceIsConsultedOnce() {
+        int[] calls = {0};
+        RecomputeThrottle.allows(on(64, 10), () -> { calls[0]++; return blocks(500); }, 1000L, 999L);
+        assertEquals(1, calls[0], "the distance was not consulted exactly once with LOD enabled");
     }
 
     /** Catches: clamping that lets a zero distance through and throttles the whole world. */

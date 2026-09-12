@@ -2,6 +2,8 @@ package dev.pathweaver.lod;
 
 import dev.pathweaver.config.PathWeaverConfig;
 
+import java.util.function.DoubleSupplier;
+
 /**
  * Should this navigation recompute its route now, or has it done so recently enough for how far away
  * it is from anyone who could see the difference?
@@ -41,6 +43,20 @@ public final class RecomputeThrottle {
      *                                 {@link Long#MIN_VALUE} if it never has
      * @return true when the recompute should proceed
      */
+    public static boolean allows(PathWeaverConfig config, DoubleSupplier nearestPlayerDistanceSq,
+                                 long tick, long lastRecomputeTick) {
+        // The supplier exists so the HOOK does not have to decide anything, including whether the
+        // distance is worth working out. Finding the nearest player is a scan, and with the feature
+        // off it would be a scan bought for nothing on every recompute in the game. Putting that
+        // branch in the mixin would mean the mixin held a rule, which is the thing this project keeps
+        // moving out of mixins. Putting it here keeps one decision in one testable place, and a test
+        // asserts the supplier is never called when the feature is off.
+        if (config == null) return true;
+        if (!config.lodEnabled) return true;
+        return allows(config, nearestPlayerDistanceSq.getAsDouble(), tick, lastRecomputeTick);
+    }
+
+    /** The decision proper, on a distance already in hand. */
     public static boolean allows(PathWeaverConfig config, double nearestPlayerDistanceSq,
                                  long tick, long lastRecomputeTick) {
         // FAILS OPEN, deliberately, and this is the one guard in the mod that does.
