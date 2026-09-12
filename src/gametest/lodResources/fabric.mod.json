@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "pathweaver_gametest_lod",
+  "version": "1.0.0",
+  "name": "PathWeaver Game Tests (distance LOD)",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-gametest": [
+      "dev.pathweaver.gametest.LodDeferralGameTest"
+    ]
+  },
+  "depends": {
+    "fabric-gametest-api-v1": "*",
+    "pathweaver": "*"
+  }
+}

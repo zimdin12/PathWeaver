@@ -128,6 +128,9 @@ EXPECTED_CAUSE = {
     "lod-pin-stops-tracking-vanilla":
         ("vanillaStillHoldsTheRefreshFloorOurConstantWasDerivedFrom",
          "vanilla's recompute window is no longer"),
+    "lod-drops-instead-of-deferring":
+        ("aRefusedRefreshIsMarkedPendingBeforeItIsCancelled",
+         "without marking it pending"),
     "cloth-returns-to-the-server-path":
         ("noServerClassNamesAClothGuiType",
          "NoClassDefFoundError on any server without Cloth"),
@@ -380,6 +383,16 @@ WITNESSES = [
         "    public static final int VANILLA_RECOMPUTE_PERIOD_TICKS = 26;",
         "*VanillaRecomputePeriodPinTest*",
         "the pinned vanilla refresh period stops matching the bytecode it was derived from",
+    ),
+    (
+        "lod-drops-instead-of-deferring",
+        "src/main/java/dev/pathweaver/mixin/PathNavigationMixin.java",
+        "        this.hasDelayedRecomputation = true;
+        ci.cancel();",
+        "        ci.cancel();",
+        "*RecomputeThrottleAdapterTest*",
+        "a throttled refresh is cancelled without being marked pending, so it is dropped rather than "
+        "delayed",
     ),
     (
         "cloth-returns-to-the-server-path",
