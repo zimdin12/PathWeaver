@@ -142,4 +142,44 @@ class RecomputeThrottleAdapterTest {
             "the hook makes " + branches.size() + " decisions; it is allowed two, the server-level "
                 + "check and the throttle's answer. A third means the rule has leaked back into it");
     }
+
+    /**
+     * The hook times the throttle on vanilla's stamp and vanilla's clock, and keeps no counter.
+     *
+     * <p>This is the assertion that was missing, and its absence is why 0.9.0 shipped a throttle that
+     * measured the wrong thing. The first version kept a {@code pathweaver$lastRecomputeTick} field
+     * and wrote the current tick into it whenever the throttle said yes. That counts CALLS, and
+     * vanilla answers most calls by setting {@code hasDelayedRecomputation} instead of searching, so
+     * an interval of N did not mean one search every N ticks. It also swallowed the recompute that
+     * {@code pathweaver$rearmRecompute} re-arms after a failed async install, because our counter had
+     * already been advanced by the call that dispatched it.
+     *
+     * <p>Every test in the file passed throughout, because they all check that the hook asks the
+     * throttle, not what it asks the throttle ABOUT.
+     *
+     * <p>The second half matters as much as the first: {@code getGameTime} and the server's
+     * {@code getTickCount} are different clocks, and comparing one against a stamp written from the
+     * other is meaningless even when both happen to be increasing.
+     */
+    @Test
+    void theHookTimesTheThrottleOnVanillasStampAndClock() {
+        List<String> fieldReads = new ArrayList<>();
+        List<String> calls = new ArrayList<>();
+        for (AbstractInsnNode insn : hook().instructions) {
+            if (insn instanceof FieldInsnNode field) fieldReads.add(field.name);
+            if (insn instanceof MethodInsnNode call) calls.add(call.name);
+        }
+        assertTrue(fieldReads.contains("timeLastRecompute"),
+            "the hook does not read vanilla's timeLastRecompute, so whatever it is timing the "
+                + "interval against is not when vanilla last searched: " + fieldReads);
+        assertTrue(calls.contains("getGameTime"),
+            "the hook does not read getGameTime, so it is comparing vanilla's stamp against some "
+                + "other clock: " + calls);
+        assertEquals(List.of(), calls.stream().filter("getTickCount"::equals).toList(),
+            "the hook reads the server tick count, which is a different clock from the game time "
+                + "vanilla stamps timeLastRecompute with");
+        assertEquals(List.of(), fieldReads.stream().filter(f -> f.startsWith("pathweaver$")).toList(),
+            "the hook keeps a field of its own to time the interval; vanilla already records when it "
+                + "last searched, and a second counter drifts from it: " + fieldReads);
+    }
 }

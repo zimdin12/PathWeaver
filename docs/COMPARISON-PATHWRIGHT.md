@@ -89,8 +89,14 @@ though it were the first.
 
 Saying only the unflattering things would make this document useless.
 
-- **Distance LOD.** Mobs beyond 48 blocks recompute every 15 ticks instead of every tick. We have no
-  equivalent, and it is a sensible idea.
+- **Distance LOD.** Mobs beyond 48 blocks are throttled to one recompute every 15 ticks. We had no
+  equivalent and now do.
+
+  One correction to this entry, made 2026-09-12 while building ours: "instead of every tick" was
+  our phrasing and it was wrong about vanilla, not about them. Vanilla caps a real path search at one
+  per 21 ticks per navigation, so their 15-tick interval also sits under that floor and can only be
+  removing the cheap deferred calls in between. Whether their hook sits somewhere that makes 15 mean
+  something different has not been checked, and should be before this line is used to compare.
 - **NeoForge.** They ship it, we do not.
 - **No Cloth Config dependency.** They read a plain JSON file. PathWeaver hard-depends on Cloth
   Config for a settings screen that a dedicated server never displays, so every server owner installs

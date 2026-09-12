@@ -74,7 +74,12 @@ refusal still holds:
 
 That last argument applied to LOD as well, and it was paid rather than waived: adding production code
 invalidated the evidence, so all of it was re-run and the new code carries its own witnesses. What was
-23 of 23 witnessed and 476 tests is now 28 of 28 and 502.
+23 of 23 witnessed and 476 tests is now 32 of 32 and 508.
+
+It was also paid twice. A review of the finished feature found that LOD had been built on a mechanism
+vanilla does not have, and that its shipped interval sat under vanilla's own refresh floor where it
+could remove nothing. The fix, the four witnesses that now cover it and the corrected copy are in
+`CHANGELOG.md` under 0.9.0.
 
 ## 0.10.0 — the AI scheduling release
 
