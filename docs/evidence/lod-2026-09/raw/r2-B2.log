@@ -1,0 +1,6 @@
+[00:25:41] [Server thread/INFO]:   since server start: dispatched=2321, installed=1882, discarded=438
+[00:25:41] [Server thread/INFO]:     §a1882§r  installed§7 (81.1%)
+> Tick durations (min/med/95%ile/max ms) from last 10s, 1m:
+    5.1/6.2/7.9/25.5; 4.6/6.3/8.0/25.5
+[00:26:47] [Server thread/INFO]:   since server start: dispatched=6116, installed=5029, discarded=1086
+[00:26:47] [Server thread/INFO]:     §a5029§r  installed§7 (82.2%)

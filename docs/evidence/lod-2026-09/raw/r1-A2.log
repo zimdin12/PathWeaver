@@ -1,0 +1,6 @@
+[00:01:12] [Server thread/INFO]:   since server start: dispatched=0, installed=0, discarded=0
+[00:01:12] [Server thread/INFO]:   route cache: measuring only   entries=0/4096   maxAge=40 ticks
+> Tick durations (min/med/95%ile/max ms) from last 10s, 1m:
+    5.3/7.0/9.9/12.7; 4.9/7.1/9.8/28.6
+[00:02:20] [Server thread/INFO]:   since server start: dispatched=0, installed=0, discarded=0
+[00:02:20] [Server thread/INFO]:   route cache: measuring only   entries=0/4096   maxAge=40 ticks

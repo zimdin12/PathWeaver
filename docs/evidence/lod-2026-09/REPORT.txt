@@ -1,0 +1,29 @@
+attempt         valid     tick recompute workerFind dispatched mspt50 mspt95  gate
+r1-A1           yes       9148      1504         0          0    7.8   10.2  ok
+r1-A2           yes       8400       556         0          0    7.1    9.8  ok
+r1-A3           yes       7684    ABSENT         0          0    6.5    8.5  ok
+r1-A4           yes       7820    ABSENT         0          0    6.6    8.4  ok
+r1-B1           yes       7424        80      1092       5365    6.3    7.6  ok
+r1-B2           yes       7412        16       944       3916    6.2    7.6  ok
+r2-A1           yes       9240      1520         0          0    7.8   10.6  ok
+r2-A2           yes       8892       436         0          0    7.1    9.5  ok
+r2-A3           yes       7464    ABSENT         0          0    6.4    8.4  ok
+r2-A4           yes       7920    ABSENT         0          0    6.6    8.4  ok
+r2-B1           yes       7412        80      1224       5702    6.2    7.9  carpet probe void overridden by the recomputePath gate
+r2-B1-retry     yes       7552       152      1896       5265    6.3    8.1  carpet probe void overridden by the recomputePath gate
+r2-B1-rerun     yes       7552       108      1452       5180    6.2    7.8  ok
+r2-B2           yes       7376       128      2112       3795    6.3    8.0  carpet probe void overridden by the recomputePath gate
+r2-B2-retry     yes       7696        92      1536       3782    6.2    7.8  ok
+
+P1   r1   PASS        A1 1504 ms, A3 ABSENT ms
+P2   r1   PASS        A3 ABSENT ms, A4 ABSENT ms
+P3   r1   FAIL        A2/A1 = 556/1504 = 0.370  (window 0.45-0.85; mechanism predicts 0.525)
+P4a  r1   PASS        dispatched B1 5365 (r1-B1), B2 3916 (r1-B2): 27.0% fewer
+P4b  r1   PASS        worker findPath B1 1092 ms, B2 944 ms: 13.6% less
+P1   r2   PASS        A1 1520 ms, A3 ABSENT ms
+P2   r2   PASS        A3 ABSENT ms, A4 ABSENT ms
+P3   r2   FAIL        A2/A1 = 436/1520 = 0.287  (window 0.45-0.85; mechanism predicts 0.525)
+P4a  r2   PASS        dispatched B1 5180 (r2-B1-rerun), B2 3782 (r2-B2-retry): 27.0% fewer
+P4b  r2   FAIL        worker findPath B1 1452 ms, B2 1536 ms: -5.8% less
+P4*  r2               sensitivity over every valid attempt pair: P4a holds in 6 of 6, P4b in 1 of 6
+P4c  both PASS        median MSPT B1 [6.3, 6.2] vs B2 [6.2, 6.2]; gap per round ['0.10', '0.00'] against same-arm drift 0.10; predicted NOT to separate
