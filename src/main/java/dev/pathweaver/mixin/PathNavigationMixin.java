@@ -137,6 +137,15 @@ public abstract class PathNavigationMixin implements PWNavigation {
      */
     @Unique private BlockPos pathweaver$recomputeTargetClaim;
 
+    /**
+     * The tick this navigation last ran a recompute, or {@link Long#MIN_VALUE} if it never has.
+     *
+     * <p>Per navigation rather than per mob, because that is what the throttle is about: one mob's
+     * navigation refreshing its own route. MIN_VALUE rather than 0 so that "never" is distinguishable
+     * from "at the start of the world", which on a fresh server are the same number.
+     */
+    @Unique private long pathweaver$lastRecomputeTick = Long.MIN_VALUE;
+
     @Inject(method = "moveTo(DDDD)Z", at = @At("HEAD"), require = 1, expect = 1)
     private void pathweaver$captureCoordinateSpeed(double x, double y, double z, double speed,
                                                     CallbackInfoReturnable<Boolean> cir) {
@@ -279,6 +288,42 @@ public abstract class PathNavigationMixin implements PWNavigation {
      * sets {@code hasDelayedRecomputation} on the rejecting branch and retries, so the mob is not
      * stranded. {@code PathNavigationRoutingGameTest} pins this for the airborne case by name.
      */
+    /**
+     * Distance LOD: let a far-away navigation keep the route it has for a few more ticks.
+     *
+     * <p>This method decides NOTHING. It reads the settings, the tick, the distance and the last
+     * recompute, hands them to {@link dev.pathweaver.lod.RecomputeThrottle}, and cancels if told to.
+     * The distance is passed as a supplier so that even the question "is the distance worth working
+     * out" is answered there rather than by a branch here: with the feature off, finding the nearest
+     * player would be a scan bought for nothing on every recompute in the game.
+     *
+     * <p>HEAD, so a refused recompute costs nothing beyond the check and leaves every field vanilla
+     * would have touched exactly as it was. The supersede bookkeeping further down does not run,
+     * which is correct: no search was dispatched, so there is nothing to supersede.
+     *
+     * <p>Client-side navigations are left alone. LOD is a server-tick saving and the distance to
+     * "the nearest player" means something different on a client.
+     */
+    @Inject(method = "recomputePath()V", at = @At("HEAD"), cancellable = true, require = 1, expect = 1)
+    private void pathweaver$throttleDistantRecompute(
+            org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+        if (!(this.level instanceof ServerLevel serverLevel)) return;
+        long tick = serverLevel.getServer().getTickCount();
+        if (dev.pathweaver.lod.RecomputeThrottle.allows(
+                PathWeaverConfig.get(),
+                () -> {
+                    net.minecraft.world.entity.player.Player nearest =
+                        serverLevel.getNearestPlayer(this.mob, -1.0D);
+                    return nearest == null ? Double.MAX_VALUE : this.mob.distanceToSqr(nearest);
+                },
+                tick,
+                this.pathweaver$lastRecomputeTick)) {
+            this.pathweaver$lastRecomputeTick = tick;
+            return;
+        }
+        ci.cancel();
+    }
+
     @Inject(
         method = "recomputePath()V",
         at = @At(value = "INVOKE",

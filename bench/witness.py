@@ -104,6 +104,18 @@ EXPECTED_CAUSE = {
     "hook-swaps-the-two-long-arguments":
         ("theSectionKeyAndTheTickReachTheParametersTheyWereComputedFor",
          "the two long arguments are in the wrong order"),
+    "lod-threshold-off-by-one":
+        ("atExactlyTheThresholdTheMobStillRecomputes",
+         "at exactly the threshold distance was throttled"),
+    "lod-locks-out-after-a-rollback":
+        ("afterTheClockMovesBackwardsRecomputesAreNotLockedOut",
+         "locked out every recompute"),
+    "lod-scans-when-switched-off":
+        ("withTheFeatureOffTheDistanceIsNeverEvenComputed",
+         "with LOD switched off"),
+    "lod-hook-stops-cancelling":
+        ("theHookCancelsWhenTheThrottleRefuses",
+         "never cancels"),
     "serializer-derived-checks":
         ("everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault",
          "resultCacheMode accepted a value of the wrong type"),
@@ -280,6 +292,41 @@ WITNESSES = [
         "            level.getServer().getTickCount(), SectionPos.asLong(pos));",
         "*CachePolicyBarrierJoinTest*",
         "the section key and the tick are passed to each other's parameters, which compiles",
+    ),
+    (
+        "lod-threshold-off-by-one",
+        "src/main/java/dev/pathweaver/lod/RecomputeThrottle.java",
+        "        if (nearestPlayerDistanceSq <= threshold) return true;",
+        "        if (nearestPlayerDistanceSq < threshold) return true;",
+        "*RecomputeThrottleTest*",
+        "a mob at exactly the LOD distance is throttled, one block early",
+    ),
+    (
+        "lod-locks-out-after-a-rollback",
+        "src/main/java/dev/pathweaver/lod/RecomputeThrottle.java",
+        "        if (tick < lastRecomputeTick) return true;",
+        "        if (false) return true;",
+        "*RecomputeThrottleTest*",
+        "a clock that moved backwards blocks every recompute until it catches up",
+    ),
+    (
+        "lod-scans-when-switched-off",
+        "src/main/java/dev/pathweaver/lod/RecomputeThrottle.java",
+        "        if (!config.lodEnabled) return true;\n"
+        "        return allows(config, nearestPlayerDistanceSq.getAsDouble(), tick, lastRecomputeTick);",
+        "        double eager = nearestPlayerDistanceSq.getAsDouble();\n"
+        "        if (!config.lodEnabled) return true;\n"
+        "        return allows(config, eager, tick, lastRecomputeTick);",
+        "*RecomputeThrottleTest*",
+        "the nearest-player scan is paid for even with the feature switched off",
+    ),
+    (
+        "lod-hook-stops-cancelling",
+        "src/main/java/dev/pathweaver/mixin/PathNavigationMixin.java",
+        "        ci.cancel();",
+        "        if (tick < 0) ci.cancel();",
+        "*RecomputeThrottleAdapterTest*",
+        "the throttle decides and the hook never acts on it",
     ),
     (
         "serializer-derived-checks",
