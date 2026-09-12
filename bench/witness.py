@@ -124,7 +124,7 @@ EXPECTED_CAUSE = {
          "was kept, so the screen shows a setting that is on"),
     "lod-times-itself-on-our-own-clock":
         ("theHookTimesTheThrottleOnVanillasStampAndClock",
-         "the hook reads the server tick count"),
+         "the hook does not read getGameTime"),
     "lod-pin-stops-tracking-vanilla":
         ("vanillaStillHoldsTheRefreshFloorOurConstantWasDerivedFrom",
          "vanilla's recompute window is no longer"),
@@ -339,7 +339,7 @@ WITNESSES = [
         "lod-hook-stops-cancelling",
         "src/main/java/dev/pathweaver/mixin/PathNavigationMixin.java",
         "        ci.cancel();",
-        "        if (tick < 0) ci.cancel();",
+        "        if (serverLevel == null) ci.cancel();",
         "*RecomputeThrottleAdapterTest*",
         "the throttle decides and the hook never acts on it",
     ),
