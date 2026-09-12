@@ -2,9 +2,6 @@ package dev.pathweaver.config;
 
 import java.util.ArrayList;
 import java.util.List;
-import me.shedaniel.autoconfig.ConfigData;
-import me.shedaniel.autoconfig.ConfigHolder;
-import me.shedaniel.autoconfig.annotation.Config;
 import me.shedaniel.autoconfig.annotation.ConfigEntry;
 import net.minecraft.world.InteractionResult;
 
@@ -13,8 +10,14 @@ import net.minecraft.world.InteractionResult;
  * {@code config/pathweaver.json}, GUI via ModMenu when present). Kept free of gameplay/world types so
  * it stays unit-testable; Cloth annotations + the marker {@link ConfigData} interface are inert at runtime.
  */
-@Config(name = "pathweaver")
-public class PathWeaverConfig implements ConfigData {
+/*
+ * NOT implementing Cloth's ConfigData, and that one clause is the whole reason this mod used to
+ * require a GUI library on a dedicated server. The JVM drops annotations it cannot resolve, so the
+ * @ConfigEntry annotations below are harmless with Cloth absent and are kept because the settings
+ * screen and its contract test are both built from them. A missing INTERFACE is different: it is a
+ * NoClassDefFoundError the moment this class is touched, and this class is touched by everything.
+ */
+public class PathWeaverConfig {
     @ConfigEntry.Gui.Excluded
     @ConfigEntry.Category("general")
     /**
@@ -356,7 +359,7 @@ public class PathWeaverConfig implements ConfigData {
     }
 
     /** A detached copy of every persisted field, with mutable collections copied rather than shared. */
-    private static PathWeaverConfig snapshotOf(PathWeaverConfig source) {
+    static PathWeaverConfig snapshotOf(PathWeaverConfig source) {
         PathWeaverConfig copy = new PathWeaverConfig();
         for (java.lang.reflect.Field field : PathWeaverConfig.class.getDeclaredFields()) {
             int modifiers = field.getModifiers();
@@ -472,10 +475,33 @@ public class PathWeaverConfig implements ConfigData {
         return enabled && resultCacheActive();
     }
 
-    public static InteractionResult onSave(
-            ConfigHolder<PathWeaverConfig> holder, PathWeaverConfig config) {
-        set(config);
-        return InteractionResult.PASS;
+    /**
+     * Persist the edited settings and publish them, in that order.
+     *
+     * <p>Was a Cloth save listener taking a holder and returning an InteractionResult, both of which
+     * existed for Cloth rather than for this mod. The settings screen calls it directly now.
+     *
+     * <p>Write first, publish second. The other order leaves a window where the running server is
+     * using settings that are not on disk, so a crash in between loses them silently while the
+     * operator has already seen the screen close.
+     */
+    public static void save(PathWeaverConfig edited) {
+        try {
+            new ConfigFile().serialize(edited);
+        } catch (ConfigFile.ConfigIoException failure) {
+            // Publishing anyway is deliberate: the operator asked for these settings and refusing
+            // them because the disk is full would be a worse surprise than losing them on restart.
+            // The log line is the only honest part of this branch.
+            dev.pathweaver.PathWeaver.LOG.warn(
+                "PathWeaver could not write pathweaver.json; the new settings are in force now but "
+                    + "will not survive a restart.", failure.getCause());
+        }
+        set(edited);
+    }
+
+    /** A detached copy for a settings screen to edit without touching what the server is using. */
+    public static PathWeaverConfig copyOf(PathWeaverConfig source) {
+        return snapshotOf(source == null ? new PathWeaverConfig() : source);
     }
 
     /** A limit past this is indistinguishable from "off" and only invites a typo that reads as armed. */
@@ -496,7 +522,12 @@ public class PathWeaverConfig implements ConfigData {
      * Normalize persisted/GUI values before runtime services consume them. Invalid config must reduce
      * coverage or capacity, never make executor construction fail during server startup.
      */
-    @Override
+    /**
+     * Clamp every setting into a range the runtime can actually honour.
+     *
+     * <p>Used to override Cloth's ConfigData method. It is ours now, called by the settings file
+     * reader and by publication, and it is the single place a value is normalised.
+     */
     public void validatePostLoad() {
         configVersion = CURRENT_CONFIG_VERSION;
         poolThreads = Math.clamp(poolThreads, 0, MAX_POOL_THREADS);

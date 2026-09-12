@@ -192,8 +192,11 @@ public final class ClientSingleplayerGameTest implements FabricClientGameTest {
 
             // The settings screen, drawn by the real client on the real render thread. Client-only
             // code that no dedicated-server test can even class-load.
-            context.setScreen(() -> me.shedaniel.autoconfig.AutoConfigClient
-                .getConfigScreen(PathWeaverConfig.class, null).get());
+            // Our own screen builder now, not AutoConfig's. That makes this the only test anywhere
+            // that proves the hand-built screen actually constructs and draws: every control is
+            // chosen by reflection over the settings fields, and a type with no control throws. A
+            // unit test cannot catch that because building a screen needs a running client.
+            context.setScreen(() -> dev.pathweaver.config.ClothScreen.build(null));
             // Park the cursor in a corner. Left at screen centre it hovers the first entry and its
             // tooltip covers the rows underneath, which is exactly the part worth looking at.
             context.getInput().setCursorPos(4.0, 4.0);

@@ -18,27 +18,36 @@ public class PathWeaver implements ModInitializer {
             (dispatcher, registry, environment) ->
                 dev.pathweaver.command.PathWeaverCommand.register(dispatcher));
 
-        // Register Cloth AutoConfig (persists config/pathweaver.json; GUI via ModMenu when present).
-        // Guarded so a config-API mismatch forces synchronous fail-closed defaults rather than
-        // silently enabling async or breaking dedicated-server startup.
+        // Load config/pathweaver.json ourselves. No GUI library involved: a dedicated server has
+        // no settings screen to render and should not have to install one to read a JSON file.
+        // Guarded so that any failure forces synchronous fail-closed defaults rather than silently
+        // enabling async pathfinding on settings nobody verified.
         try {
-            java.util.concurrent.atomic.AtomicBoolean loadFailed =
-                new java.util.concurrent.atomic.AtomicBoolean();
-            me.shedaniel.autoconfig.ConfigHolder<dev.pathweaver.config.PathWeaverConfig> holder =
-                me.shedaniel.autoconfig.AutoConfig.register(
-                dev.pathweaver.config.PathWeaverConfig.class,
-                (definition, configClass) -> new dev.pathweaver.config.LoadFailureTrackingSerializer<>(
-                    new dev.pathweaver.config.PathWeaverConfigSerializer(
-                        definition, configClass), loadFailed));
-            holder.registerSaveListener(dev.pathweaver.config.PathWeaverConfig::onSave);
-            dev.pathweaver.config.PathWeaverConfig.publishLoaded(
-                holder.getConfig(), loadFailed.get());
-            if (loadFailed.get()) {
-                LOG.warn("PathWeaver config load failed; forcing synchronous pathfinding until a valid config is saved.");
+            dev.pathweaver.config.ConfigFile file = new dev.pathweaver.config.ConfigFile();
+            boolean firstRun = !file.exists();
+            dev.pathweaver.config.ConfigLoad.Result loaded =
+                dev.pathweaver.config.ConfigLoad.from(file);
+            dev.pathweaver.config.PathWeaverConfig.publishLoaded(loaded.config(), loaded.failed());
+            // Write the defaults out on a first run. AutoConfig used to do this and its absence was
+            // invisible until a real server booted without it: the mod worked, and the file the page
+            // tells a server owner to edit was never created, so there was nothing to edit and no
+            // sign anything was wrong. Only on a first run, so a failed load never overwrites a file
+            // somebody is in the middle of fixing.
+            if (firstRun && !loaded.failed()) {
+                try {
+                    file.serialize(loaded.config());
+                } catch (dev.pathweaver.config.ConfigFile.ConfigIoException writeFailed) {
+                    LOG.warn("PathWeaver could not write a default config/pathweaver.json.",
+                        writeFailed.getCause());
+                }
+            }
+            if (loaded.failed()) {
+                LOG.warn("PathWeaver config load failed; forcing synchronous pathfinding until a "
+                    + "valid config is saved.", loaded.cause());
             }
         } catch (Throwable t) {
             dev.pathweaver.config.PathWeaverConfig.installFailClosedDefaults();
-            LOG.warn("PathWeaver config registration failed; forcing synchronous pathfinding.", t);
+            LOG.warn("PathWeaver config load failed; forcing synchronous pathfinding.", t);
         }
 
         dev.pathweaver.gate.ForeignMixinScanner.scanAndPopulate();

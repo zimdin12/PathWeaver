@@ -6,7 +6,6 @@ import me.shedaniel.autoconfig.ConfigHolder;
 import me.shedaniel.autoconfig.annotation.ConfigEntry;
 import me.shedaniel.autoconfig.event.ConfigSerializeEvent;
 import me.shedaniel.autoconfig.serializer.ConfigSerializer;
-import me.shedaniel.clothconfig2.gui.entries.SelectionListEntry;
 import net.minecraft.world.InteractionResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -81,7 +80,11 @@ class ModMenuIntegrationContractTest {
         assertTrue(enums.size() >= 2, "expected at least two enum options, found " + enums);
         for (Class<?> type : enums) {
             for (Object constant : type.getEnumConstants()) {
-                String key = ((SelectionListEntry.Translatable) constant).getKey();
+                // Reflectively, not through a Cloth interface. These enums stopped implementing
+                // SelectionListEntry.Translatable because that interface is a GUI class, and having
+                // it on a settings enum stopped the mod booting on any server without Cloth. The
+                // method is still there and ClothScreen reads it the same way.
+                String key = (String) constant.getClass().getMethod("getKey").invoke(constant);
                 assertTrue(key.startsWith("text.autoconfig.pathweaver.option."),
                     "enum key format drifted: " + key);
                 assertTrue(lang.has(key), "missing language entry for " + key);
@@ -318,6 +321,13 @@ class ModMenuIntegrationContractTest {
         assertTrue(lang.has("text.autoconfig.pathweaver.category.repath"));
     }
 
+    /**
+     * A setting that no longer exists is ignored on read and gone on the next write.
+     *
+     * <p>Was written against Cloth's ConfigHolder. The holder is gone, and the property is not: a
+     * config file carried forward from an older version must not resurrect a field the mod stopped
+     * honouring, and must not keep writing it back out either.
+     */
     @Test
     void removedDistanceThrottleFieldIsIgnoredAndDroppedOnNextSave(@TempDir Path tempDir) throws Exception {
         Path configPath = tempDir.resolve("config").resolve("pathweaver.json");
@@ -325,84 +335,74 @@ class ModMenuIntegrationContractTest {
         Files.writeString(configPath, """
             {"asyncEnabled":false,"distanceThrottleEnabled":true}
             """);
-        ConfigHolder<PathWeaverConfig> holder = new TestConfigHolder(new PathWeaverConfigSerializer(configPath));
-        assertTrue(holder.load());
-        assertFalse(holder.getConfig().enabled, "known explicit-off value survives upgrade");
-        holder.save();
+        ConfigFile file = new ConfigFile(configPath);
+        PathWeaverConfig loaded = file.deserialize();
+        assertFalse(loaded.enabled, "known explicit-off value survives upgrade");
+        file.serialize(loaded);
         JsonObject saved = JsonParser.parseString(Files.readString(configPath)).getAsJsonObject();
         assertFalse(saved.has("distanceThrottleEnabled"), "retired unknown field is dropped on save");
     }
 
+    /**
+     * Saving from the settings screen writes the file, publishes the runtime, and does NOT publish
+     * the object the screen is still editing.
+     *
+     * <p>This is the aliasing hazard the 0.9.0 review found, and it survives the move off AutoConfig
+     * unchanged in substance: whatever object the screen holds must not become the live settings, or
+     * every keystroke is live before anyone presses save. The mechanism is different now, so the test
+     * is rewritten rather than deleted; deleting it would have quietly retired the assertion that
+     * caught the bug.
+     */
     @Test
     void toggleSaveRoundTripsToDiskAndRuntime(@TempDir Path tempDir) throws Exception {
         Path configPath = tempDir.resolve("config").resolve("pathweaver.json");
+        Files.createDirectories(configPath.getParent());
         PathWeaverConfig previousRuntime = PathWeaverConfig.get();
-        ConfigHolder<PathWeaverConfig> holder = new TestConfigHolder(new PathWeaverConfigSerializer(configPath));
-        PathWeaverConfig originalHolderConfig = holder.getConfig();
-        boolean desired = !originalHolderConfig.enabled;
-        PathWeaverConfig sentinel = new PathWeaverConfig();
-        sentinel.enabled = !desired;
         try {
-            holder.registerSaveListener(PathWeaverConfig::onSave);
+            PathWeaverConfig sentinel = new PathWeaverConfig();
+            sentinel.enabled = false;
             PathWeaverConfig.set(sentinel);
-            holder.getConfig().enabled = desired;
-            holder.getConfig().poolThreads = -3;
-            holder.getConfig().maxInFlight = 0;
-            holder.save();
 
-            // NOT the same object: the holder is what the settings screen edits, and publishing it
-            // would make every keystroke live before the save. A copy of it, carrying its values.
-            assertNotSame(holder.getConfig(), PathWeaverConfig.get(),
-                "the save listener published the holder object the screen is still editing");
-            assertEquals(desired, holder.getConfig().enabled, "AutoConfig holder");
-            assertEquals(desired, PathWeaverConfig.get().enabled, "live runtime config");
-            assertEquals(0, holder.getConfig().poolThreads, "normalized holder poolThreads");
-            assertEquals(1, holder.getConfig().maxInFlight, "normalized holder maxInFlight");
+            // What the screen edits: a detached copy, exactly as ClothScreen takes one.
+            PathWeaverConfig editing = PathWeaverConfig.copyOf(PathWeaverConfig.get());
+            assertNotSame(PathWeaverConfig.get(), editing,
+                "the screen would be editing the live settings object");
+            editing.enabled = true;
+            editing.poolThreads = -3;
+            editing.maxInFlight = 0;
+
+            ConfigFile file = new ConfigFile(configPath);
+            file.serialize(editing);
+            PathWeaverConfig.set(editing);
+
+            assertNotSame(editing, PathWeaverConfig.get(),
+                "publication handed out the object the screen is still editing");
+            assertTrue(PathWeaverConfig.get().enabled, "live runtime config");
+            assertEquals(0, PathWeaverConfig.get().poolThreads, "normalized runtime poolThreads");
+            assertEquals(1, PathWeaverConfig.get().maxInFlight, "normalized runtime maxInFlight");
+
             JsonObject disk = JsonParser.parseString(Files.readString(configPath)).getAsJsonObject();
-            assertEquals(desired, disk.get("enabled").getAsBoolean(), "config/pathweaver.json");
+            assertTrue(disk.get("enabled").getAsBoolean(), "config/pathweaver.json");
             assertEquals(0, disk.get("poolThreads").getAsInt(), "normalized disk poolThreads");
             assertEquals(1, disk.get("maxInFlight").getAsInt(), "normalized disk maxInFlight");
         } finally {
-            holder.setConfig(originalHolderConfig);
             PathWeaverConfig.set(previousRuntime);
         }
     }
 
-    private static final class TestConfigHolder implements ConfigHolder<PathWeaverConfig> {
-        private final ConfigSerializer<PathWeaverConfig> serializer;
-        private PathWeaverConfig config = new PathWeaverConfig();
-        private ConfigSerializeEvent.Save<PathWeaverConfig> saveListener;
-
-        private TestConfigHolder(ConfigSerializer<PathWeaverConfig> serializer) {
-            this.serializer = serializer;
-        }
-
-        @Override public Class<PathWeaverConfig> getConfigClass() { return PathWeaverConfig.class; }
-        @Override public PathWeaverConfig getConfig() { return config; }
-        @Override public void setConfig(PathWeaverConfig config) { this.config = config; }
-        @Override public void registerSaveListener(ConfigSerializeEvent.Save<PathWeaverConfig> listener) {
-            this.saveListener = listener;
-        }
-        @Override public void registerLoadListener(ConfigSerializeEvent.Load<PathWeaverConfig> listener) { }
-        @Override public void resetToDefault() { config = serializer.createDefault(); }
-        @Override public boolean load() {
-            try {
-                config = serializer.deserialize();
-                return true;
-            } catch (ConfigSerializer.SerializationException e) {
-                return false;
-            }
-        }
-        @Override public void save() {
-            try {
-                InteractionResult result = saveListener == null
-                    ? InteractionResult.PASS
-                    : saveListener.onSave(this, config);
-                if (result != InteractionResult.FAIL) serializer.serialize(config);
-            } catch (ConfigSerializer.SerializationException e) {
-                throw new RuntimeException(e);
-            }
-        }
+    /**
+     * The screen's own entry point takes a copy, rather than each caller remembering to.
+     *
+     * <p>{@code ClothScreen} is not constructed here because building it needs a running client.
+     * What is checked is the contract it relies on, which is the part that can silently regress.
+     */
+    @Test
+    void copyOfHandsBackADetachedObject() {
+        PathWeaverConfig live = PathWeaverConfig.get();
+        PathWeaverConfig copy = PathWeaverConfig.copyOf(live);
+        assertNotSame(live, copy, "copyOf returned the live settings object");
+        copy.enabled = !copy.enabled;
+        assertEquals(live.enabled, PathWeaverConfig.get().enabled,
+            "editing the copy changed the running settings");
     }
-
 }

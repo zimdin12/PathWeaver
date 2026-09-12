@@ -1,7 +1,6 @@
 package dev.pathweaver.config;
 
 import com.google.gson.Gson;
-import net.minecraft.world.InteractionResult;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -212,7 +211,10 @@ class PathWeaverConfigTest {
         saved.poolThreads = -3;
         saved.maxInFlight = 0;
         try {
-            assertEquals(InteractionResult.PASS, PathWeaverConfig.onSave(null, saved));
+            // Was onSave(holder, config), whose holder and return value existed for Cloth.
+            // set() is the publication half of the replacement; the file-writing half is covered in
+            // ConfigFileTest and the two together in ModMenuIntegrationContractTest.
+            PathWeaverConfig.set(saved);
             assertNotSame(saved, PathWeaverConfig.get(),
                 "the saved object was published rather than a copy of it");
             assertEquals(0, saved.poolThreads, "the saved object was not normalized in place");

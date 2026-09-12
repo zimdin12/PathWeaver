@@ -150,6 +150,6 @@ class StrictFieldTypeCoverageTest {
         Files.createDirectories(directory);
         Path path = directory.resolve("pathweaver.json");
         Files.writeString(path, raw.toString());
-        return new PathWeaverConfigSerializer(path).deserialize();
+        return new ConfigFile(path).deserialize();
     }
 }

@@ -116,6 +116,12 @@ EXPECTED_CAUSE = {
     "lod-hook-stops-cancelling":
         ("theHookActsOnTheAnswerAndDecidesNothingElse",
          "it is allowed two"),
+    "cloth-returns-to-the-server-path":
+        ("noServerClassNamesAClothGuiType",
+         "NoClassDefFoundError on any server without Cloth"),
+    "first-run-writes-no-config":
+        ("aFirstRunWritesTheSettingsFile",
+         "no settings file was written"),
     "serializer-derived-checks":
         ("everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault",
          "resultCacheMode accepted a value of the wrong type"),
@@ -327,6 +333,16 @@ WITNESSES = [
         "        if (tick < 0) ci.cancel();",
         "*RecomputeThrottleAdapterTest*",
         "the throttle decides and the hook never acts on it",
+    ),
+    (
+        "cloth-returns-to-the-server-path",
+        "src/main/java/dev/pathweaver/config/PathCacheMode.java",
+        "public enum PathCacheMode {",
+        "public enum PathCacheMode implements "
+        "me.shedaniel.clothconfig2.gui.entries.SelectionListEntry.Translatable {",
+        "*NoClothOnTheServerPathTest*",
+        "a settings enum implements a Cloth GUI interface again, so the config class cannot "
+        "initialise without Cloth installed",
     ),
     (
         "serializer-derived-checks",
