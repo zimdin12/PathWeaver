@@ -13,6 +13,8 @@ Two later bodies are written and NOT published:
 - `body-0.9.0.md` is the same page brought forward: the route-sharing toggle window is now described
   as fixed rather than pending, the status correction is added, and the "never a stale one" tooltip
   is recorded as fixed in the 0.9.0 jar.
+  It now also states the measured 6-10% figure with the scenario it came from, says the mod needs
+  Fabric API alone, and describes the optional distance-LOD setting and that it ships off.
 
 Publishing either needs Steven's confirmation. A page-only correction goes through
 `release/update_page.py`; a page published alongside a binary goes through the release script.

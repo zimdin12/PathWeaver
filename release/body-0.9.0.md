@@ -18,9 +18,9 @@ it, and the page tells you how to find out what your own number is before you in
 
 Free, and it does not change what paths your mobs take.
 
-It needs Fabric API and Cloth Config. Cloth Config is there for the settings screen, which a
-dedicated server never shows, so on a server it is a dependency you install and never see. That
-is worth fixing and is not fixed yet.
+It needs Fabric API and nothing else. Cloth Config is optional and only draws the settings screen;
+without it the mod reads and writes the same `config/pathweaver.json` and behaves the same. A
+dedicated server never shows a settings screen, so it should never have had to install one.
 
 ### Why a 6% mod is worth installing
 
