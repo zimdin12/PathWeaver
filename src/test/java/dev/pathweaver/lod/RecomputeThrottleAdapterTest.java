@@ -143,4 +143,3 @@ class RecomputeThrottleAdapterTest {
                 + "check and the throttle's answer. A third means the rule has leaked back into it");
     }
 }
-}
