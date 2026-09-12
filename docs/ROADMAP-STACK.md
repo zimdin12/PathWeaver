@@ -106,11 +106,33 @@ interactions, rain-fed water and evaporation are all more fluid updates, more bl
 more neighbour queries. Every one of them is unaffordable at the current per-update cost and becomes
 affordable if that cost falls.
 
-**What we do not know, and must measure first.** Our arena had no water, so we have no number for
-fluid ticking at all, and the 6% pathfinding figure exists precisely because we measured instead of
-guessed. Step one is a water-heavy arena: a dam break, a large flowing body, rain over terrain, with
-and without Flowing Fluids, on the same ladder harness. **If fluid ticking turns out to be 1% of tick,
-this idea dies there**, and that is the point of measuring before committing.
+**Measured 2026-09-12, and the answer is no.** `bench/fluid-ladder.sh`, a verified stone basin with
+water released into it and the tick sampled while it spreads:
+
+| water blocks | median | 95th | worst tick |
+|---:|---:|---:|---:|
+| 768 | 5.4 ms | 9.9 | 14.5 |
+| 3,072 | 3.3 ms | 6.1 | 12.1 |
+| 6,912 | 3.7 ms | 7.5 | 22.6 |
+| 12,288 | 3.5 ms | 7.9 | 36.6 |
+
+Median tick does not move. Vanilla fluid spreading produces occasional spikes, worst single tick
+36.6 ms against a 50 ms budget, and no sustained cost at all. Against 5000 zombies at 77 ms median,
+there is nothing here worth a mod.
+
+**So the fluid substrate idea is dead in the form it was proposed**, and it is recorded rather than
+quietly dropped, because the whole point of gating it on a measurement was to be willing to lose.
+
+Two honest qualifications, neither of which revives it:
+
+- This measures VANILLA fluids, which settle and then stop ticking. A finite-fluid mod changes that
+  rule and its cost would live inside its own simulation, not in vanilla's. So the work would be
+  *writing a better finite-water mod*, not optimising the game underneath one, and that means
+  competing with Flowing Fluids' 208K downloads on features rather than on performance.
+- The first attempt at this measurement was invalid and is worth remembering: the arena fills were
+  40,401 blocks against vanilla's 32,768 limit, so they failed silently, no basin was built, the water
+  fell on natural terrain, and the run still printed a tidy table describing an arena that did not
+  exist. The script now verifies the floor is there before it measures anything.
 
 ## Ranking, and what is deliberately not on it
 
