@@ -297,6 +297,51 @@ WITNESSES = [
         "the section key and the tick are passed to each other's parameters, which compiles",
     ),
     (
+        "lod-threshold-off-by-one",
+        "src/main/java/dev/pathweaver/lod/RecomputeThrottle.java",
+        "        if (nearestPlayerDistanceSq <= threshold) return true;",
+        "        if (nearestPlayerDistanceSq < threshold) return true;",
+        "*RecomputeThrottleTest*",
+        "a mob at exactly the LOD distance is throttled, one block early",
+    ),
+    (
+        "lod-locks-out-after-a-rollback",
+        "src/main/java/dev/pathweaver/lod/RecomputeThrottle.java",
+        "        if (tick < lastRecomputeTick) return true;",
+        "        if (false) return true;",
+        "*RecomputeThrottleTest*",
+        "a clock that moved backwards blocks every recompute until it catches up",
+    ),
+    (
+        "lod-scans-when-switched-off",
+        "src/main/java/dev/pathweaver/lod/RecomputeThrottle.java",
+        "        if (!config.lodEnabled) return true;\n"
+        "        return allows(config, nearestPlayerDistanceSq.getAsDouble(), tick, lastRecomputeTick);",
+        "        double eager = nearestPlayerDistanceSq.getAsDouble();\n"
+        "        if (!config.lodEnabled) return true;\n"
+        "        return allows(config, eager, tick, lastRecomputeTick);",
+        "*RecomputeThrottleTest*",
+        "the nearest-player scan is paid for even with the feature switched off",
+    ),
+    (
+        "lod-hook-stops-cancelling",
+        "src/main/java/dev/pathweaver/mixin/PathNavigationMixin.java",
+        "        ci.cancel();",
+        "        if (tick < 0) ci.cancel();",
+        "*RecomputeThrottleAdapterTest*",
+        "the throttle decides and the hook never acts on it",
+    ),
+    (
+        "cloth-returns-to-the-server-path",
+        "src/main/java/dev/pathweaver/config/PathCacheMode.java",
+        "public enum PathCacheMode {",
+        "public enum PathCacheMode implements "
+        "me.shedaniel.clothconfig2.gui.entries.SelectionListEntry.Translatable {",
+        "*NoClothOnTheServerPathTest*",
+        "a settings enum implements a Cloth GUI interface again, so the config class cannot "
+        "initialise without Cloth installed",
+    ),
+    (
         "serializer-derived-checks",
         "src/main/java/dev/pathweaver/config/ConfigFile.java",
         "            if (READ_ELSEWHERE.contains(key)) continue;",
