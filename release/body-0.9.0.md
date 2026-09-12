@@ -41,7 +41,8 @@ the tick safely, we say so rather than shipping it anyway.
 |---|---|
 | **Install on** | The server, or your singleplayer world. Clients need nothing |
 | **Needs** | Fabric, Minecraft 26.1.1 / 26.1.2 / 26.2, Java 25 or newer |
-| **Also needs** | Fabric API, Cloth Config |
+| **Also needs** | Fabric API. Nothing else |
+| **Optional** | Cloth Config and ModMenu, for the in-game settings screen |
 | **Then** | Play. Run `/pathweaver status` to see what it is doing |
 
 Most hosts still default to Java 21, so check yours before you file a bug.
@@ -138,6 +139,25 @@ That is a real behaviour change, which is why it is a setting rather than someth
 
 Everything else keeps the path it would have had, with two stated exceptions: a shared route when route sharing is switched on, and the search running against the world as it was a tick or two earlier rather than at the instant the mob asks. Neither changes where a mob is trying to go.
 
+### Recomputing distant routes less often
+
+**New in 0.9.0, and off by default.** A mob following a route re-runs the whole search periodically to
+correct for the world moving. Near a player that correction matters. Sixty-four blocks away, with
+nobody close enough to see it, it is the same search producing nearly the same answer several times a
+second.
+
+`lodEnabled` turns that into one refresh every ten ticks beyond 64 blocks. Both numbers are settings.
+A mob that has just picked a new destination is never throttled; only the periodic refresh of a route
+it already has is delayed.
+
+It ships off because it is the one thing here that does not give a mob the path it would have had
+anyway. It gives it that path up to the interval later, which is a real behaviour change even though
+it is bounded and remote. Worth turning on for mob farms, large penned herds, or a high simulation
+distance.
+
+There is no benchmark number for it on this page, because it does nothing until you switch it on and
+what it saves then depends entirely on how many distant mobs your world is running.
+
 ### Route sharing
 
 One mob can reuse a route another mob already computed, but only when every input to the search is identical: same starting position, same target, same size, same terrain costs, same movement flags. A stored route is dropped when a block changes along it while the cache is running.
@@ -189,8 +209,11 @@ Whatever version you are on, **mods that modify pathfinding are named at world s
 | `resultCacheMode` | `SHADOW` | Route sharing. `SHADOW` measures, `SERVE` spends it | |
 | `repathToleranceBlocks` | 1 | Reuse a mob's current path when its target moved less than this | |
 | `poolThreads` | auto | Worker threads. Auto is a quarter of your CPU threads, minimum two | restart |
+| `lodEnabled` | off | Refresh distant mobs' routes less often | |
+| `lodMinDistanceBlocks` | 64 | How far from a player that starts | |
+| `lodIntervalTicks` | 10 | How often a throttled route refreshes | |
 
-Editable in game through ModMenu, or in `config/pathweaver.json`. The two marked **restart** are read once at startup; the rest take effect as soon as you save.
+All of them live in `config/pathweaver.json`. Install ModMenu and Cloth Config if you want to edit them in game instead; neither is required and a server needs neither. The two marked **restart** are read once at startup; the rest take effect as soon as you save.
 
 ---
 
