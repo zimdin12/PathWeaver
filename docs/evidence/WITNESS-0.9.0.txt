@@ -1,4 +1,4 @@
-PathWeaver 0.9.0 witnesses, 28 entries, HEAD 2b60654da0c70cf0368b8cb4cbf23b8f58006111
+PathWeaver 0.9.0 witnesses, 32 entries, HEAD ff957af907fbdee3289df1eabfbf84fa23331bd4
 
 ====================================================================================================
 expiry-parking
@@ -222,46 +222,92 @@ hook-swaps-the-two-long-arguments
 lod-threshold-off-by-one
   file        src/main/java/dev/pathweaver/lod/RecomputeThrottle.java
   expectation a mob at exactly the LOD distance is throttled, one block early
-  1 GREEN     exit=0 tests=15 skipped=0 failures=0 errors=0
+  1 GREEN     exit=0 tests=18 skipped=0 failures=0 errors=0
   0 EXPECT    atExactlyTheThresholdTheMobStillRecomputes :: 'at exactly the threshold distance was throttled'  (1 matching invocation(s) in the baseline)
-  2 RED       exit=1 tests=15 skipped=0 failures=1 errors=0
+  2 RED       exit=1 tests=18 skipped=0 failures=1 errors=0
               dev.pathweaver.lod.RecomputeThrottleTest#atExactlyTheThresholdTheMobStillRecomputes()
                 org.opentest4j.AssertionFailedError: a mob at exactly the threshold distance was throttled ==> expected: &lt;true> but was: &lt;false>
   MATCHED     dev.pathweaver.lod.RecomputeThrottleTest#atExactlyTheThresholdTheMobStillRecomputes() :: at exactly the threshold distance was throttled
-  3 RESTORED  exit=0 tests=15 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+  3 RESTORED  exit=0 tests=18 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 lod-locks-out-after-a-rollback
   file        src/main/java/dev/pathweaver/lod/RecomputeThrottle.java
   expectation a clock that moved backwards blocks every recompute until it catches up
-  1 GREEN     exit=0 tests=15 skipped=0 failures=0 errors=0
+  1 GREEN     exit=0 tests=18 skipped=0 failures=0 errors=0
   0 EXPECT    afterTheClockMovesBackwardsRecomputesAreNotLockedOut :: 'locked out every recompute'  (1 matching invocation(s) in the baseline)
-  2 RED       exit=1 tests=15 skipped=0 failures=1 errors=0
+  2 RED       exit=1 tests=18 skipped=0 failures=1 errors=0
               dev.pathweaver.lod.RecomputeThrottleTest#afterTheClockMovesBackwardsRecomputesAreNotLockedOut()
                 org.opentest4j.AssertionFailedError: time moving backwards locked out every recompute ==> expected: &lt;true> but was: &lt;false>
   MATCHED     dev.pathweaver.lod.RecomputeThrottleTest#afterTheClockMovesBackwardsRecomputesAreNotLockedOut() :: locked out every recompute
-  3 RESTORED  exit=0 tests=15 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+  3 RESTORED  exit=0 tests=18 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 lod-scans-when-switched-off
   file        src/main/java/dev/pathweaver/lod/RecomputeThrottle.java
   expectation the nearest-player scan is paid for even with the feature switched off
-  1 GREEN     exit=0 tests=15 skipped=0 failures=0 errors=0
+  1 GREEN     exit=0 tests=18 skipped=0 failures=0 errors=0
   0 EXPECT    withTheFeatureOffTheDistanceIsNeverEvenComputed :: 'with LOD switched off'  (1 matching invocation(s) in the baseline)
-  2 RED       exit=1 tests=15 skipped=0 failures=1 errors=0
+  2 RED       exit=1 tests=18 skipped=0 failures=1 errors=0
               dev.pathweaver.lod.RecomputeThrottleTest#withTheFeatureOffTheDistanceIsNeverEvenComputed()
                 org.opentest4j.AssertionFailedError: the nearest-player scan ran with LOD switched off, which is a cost for no benefit ==> expected: &lt;0> 
   MATCHED     dev.pathweaver.lod.RecomputeThrottleTest#withTheFeatureOffTheDistanceIsNeverEvenComputed() :: with LOD switched off
-  3 RESTORED  exit=0 tests=15 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+  3 RESTORED  exit=0 tests=18 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 lod-hook-stops-cancelling
   file        src/main/java/dev/pathweaver/mixin/PathNavigationMixin.java
   expectation the throttle decides and the hook never acts on it
-  1 GREEN     exit=0 tests=4 skipped=0 failures=0 errors=0
+  1 GREEN     exit=0 tests=5 skipped=0 failures=0 errors=0
   0 EXPECT    theHookActsOnTheAnswerAndDecidesNothingElse :: 'it is allowed two'  (1 matching invocation(s) in the baseline)
-  2 RED       exit=1 tests=4 skipped=0 failures=1 errors=0
+  2 RED       exit=1 tests=5 skipped=0 failures=1 errors=0
               dev.pathweaver.lod.RecomputeThrottleAdapterTest#theHookActsOnTheAnswerAndDecidesNothingElse()
                 org.opentest4j.AssertionFailedError: the hook makes 3 decisions; it is allowed two, the server-level check and the throttle's answer. A thir
   MATCHED     dev.pathweaver.lod.RecomputeThrottleAdapterTest#theHookActsOnTheAnswerAndDecidesNothingElse() :: it is allowed two
-  3 RESTORED  exit=0 tests=4 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+  3 RESTORED  exit=0 tests=5 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+lod-interval-under-vanillas-floor
+  file        src/main/java/dev/pathweaver/config/PathWeaverConfig.java
+  expectation the shipped LOD interval is back under vanilla's own refresh floor, where it removes no path search at all
+  1 GREEN     exit=0 tests=18 skipped=0 failures=0 errors=0
+  0 EXPECT    theDefaultIntervalIsAboveVanillasOwnRefreshFloor :: 'removes no path search at all'  (1 matching invocation(s) in the baseline)
+  2 RED       exit=1 tests=18 skipped=0 failures=1 errors=0
+              dev.pathweaver.lod.RecomputeThrottleTest#theDefaultIntervalIsAboveVanillasOwnRefreshFloor()
+                org.opentest4j.AssertionFailedError: the default LOD interval of 10 is at or below vanilla's own 21 tick floor, so switching LOD on removes 
+  MATCHED     dev.pathweaver.lod.RecomputeThrottleTest#theDefaultIntervalIsAboveVanillasOwnRefreshFloor() :: removes no path search at all
+  3 RESTORED  exit=0 tests=18 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+lod-floor-stops-being-vanillas
+  file        src/main/java/dev/pathweaver/config/PathWeaverConfig.java
+  expectation a hand-edited interval below vanilla's floor is accepted, so the screen shows a setting that is on and does nothing
+  1 GREEN     exit=0 tests=18 skipped=0 failures=0 errors=0
+  0 EXPECT    anIntervalBelowVanillasFloorIsRaisedByValidation :: 'was kept, so the screen shows a setting that is on'  (1 matching invocation(s) in the baseline)
+  2 RED       exit=1 tests=18 skipped=0 failures=2 errors=0
+              dev.pathweaver.lod.RecomputeThrottleTest#anIntervalBelowVanillasFloorIsRaisedByValidation()
+                org.opentest4j.AssertionFailedError: an interval below vanilla's floor was kept, so the screen shows a setting that is on and does nothing =
+              dev.pathweaver.lod.RecomputeThrottleTest#aZeroDistanceIsClampedAwayByValidation()
+                org.opentest4j.AssertionFailedError: a zero LOD interval survived validation and would throttle nothing while looking on ==> expected: &lt;t
+  MATCHED     dev.pathweaver.lod.RecomputeThrottleTest#anIntervalBelowVanillasFloorIsRaisedByValidation() :: was kept, so the screen shows a setting that is on
+  3 RESTORED  exit=0 tests=18 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+lod-times-itself-on-our-own-clock
+  file        src/main/java/dev/pathweaver/mixin/PathNavigationMixin.java
+  expectation the hook times the interval on the server tick count instead of the game clock vanilla stamps with
+  1 GREEN     exit=0 tests=5 skipped=0 failures=0 errors=0
+  0 EXPECT    theHookTimesTheThrottleOnVanillasStampAndClock :: 'the hook does not read getGameTime'  (1 matching invocation(s) in the baseline)
+  2 RED       exit=1 tests=5 skipped=0 failures=1 errors=0
+              dev.pathweaver.lod.RecomputeThrottleAdapterTest#theHookTimesTheThrottleOnVanillasStampAndClock()
+                org.opentest4j.AssertionFailedError: the hook does not read getGameTime, so it is comparing vanilla's stamp against some other clock: [get, 
+  MATCHED     dev.pathweaver.lod.RecomputeThrottleAdapterTest#theHookTimesTheThrottleOnVanillasStampAndClock() :: the hook does not read getGameTime
+  3 RESTORED  exit=0 tests=5 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+lod-pin-stops-tracking-vanilla
+  file        src/main/java/dev/pathweaver/lod/RecomputeThrottle.java
+  expectation the pinned vanilla refresh period stops matching the bytecode it was derived from
+  1 GREEN     exit=0 tests=2 skipped=0 failures=0 errors=0
+  0 EXPECT    vanillaStillHoldsTheRefreshFloorOurConstantWasDerivedFrom :: "vanilla's recompute window is no longer"  (1 matching invocation(s) in the baseline)
+  2 RED       exit=1 tests=2 skipped=0 failures=1 errors=0
+              dev.pathweaver.lod.VanillaRecomputePeriodPinTest#vanillaStillHoldsTheRefreshFloorOurConstantWasDerivedFrom()
+                org.opentest4j.AssertionFailedError: vanilla's recompute window is no longer 25 ticks. RecomputeThrottle.VANILLA_RECOMPUTE_PERIOD_TICKS, the
+  MATCHED     dev.pathweaver.lod.VanillaRecomputePeriodPinTest#vanillaStillHoldsTheRefreshFloorOurConstantWasDerivedFrom() :: vanilla's recompute window is no longer
+  3 RESTORED  exit=0 tests=2 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 cloth-returns-to-the-server-path
   file        src/main/java/dev/pathweaver/config/PathCacheMode.java
@@ -359,6 +405,10 @@ pathfinder-pin-unused
   lod-locks-out-after-a-rollback witnessed
   lod-scans-when-switched-off    witnessed
   lod-hook-stops-cancelling      witnessed
+  lod-interval-under-vanillas-floor witnessed
+  lod-floor-stops-being-vanillas witnessed
+  lod-times-itself-on-our-own-clock witnessed
+  lod-pin-stops-tracking-vanilla witnessed
   cloth-returns-to-the-server-path witnessed
   serializer-derived-checks      witnessed
   status-sums-the-two-counts     witnessed
