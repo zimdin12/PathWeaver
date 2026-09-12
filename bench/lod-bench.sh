@@ -44,6 +44,9 @@ case "$CHURN" in on) PLACED="minecraft:air"; SWAP="minecraft:white_carpet";;
                  off) PLACED="minecraft:bedrock"; SWAP="minecraft:bedrock";;
                  *) echo "churn must be on or off"; exit 1;; esac
 [ -f "$JAR" ] || { echo "REFUSING: no jar at $JAR"; exit 8; }
+# Made absolute HERE, before the script changes into the server directory. The first smoke run passed a
+# relative path, found the jar on this check, then failed to copy it after the cd.
+JAR="$(cd "$(dirname "$JAR")" && pwd)/$(basename "$JAR")"
 
 MOBS="${MOBS:-400}"
 SETTLE="${SETTLE:-20}"

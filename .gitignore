@@ -11,6 +11,9 @@
 .minecraft-dev*/
 bench/deep-archive-*/
 bench/deep/
+# Raw LOD campaign runs. What is kept is copied into docs/evidence/lod-2026-09 deliberately.
+bench/lod/
+bench/lod-*.console.txt
 bench/out/
 benchmarks/
 build/
