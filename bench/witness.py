@@ -227,7 +227,7 @@ WITNESSES = [
     ),
     (
         "serializer-checks-the-mode-only",
-        "src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java",
+        "src/main/java/dev/pathweaver/config/ConfigFile.java",
         "            if (READ_ELSEWHERE.contains(key)) continue;",
         "            if (READ_ELSEWHERE.contains(key)) continue;\n"
         "            if (key.startsWith(\"resultCacheMax\")) continue;",
@@ -236,7 +236,7 @@ WITNESSES = [
     ),
     (
         "serializer-skips-max-age-only",
-        "src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java",
+        "src/main/java/dev/pathweaver/config/ConfigFile.java",
         "            if (READ_ELSEWHERE.contains(key)) continue;",
         "            if (READ_ELSEWHERE.contains(key)) continue;\n"
         "            if (key.equals(\"resultCacheMaxAgeTicks\")) continue;",
@@ -245,7 +245,7 @@ WITNESSES = [
     ),
     (
         "serializer-skips-max-entries-only",
-        "src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java",
+        "src/main/java/dev/pathweaver/config/ConfigFile.java",
         "            if (READ_ELSEWHERE.contains(key)) continue;",
         "            if (READ_ELSEWHERE.contains(key)) continue;\n"
         "            if (key.equals(\"resultCacheMaxEntries\")) continue;",
@@ -298,7 +298,7 @@ WITNESSES = [
     ),
     (
         "serializer-derived-checks",
-        "src/main/java/dev/pathweaver/config/PathWeaverConfigSerializer.java",
+        "src/main/java/dev/pathweaver/config/ConfigFile.java",
         "            if (READ_ELSEWHERE.contains(key)) continue;",
         "            if (READ_ELSEWHERE.contains(key)) continue;\n"
         "            if (key.startsWith(\"resultCache\")) continue;",
@@ -423,6 +423,16 @@ def digest(path):
 def witness(entry):
     name, relative, old, new, test_filter, expectation = entry
     path = os.path.join(ROOT, relative)
+    # A target that no longer exists used to raise, which abandoned the run and every entry after it.
+    # A table can fall behind the tree -- this one did, when a class was renamed -- and that is a
+    # defect in the table, reported as one, not a crash that loses the results already earned.
+    if not os.path.isfile(path):
+        print("=" * 100)
+        print(name)
+        print("  file        %s" % relative)
+        print("  INVALID     that file does not exist; the entry names a target that has been "
+              "renamed or deleted")
+        return False
     original = io.open(path, "rb").read()
     before_digest = hashlib.sha256(original).hexdigest()
 
