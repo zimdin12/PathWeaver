@@ -119,9 +119,6 @@ EXPECTED_CAUSE = {
     "cloth-returns-to-the-server-path":
         ("noServerClassNamesAClothGuiType",
          "NoClassDefFoundError on any server without Cloth"),
-    "first-run-writes-no-config":
-        ("aFirstRunWritesTheSettingsFile",
-         "no settings file was written"),
     "serializer-derived-checks":
         ("everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault",
          "resultCacheMode accepted a value of the wrong type"),
