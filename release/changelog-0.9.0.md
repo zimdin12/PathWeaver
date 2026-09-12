@@ -1,4 +1,4 @@
-Correctness and honesty. Five things that were wrong are fixed, three of them things this page or the mod itself told you incorrectly.
+Correctness and honesty, plus two changes you will notice: Cloth Config is no longer required, and there is a new optional setting for distant mobs.
 
 ## Route sharing survives a settings change
 
@@ -45,6 +45,34 @@ No compatibility outcome changes as a result, on any version. Both downloads ver
 
 [A ten-minute check](https://github.com/zimdin12/PathWeaver/blob/master/docs/IS-IT-YOUR-BOTTLENECK.md) you can run before installing this mod, using spark. PathWeaver only helps a server whose tick time is going into mob path searches, and plenty of struggling servers are slow for some other reason. It also says how to read the profile without the two mistakes that are easy to make with it.
 
+## Cloth Config is no longer required
+
+PathWeaver needed Fabric API and Cloth Config. Cloth Config draws the settings screen, which a
+dedicated server never shows, so every server owner was installing a GUI library to run a server-side
+mod.
+
+It now needs Fabric API and nothing else. Install Cloth Config if you want the settings screen; without
+it the mod reads and writes the same `config/pathweaver.json` and behaves identically. Nothing about
+your existing config file changes and no setting is lost.
+
+## New, and off by default: recompute distant routes less often
+
+A mob following a route re-runs the whole search periodically to correct for the world moving. Near a
+player that correction matters. Sixty-four blocks away, with nobody close enough to see it, it is the
+same search producing nearly the same answer several times a second.
+
+`lodEnabled` turns that into one refresh every ten ticks for mobs beyond 64 blocks. Both numbers are
+configurable, and a mob that has just picked a new destination is never throttled; only the periodic
+refresh of a route it already has is delayed.
+
+**It ships off, and that is deliberate.** Everything else in this mod gives a mob the path it would
+have had anyway. This gives it that path up to the interval later, which is a real behaviour change
+even though it is bounded and remote. It is a saving with a stated cost, so it is offered rather than
+taken.
+
+Worth turning on for mob farms, large penned herds, or a high simulation distance.
+
 ## Not in this release
 
-No new performance work and no new benchmark numbers. Nothing here changes what paths your mobs take.
+No new benchmark numbers for the mod's core. The figures on the project page were measured for 0.9.0
+and nothing here changes what paths your mobs take when LOD is off, which is how it ships.
