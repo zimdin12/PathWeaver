@@ -39,16 +39,27 @@ are worth, show the profile it came from, publish the harness, and gate ourselve
 refuse to run when the mods we were proved against are not the mods present. That is a real difference
 and it is the one to lead with.
 
-Two things worth doing regardless: **NeoForge support** closes a distribution gap, and **distance LOD**
-is a feature gap where a competitor has a sensible idea. LOD changes behaviour, so it needs a config
-default decision and its own measurement.
+Two things looked worth doing regardless. **Distance LOD** was a real feature gap and shipped in
+0.9.0, off by default because it changes behaviour. **NeoForge** was a distribution gap, and it was
+measured and dropped; the reasoning is in `NEOFORGE-0.9.0.md`.
 
 ## Decision: what goes in 0.9.0
 
-**Nothing new.** 0.9.0 ships as the correctness release it already is.
+**Two of the three things a competitor was ahead on, and not the third.** This section originally read
+"nothing new", on the argument that a correctness release should stay a correctness release. Steven
+overruled it after the competitor comparison, and he was right to: two of those gaps are cheap and
+neither touches what paths mobs take at the shipped defaults.
 
-The argument for adding goal-selector work to it was that it would make a better release. The argument
-against is stronger:
+In: **distance LOD**, off by default, and **Cloth Config demoted to optional** so the mod needs Fabric
+API alone. LOD ships off precisely so the sentence below stays true for anyone who does not opt in.
+
+Out: **NeoForge**, abandoned with the measurement written down in `NEOFORGE-0.9.0.md`. It is not
+blocked on the loader, which exists for both targets. It is blocked on the compatibility gate being a
+1107-line reader of `fabric.mod.json` and on nine Fabric GameTest harnesses being where every published
+number comes from. A NeoForge build needs a second gate, not a port.
+
+Also out: **goal-selector work**, which is what this section was originally written to refuse, and the
+refusal still holds:
 
 - **Diagnostic separability.** Throttling target scans changes when mobs notice a player. That
   produces reports that are working-as-intended. Shipping it alongside a stale-route correctness fix
@@ -61,9 +72,9 @@ against is stronger:
 - **It deserves better than a footnote.** Mobtimizations is dead above 1.20.1, so a modern
   target-scan optimisation is a headline, not a bullet in a bugfix release.
 
-0.9.0 is built, 23 of 23 witnessed, 8 of 8 harnesses, 476 tests, on both branches. Adding production
-code invalidates that evidence and requires all of it re-run plus new witnesses plus a new benchmark
-campaign, which is the smallest of the four reasons but not nothing.
+That last argument applied to LOD as well, and it was paid rather than waived: adding production code
+invalidated the evidence, so all of it was re-run and the new code carries its own witnesses. What was
+23 of 23 witnessed and 476 tests is now 28 of 28 and 502.
 
 ## 0.10.0 — the AI scheduling release
 
@@ -81,8 +92,8 @@ Two builds, and the easy one is the wrong one:
   target conditions differ per mob: follow range, line of sight, invisibility, team.
 
 Share is the one worth building, because "no behaviour change" is the claim this project can make and
-others do not. Expected 1 to 3% of tick. Also in scope: distance LOD, since Pathwright has shown it is
-wanted, behind a config default that has to be argued for.
+others do not. Expected 1 to 3% of tick. Distance LOD was also scoped here and was pulled forward into
+0.9.0 instead.
 
 ## The one after that: fluids, and why it is the interesting one
 
@@ -137,7 +148,8 @@ Two honest qualifications, neither of which revives it:
 ## Ranking, and what is deliberately not on it
 
 1. **Measure fluid cost.** One afternoon. Decides whether item 3 exists at all.
-2. **0.10.0, shared target scans**, plus NeoForge and possibly LOD. Known gap, known size, 1-3%.
+2. **0.10.0, shared target scans.** Known gap, known size, 1-3%. LOD shipped in 0.9.0; NeoForge is
+   off the list entirely, see `NEOFORGE-0.9.0.md`.
 3. **Fluid substrate**, if and only if step 1 says the cost is there.
 
 Not on the list, with reasons:
