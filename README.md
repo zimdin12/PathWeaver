@@ -2,7 +2,7 @@
 
 **Experimental server-side mod for Minecraft 26.1.1, 26.1.2 and 26.2 (Fabric). Moves vanilla mob path searches off the server thread.**
 
-26.1.1 and 26.1.2 are served by one file — every pathfinding and navigation class is byte-identical between them. 26.2 is built separately from the `mc-26.2` branch; the mod needs no code change there, only a retarget. **`AUDITED` works on 26.1.1 and 26.1.2, and refuses on 26.2.** Each audit is pinned to the exact bytecode it was derived against: 26.1.1's pinned vanilla classes are byte-identical to 26.1.2's, so the proofs hold, while four of them changed in 26.2 and the pins fail closed.
+26.1.1 and 26.1.2 are served by one file — every pathfinding and navigation class is byte-identical between them. 26.2 is built separately from the `mc-26.2` branch; the mod needs no code change there, only a retarget. **`AUDITED` works on all three.** Each audit is pinned to the exact bytecode it was derived against, so when 26.2 changed four of those classes every audit refused and the mod did nothing at that setting. That was the pins failing closed rather than a bug, and it is fixed: the 26.2 artifacts were re-derived, three by new hashes whose shape proofs still passed and one by a new proof because the mod had changed mechanism. The working is in `docs/AUDITS-ON-26.2.md`.
 
 **Read this first: PathWeaver ships with its compatibility checking turned off, so out of the box it runs other mods' uninspected pathfinding code on worker threads. Back up worlds you care about.**
 
@@ -455,7 +455,9 @@ above is still the honest statement of what is unmeasured.
 
 ## Requirements
 
-Minecraft 26.1.x, Fabric Loader 0.19+, Fabric API, Cloth Config, Java 25. ModMenu optional but recommended for the toggle.
+Minecraft 26.1.x, Fabric Loader 0.19+, Fabric API, Java 25. That is the whole list.
+
+Cloth Config and ModMenu are optional and only draw the settings screen. Without them the mod reads and writes the same `config/pathweaver.json` and behaves identically, which is what a dedicated server wants: it never shows a settings screen, so it should not have to install one.
 
 ## Building and testing
 
