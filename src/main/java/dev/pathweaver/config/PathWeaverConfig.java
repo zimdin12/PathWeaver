@@ -221,10 +221,18 @@ public class PathWeaverConfig {
     @ConfigEntry.Category("performance")
     public int lodMinDistanceBlocks = 64;
 
-    /** Minimum ticks between recomputes for a throttled mob. Half a second by default. */
-    @ConfigEntry.Gui.Tooltip(count = 2)
+    /**
+     * Minimum ticks between real path searches for a throttled mob. Two seconds by default.
+     *
+     * <p>Forty rather than the ten this shipped with first, because vanilla already refuses to
+     * search more than once every {@value dev.pathweaver.lod.RecomputeThrottle#VANILLA_RECOMPUTE_PERIOD_TICKS}
+     * ticks per navigation. Any interval at or below that floor removes nothing at all: it only skips
+     * calls vanilla would have deferred anyway, which cost a clock read and a field write. Forty is
+     * the first round number that roughly halves the real searches.
+     */
+    @ConfigEntry.Gui.Tooltip(count = 3)
     @ConfigEntry.Category("performance")
-    public int lodIntervalTicks = 10;
+    public int lodIntervalTicks = 40;
 
     @ConfigEntry.Gui.Tooltip(count = 3)
     @ConfigEntry.Category("repath")
@@ -539,10 +547,13 @@ public class PathWeaverConfig {
         resultCacheMaxAgeTicks = Math.clamp(resultCacheMaxAgeTicks, 1, MAX_RESULT_AGE_TICKS);
         resultCacheMaxEntries = Math.clamp(resultCacheMaxEntries, 1, MAX_RESULT_CACHE_ENTRIES);
         // A distance of zero would throttle every mob in the world including the one standing next to
-        // you, and an interval of zero would throttle nothing while looking like it was enabled.
-        // Both are clamped to values that mean what the setting says.
+        // you. Both of these are clamped to values that mean what the setting says.
         lodMinDistanceBlocks = Math.clamp(lodMinDistanceBlocks, 16, 512);
-        lodIntervalTicks = Math.clamp(lodIntervalTicks, 2, 200);
+        // The floor is vanilla's own refresh period rather than a number picked here. Below it the
+        // setting cannot remove a single search, because vanilla would have refused those calls
+        // itself, so a smaller value would read as armed and do nothing.
+        lodIntervalTicks = Math.clamp(lodIntervalTicks,
+            dev.pathweaver.lod.RecomputeThrottle.VANILLA_RECOMPUTE_PERIOD_TICKS, 200);
         // Clamped here with every other int, because a hand-edited negative limit would otherwise
         // read as "off" through one code path and "trip immediately" through another.
         // Zero is a documented choice: never switch a family off. A NEGATIVE is not a choice, and

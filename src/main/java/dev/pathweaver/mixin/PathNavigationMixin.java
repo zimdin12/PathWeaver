@@ -137,14 +137,6 @@ public abstract class PathNavigationMixin implements PWNavigation {
      */
     @Unique private BlockPos pathweaver$recomputeTargetClaim;
 
-    /**
-     * The tick this navigation last ran a recompute, or {@link Long#MIN_VALUE} if it never has.
-     *
-     * <p>Per navigation rather than per mob, because that is what the throttle is about: one mob's
-     * navigation refreshing its own route. MIN_VALUE rather than 0 so that "never" is distinguishable
-     * from "at the start of the world", which on a fresh server are the same number.
-     */
-    @Unique private long pathweaver$lastRecomputeTick = Long.MIN_VALUE;
 
     @Inject(method = "moveTo(DDDD)Z", at = @At("HEAD"), require = 1, expect = 1)
     private void pathweaver$captureCoordinateSpeed(double x, double y, double z, double speed,
@@ -289,10 +281,20 @@ public abstract class PathNavigationMixin implements PWNavigation {
      * stranded. {@code PathNavigationRoutingGameTest} pins this for the airborne case by name.
      */
     /**
-     * Distance LOD: let a far-away navigation keep the route it has for a few more ticks.
+     * Distance LOD: let a far-away navigation keep the route it has for longer after the terrain
+     * under it changes.
      *
-     * <p>This method decides NOTHING. It reads the settings, the tick, the distance and the last
-     * recompute, hands them to {@link dev.pathweaver.lod.RecomputeThrottle}, and cancels if told to.
+     * <p>This method decides NOTHING. It reads the settings, vanilla's clock, the distance and
+     * vanilla's own {@code timeLastRecompute} stamp, hands them to
+     * {@link dev.pathweaver.lod.RecomputeThrottle}, and cancels if told to.
+     *
+     * <p><b>Both time values come from vanilla, and that is deliberate.</b> The stamp is the one
+     * vanilla writes when it actually searches, and the clock is the one it stamps with, so the
+     * interval in the settings means the same thing the game means. An earlier version of this hook
+     * kept its own tick counter and updated it whenever the throttle said yes, which counted calls
+     * rather than searches: vanilla answers most calls by deferring, so the setting did not do what
+     * it said, and a recompute re-armed by {@link #pathweaver$rearmRecompute()} after a failed async
+     * install was throttled away by our own counter.
      * The distance is passed as a supplier so that even the question "is the distance worth working
      * out" is answered there rather than by a branch here: with the feature off, finding the nearest
      * player would be a scan bought for nothing on every recompute in the game.
@@ -308,7 +310,6 @@ public abstract class PathNavigationMixin implements PWNavigation {
     private void pathweaver$throttleDistantRecompute(
             org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
         if (!(this.level instanceof ServerLevel serverLevel)) return;
-        long tick = serverLevel.getServer().getTickCount();
         if (dev.pathweaver.lod.RecomputeThrottle.allows(
                 PathWeaverConfig.get(),
                 () -> {
@@ -316,9 +317,8 @@ public abstract class PathNavigationMixin implements PWNavigation {
                         serverLevel.getNearestPlayer(this.mob, -1.0D);
                     return nearest == null ? Double.MAX_VALUE : this.mob.distanceToSqr(nearest);
                 },
-                tick,
-                this.pathweaver$lastRecomputeTick)) {
-            this.pathweaver$lastRecomputeTick = tick;
+                serverLevel.getGameTime(),
+                this.timeLastRecompute)) {
             return;
         }
         ci.cancel();

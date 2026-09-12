@@ -116,6 +116,18 @@ EXPECTED_CAUSE = {
     "lod-hook-stops-cancelling":
         ("theHookActsOnTheAnswerAndDecidesNothingElse",
          "it is allowed two"),
+    "lod-interval-under-vanillas-floor":
+        ("theDefaultIntervalIsAboveVanillasOwnRefreshFloor",
+         "removes no path search at all"),
+    "lod-floor-stops-being-vanillas":
+        ("anIntervalBelowVanillasFloorIsRaisedByValidation",
+         "was kept, so the screen shows a setting that is on"),
+    "lod-times-itself-on-our-own-clock":
+        ("theHookTimesTheThrottleOnVanillasStampAndClock",
+         "the hook reads the server tick count"),
+    "lod-pin-stops-tracking-vanilla":
+        ("vanillaStillHoldsTheRefreshFloorOurConstantWasDerivedFrom",
+         "vanilla's recompute window is no longer"),
     "cloth-returns-to-the-server-path":
         ("noServerClassNamesAClothGuiType",
          "NoClassDefFoundError on any server without Cloth"),
@@ -307,7 +319,7 @@ WITNESSES = [
     (
         "lod-locks-out-after-a-rollback",
         "src/main/java/dev/pathweaver/lod/RecomputeThrottle.java",
-        "        if (tick < lastRecomputeTick) return true;",
+        "        if (gameTime < lastRecomputeGameTime) return true;",
         "        if (false) return true;",
         "*RecomputeThrottleTest*",
         "a clock that moved backwards blocks every recompute until it catches up",
@@ -316,10 +328,10 @@ WITNESSES = [
         "lod-scans-when-switched-off",
         "src/main/java/dev/pathweaver/lod/RecomputeThrottle.java",
         "        if (!config.lodEnabled) return true;\n"
-        "        return allows(config, nearestPlayerDistanceSq.getAsDouble(), tick, lastRecomputeTick);",
+        "        return allows(config, nearestPlayerDistanceSq.getAsDouble(), gameTime, lastRecomputeGameTime);",
         "        double eager = nearestPlayerDistanceSq.getAsDouble();\n"
         "        if (!config.lodEnabled) return true;\n"
-        "        return allows(config, eager, tick, lastRecomputeTick);",
+        "        return allows(config, eager, gameTime, lastRecomputeGameTime);",
         "*RecomputeThrottleTest*",
         "the nearest-player scan is paid for even with the feature switched off",
     ),
@@ -330,6 +342,44 @@ WITNESSES = [
         "        if (tick < 0) ci.cancel();",
         "*RecomputeThrottleAdapterTest*",
         "the throttle decides and the hook never acts on it",
+    ),
+    (
+        "lod-interval-under-vanillas-floor",
+        "src/main/java/dev/pathweaver/config/PathWeaverConfig.java",
+        "    public int lodIntervalTicks = 40;",
+        "    public int lodIntervalTicks = 10;",
+        "*RecomputeThrottleTest*",
+        "the shipped LOD interval is back under vanilla's own refresh floor, where it removes "
+        "no path search at all",
+    ),
+    (
+        "lod-floor-stops-being-vanillas",
+        "src/main/java/dev/pathweaver/config/PathWeaverConfig.java",
+        "        lodIntervalTicks = Math.clamp(lodIntervalTicks,\n"
+        "            dev.pathweaver.lod.RecomputeThrottle.VANILLA_RECOMPUTE_PERIOD_TICKS, 200);",
+        "        lodIntervalTicks = Math.clamp(lodIntervalTicks, 2, 200);",
+        "*RecomputeThrottleTest*",
+        "a hand-edited interval below vanilla's floor is accepted, so the screen shows a setting "
+        "that is on and does nothing",
+    ),
+    (
+        "lod-times-itself-on-our-own-clock",
+        "src/main/java/dev/pathweaver/mixin/PathNavigationMixin.java",
+        "                serverLevel.getGameTime(),\n"
+        "                this.timeLastRecompute)) {",
+        "                serverLevel.getServer().getTickCount(),\n"
+        "                this.timeLastRecompute)) {",
+        "*RecomputeThrottleAdapterTest*",
+        "the hook times the interval on the server tick count instead of the game clock vanilla "
+        "stamps with",
+    ),
+    (
+        "lod-pin-stops-tracking-vanilla",
+        "src/main/java/dev/pathweaver/lod/RecomputeThrottle.java",
+        "    public static final int VANILLA_RECOMPUTE_PERIOD_TICKS = 21;",
+        "    public static final int VANILLA_RECOMPUTE_PERIOD_TICKS = 26;",
+        "*VanillaRecomputePeriodPinTest*",
+        "the pinned vanilla refresh period stops matching the bytecode it was derived from",
     ),
     (
         "cloth-returns-to-the-server-path",

@@ -18,7 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class RecomputeThrottleTest {
 
-    private static final long NEVER = Long.MIN_VALUE;
+    /** Vanilla's {@code timeLastRecompute} before it has ever recomputed: a plain zero. */
+    private static final long NEVER = 0L;
 
     private static PathWeaverConfig on(int distance, int interval) {
         PathWeaverConfig config = new PathWeaverConfig();
@@ -46,7 +47,7 @@ class RecomputeThrottleTest {
     /** Catches: an inverted switch, which would throttle only when the feature is off. */
     @Test
     void withTheFeatureOffEvenAVeryDistantMobRecomputesEveryTick() {
-        PathWeaverConfig off = on(64, 10);
+        PathWeaverConfig off = on(64, 40);
         off.lodEnabled = false;
         assertTrue(RecomputeThrottle.allows(off, blocks(5000), 1000L, 1000L),
             "a disabled LOD still throttled");
@@ -57,7 +58,7 @@ class RecomputeThrottleTest {
     /** Catches: throttling mobs the player is standing next to. */
     @Test
     void aMobInsideTheDistanceIsNeverThrottled() {
-        assertTrue(RecomputeThrottle.allows(on(64, 10), blocks(63), 1000L, 1000L),
+        assertTrue(RecomputeThrottle.allows(on(64, 40), blocks(63), 1000L, 1000L),
             "a mob 63 blocks away was throttled with a 64 block threshold");
     }
 
@@ -69,14 +70,14 @@ class RecomputeThrottleTest {
      */
     @Test
     void atExactlyTheThresholdTheMobStillRecomputes() {
-        assertTrue(RecomputeThrottle.allows(on(64, 10), blocks(64), 1000L, 1000L),
+        assertTrue(RecomputeThrottle.allows(on(64, 40), blocks(64), 1000L, 1000L),
             "a mob at exactly the threshold distance was throttled");
     }
 
     /** Catches: the distance check not working at all. */
     @Test
     void beyondTheDistanceAndInsideTheIntervalTheRecomputeIsRefused() {
-        assertFalse(RecomputeThrottle.allows(on(64, 10), blocks(65), 1000L, 995L),
+        assertFalse(RecomputeThrottle.allows(on(64, 40), blocks(65), 1000L, 995L),
             "a distant mob that recomputed 5 ticks ago was allowed to recompute again");
     }
 
@@ -85,13 +86,13 @@ class RecomputeThrottleTest {
     /** Catches: an interval of N meaning every N+1 ticks. */
     @Test
     void atExactlyTheIntervalTheRecomputeIsAllowed() {
-        assertTrue(RecomputeThrottle.allows(on(64, 10), blocks(500), 1010L, 1000L),
+        assertTrue(RecomputeThrottle.allows(on(64, 40), blocks(500), 1040L, 1000L),
             "a mob at exactly the configured interval was still throttled");
     }
 
     @Test
     void oneTickShortOfTheIntervalIsRefused() {
-        assertFalse(RecomputeThrottle.allows(on(64, 10), blocks(500), 1009L, 1000L),
+        assertFalse(RecomputeThrottle.allows(on(64, 40), blocks(500), 1039L, 1000L),
             "a mob one tick short of the interval was allowed through");
     }
 
@@ -106,8 +107,25 @@ class RecomputeThrottleTest {
      */
     @Test
     void aNavigationThatHasNeverRecomputedIsAllowedThrough() {
-        assertTrue(RecomputeThrottle.allows(on(64, 10), blocks(500), 5L, NEVER),
+        assertTrue(RecomputeThrottle.allows(on(64, 40), blocks(500), 5L, NEVER),
             "a mob's first recompute was throttled");
+    }
+
+    /**
+     * Catches: a sentinel overflowing the subtraction.
+     *
+     * <p>The stamp is vanilla's now, so it cannot legitimately be negative, and the "never" branch is
+     * written to cover anything at or below zero rather than one magic value. It matters because
+     * {@code gameTime - Long.MIN_VALUE} overflows to a negative, which would read as "recomputed in
+     * the future" and refuse forever. A guard that only recognised one sentinel would pass every test
+     * above and still do that.
+     */
+    @Test
+    void aStampBelowZeroCannotOverflowTheSubtraction() {
+        assertTrue(RecomputeThrottle.allows(on(64, 40), blocks(500), 5L, Long.MIN_VALUE),
+            "a negative stamp overflowed the age comparison and locked the navigation out");
+        assertTrue(RecomputeThrottle.allows(on(64, 40), blocks(500), 5L, -1L),
+            "a negative stamp was treated as a real recompute time");
     }
 
     /**
@@ -121,7 +139,7 @@ class RecomputeThrottleTest {
      */
     @Test
     void afterTheClockMovesBackwardsRecomputesAreNotLockedOut() {
-        assertTrue(RecomputeThrottle.allows(on(64, 10), blocks(500), 50L, 100_000L),
+        assertTrue(RecomputeThrottle.allows(on(64, 40), blocks(500), 50L, 100_000L),
             "time moving backwards locked out every recompute");
     }
 
@@ -147,7 +165,7 @@ class RecomputeThrottleTest {
      */
     @Test
     void withNoPlayersInTheLevelDistantMobsAreThrottled() {
-        assertFalse(RecomputeThrottle.allows(on(64, 10), Double.MAX_VALUE, 1000L, 999L),
+        assertFalse(RecomputeThrottle.allows(on(64, 40), Double.MAX_VALUE, 1000L, 999L),
             "a level with no players did not throttle, so the sentinel is not being compared");
     }
 
@@ -181,7 +199,7 @@ class RecomputeThrottleTest {
     @Test
     void withTheFeatureOnTheDistanceIsConsultedOnce() {
         int[] calls = {0};
-        RecomputeThrottle.allows(on(64, 10), () -> { calls[0]++; return blocks(500); }, 1000L, 999L);
+        RecomputeThrottle.allows(on(64, 40), () -> { calls[0]++; return blocks(500); }, 1000L, 999L);
         assertEquals(1, calls[0], "the distance was not consulted exactly once with LOD enabled");
     }
 
@@ -192,7 +210,40 @@ class RecomputeThrottleTest {
         config.validatePostLoad();
         assertTrue(config.lodMinDistanceBlocks >= 16,
             "a zero LOD distance survived validation and would throttle mobs underfoot");
-        assertTrue(config.lodIntervalTicks >= 2,
+        assertTrue(config.lodIntervalTicks >= RecomputeThrottle.VANILLA_RECOMPUTE_PERIOD_TICKS,
             "a zero LOD interval survived validation and would throttle nothing while looking on");
+    }
+
+    /**
+     * Catches: the defect this release shipped and then fixed, which is that the feature was armed
+     * with a number that could not do anything.
+     *
+     * <p>{@code lodIntervalTicks} defaulted to 10. Vanilla will not run two real searches for one
+     * navigation closer together than
+     * {@value RecomputeThrottle#VANILLA_RECOMPUTE_PERIOD_TICKS} ticks, so an interval of 10 removed
+     * no search at all: it only skipped calls vanilla would itself have deferred. Every test in this
+     * file passed, the witnesses held, and the setting did nothing an operator would notice while the
+     * project page described it as halving the work.
+     *
+     * <p>The assertion is written against the derived constant rather than against 40, so raising the
+     * default later stays legal and dropping it back under the floor does not.
+     */
+    @Test
+    void theDefaultIntervalIsAboveVanillasOwnRefreshFloor() {
+        PathWeaverConfig shipped = new PathWeaverConfig();
+        assertTrue(shipped.lodIntervalTicks > RecomputeThrottle.VANILLA_RECOMPUTE_PERIOD_TICKS,
+            "the default LOD interval of " + shipped.lodIntervalTicks + " is at or below vanilla's "
+                + "own " + RecomputeThrottle.VANILLA_RECOMPUTE_PERIOD_TICKS + " tick floor, so "
+                + "switching LOD on removes no path search at all");
+    }
+
+    /** And a hand-edited value under the floor is raised rather than accepted as armed. */
+    @Test
+    void anIntervalBelowVanillasFloorIsRaisedByValidation() {
+        PathWeaverConfig edited = on(64, 3);
+        edited.validatePostLoad();
+        assertEquals(RecomputeThrottle.VANILLA_RECOMPUTE_PERIOD_TICKS, edited.lodIntervalTicks,
+            "an interval below vanilla's floor was kept, so the screen shows a setting that is on "
+                + "and does nothing");
     }
 }
