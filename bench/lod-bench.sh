@@ -220,7 +220,7 @@ for _ in 1 2 3 4 5 6; do
 done
 SEEN="$(grep -aoE 'Test (passed|failed)' "$LOG" | tail -6 | grep -c passed)"
 say "pathweaver status"; sleep 2
-D0="$(grep -aoE 'dispatched=[0-9]+' "$LOG" | tail -1 | cut -d= -f2)"
+D0="$(grep -aoE 'since server start: dispatched=[0-9]+' "$LOG" | tail -1 | grep -oE '[0-9]+$')"
 
 # ---- the window ------------------------------------------------------------------------------------
 say "spark profiler start --thread * --not-combined"
@@ -238,7 +238,7 @@ SAVED="$(ls -1t "$SPARKDIR"/*.sparkprofile 2>/dev/null | head -1)"
 
 # ---- controls after the window ---------------------------------------------------------------------
 say "pathweaver status"; sleep 2
-D1="$(grep -aoE 'dispatched=[0-9]+' "$LOG" | tail -1 | cut -d= -f2)"
+D1="$(grep -aoE 'since server start: dispatched=[0-9]+' "$LOG" | tail -1 | grep -oE '[0-9]+$')"
 say "scoreboard players get #t churn"; sleep 2
 T1="$(grep -aoE '#t has [0-9]+' "$LOG" | tail -1 | grep -oE '[0-9]+$')"
 AFTER="$(count '@e[type=minecraft:zombie]')"
@@ -250,10 +250,14 @@ sleep 2
 [ -f "$OUT/$LABEL.sparkprofile" ] || void "no profile was saved"
 [ "${AFTER:-0}" -eq "$MOBS" ] || void "population moved during the window: $BEFORE before, ${AFTER:-none} after"
 [ -n "$T0" ] && [ -n "$T1" ] && [ $(( T1 - T0 )) -gt 400 ] || void "the command-block chain did not run through the window (#t $T0 -> $T1)"
-if [ "$CHURN" = "on" ]; then
-  [ "$SEEN" -ge 1 ] && [ "$SEEN" -le 5 ] || void "churn on, but the strip read as carpet $SEEN of 6 times; it is not toggling"
-else
-  [ "$SEEN" -eq 0 ] || void "churn off, but the strip read as carpet $SEEN of 6 times"
+# The carpet reading is RECORDED, not a gate, since 2026-09-13. As a gate it voided three runs whose
+# profiles prove the strip was toggling: recomputePath was present in every one, and it cannot be called
+# without a collision-changing block update. Commands reach the server through tail -f, which polls about
+# once a second, so probes arrive about 20 ticks apart, a multiple of the 4-tick toggle, and a steady
+# server samples the same phase every time. That mechanism is a hypothesis; the false voids are not.
+# Churn is gated in bench/lod_report.py instead, on recomputePath being present exactly when churn is on.
+if [ "$CHURN" = "off" ] && [ "$SEEN" -ne 0 ]; then
+  void "churn off, but the strip read as carpet $SEEN of 6 times"
 fi
 
 printf '%-22s async=%-5s lod=%-3s churn=%-3s zombies=%s/%s chainTicks=%s carpetSeen=%s/6 dispatched=%s at=%ss\n  ticks: %s\n' \
