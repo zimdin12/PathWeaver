@@ -114,8 +114,8 @@ EXPECTED_CAUSE = {
         ("withTheFeatureOffTheDistanceIsNeverEvenComputed",
          "with LOD switched off"),
     "lod-hook-stops-cancelling":
-        ("theHookCancelsWhenTheThrottleRefuses",
-         "never cancels"),
+        ("theHookActsOnTheAnswerAndDecidesNothingElse",
+         "it is allowed two"),
     "serializer-derived-checks":
         ("everyPersistedSettingRefusesAWrongTypeAndAcceptsItsOwnDefault",
          "resultCacheMode accepted a value of the wrong type"),

@@ -109,15 +109,28 @@ class RecomputeThrottleAdapterTest {
     }
 
     /**
-     * The hook can actually stop a recompute.
+     * The hook acts on the answer, and makes no decision of its own beyond two.
      *
-     * <p>A throttle that computes the right answer and never cancels is a decoration, and it would
-     * pass every other test here. The cancel is what makes the decision have an effect.
+     * <p>An earlier version of this test asserted only that a {@code cancel} call appeared somewhere
+     * in the method, and a mutation that wrapped the cancel in {@code if (tick < 0)} sailed through
+     * it: the call was still there, it just never fired. The witness caught that, which is what the
+     * witness is for, and the test is stronger rather than the mutation being made easier.
+     *
+     * <p>The property is the number of decisions. This hook is allowed exactly two conditional
+     * branches: is this a server level, and what did the throttle say. Any third condition means the
+     * hook has started deciding for itself, whether that is a guard around the cancel, a distance
+     * compared here, or a settings read. Counting them is crude and it is checkable, which beats an
+     * assertion that cannot fail.
      */
     @Test
-    void theHookCancelsWhenTheThrottleRefuses() {
+    void theHookActsOnTheAnswerAndDecidesNothingElse() {
+        List<String> branches = new ArrayList<>();
         boolean cancels = false;
         for (AbstractInsnNode insn : hook().instructions) {
+            if (insn instanceof org.objectweb.asm.tree.JumpInsnNode jump
+                    && jump.getOpcode() != org.objectweb.asm.Opcodes.GOTO) {
+                branches.add(String.valueOf(jump.getOpcode()));
+            }
             if (insn instanceof MethodInsnNode call && "cancel".equals(call.name)
                     && call.owner.endsWith("CallbackInfo")) {
                 cancels = true;
@@ -125,5 +138,9 @@ class RecomputeThrottleAdapterTest {
         }
         assertTrue(cancels,
             "the hook never cancels, so the throttle decides and nothing happens either way");
+        assertEquals(2, branches.size(),
+            "the hook makes " + branches.size() + " decisions; it is allowed two, the server-level "
+                + "check and the throttle's answer. A third means the rule has leaked back into it");
     }
+}
 }
