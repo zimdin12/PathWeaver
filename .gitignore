@@ -1,6 +1,11 @@
 
 # runtime dev-server/evidence outputs (never ship)
 *.log
+# Evidence logs are the exception to the *.log rule above. A log that a document cites has to be in
+# the repository or the citation points at nothing; the ones under docs/evidence are committed on
+# purpose, scrubbed of paths and account names first. Without this line they were force-added one at
+# a time, which is a rule nobody can see and everybody forgets.
+!docs/evidence/**/*.log
 *.zip
 .gradle/
 .minecraft-dev*/
