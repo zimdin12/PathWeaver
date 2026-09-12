@@ -8,7 +8,7 @@
 # java process and nothing appended to campaign.txt, because that file is only written at run
 # boundaries. The first version called that DEAD, which would have released a CPU embargo other
 # agents are waiting on while the campaign was still going.
-OUT="/c/Users/Administrator/AppData/Roaming/.minecraft/modding/PathWeaver/bench/deep"
+OUT="${PW_OUT:-$(cd "$(dirname "$0")/.." && pwd)/bench/deep}"
 LOG="$OUT/campaign.txt"
 [ -f "$LOG" ] || { echo "NO CAMPAIGN"; exit 0; }
 

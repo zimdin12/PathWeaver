@@ -37,7 +37,7 @@ ARTIFACTS = [
 
 TOK = os.environ["MODRINTH_PAT"]
 H = {"Authorization": TOK,
-     "User-Agent": "CasualZ/pathweaver-publish (steven.zimdin@gmail.com)"}
+     "User-Agent": "CasualZ/pathweaver-publish (+https://github.com/zimdin12/PathWeaver)"}
 
 
 def run(*args, cwd=None):

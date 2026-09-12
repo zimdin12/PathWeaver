@@ -8,10 +8,15 @@ thread's direct children -- which is the obvious reading, and the one that produ
 on the first attempt -- double counts the entire tree. The self-check below exists because of that:
 if the roots do not sum to the thread total, the walk is wrong and the numbers are not printed.
 """
+import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, r"C:\Users\Administrator\AppData\Roaming\.minecraft-dev\benchmarks\spark-proto-py")
+# The generated spark protobuf bindings live outside this repository. Point SPARK_PROTO_PY
+# at them; the default is only a convenience for the machine they were generated on.
+sys.path.insert(0, os.environ.get(
+    "SPARK_PROTO_PY",
+    os.path.expanduser("~/AppData/Roaming/.minecraft-dev/benchmarks/spark-proto-py")))
 from spark import spark_sampler_pb2  # noqa: E402
 
 # Frames whose subtree is pathfinding. A* cost lands mostly in block lookups BELOW these frames, so

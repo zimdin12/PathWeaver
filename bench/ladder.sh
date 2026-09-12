@@ -19,16 +19,22 @@
 # which is how two released versions are compared against the same arena and the same seed.
 #
 # GPU: none of this touches one. A dedicated server renders nothing.
+# PATHS COME FROM THE ENVIRONMENT. This repository is public; a hard-coded home directory
+# publishes the layout of one machine and works on no other. Override PW_SERVER, PW_JAVA or
+# PW_OUT to point these somewhere else.
 set -u
-SERVER="/c/Users/Administrator/AppData/Roaming/.minecraft_server"
-JAVA="/c/Program Files/Eclipse Adoptium/jdk-25.0.3.9-hotspot/bin/java.exe"
+SERVER="${PW_SERVER:-$HOME/AppData/Roaming/.minecraft_server}"
+# The Adoptium patch version moves, so it is discovered rather than pinned, and a miss is fatal
+# rather than a path that does not exist being handed to the launcher.
+JAVA="${PW_JAVA:-$(ls -1d "/c/Program Files/Eclipse Adoptium/jdk-25"*/bin/java.exe 2>/dev/null | tail -1)}"
+[ -x "$JAVA" ] || { echo "No JDK 25 found. Set PW_JAVA to a java executable." >&2; exit 7; }
 LABEL="${1:?label}"
 ARM="${2:?off or a jar path}"
 shift 2
 RUNGS=("$@")
 [ "${#RUNGS[@]}" -gt 0 ] || { echo "give at least one rung"; exit 1; }
 
-OUT="/c/Users/Administrator/AppData/Roaming/.minecraft/modding/PathWeaver/bench/deep"
+OUT="${PW_OUT:-$(cd "$(dirname "$0")/.." && pwd)/bench/deep}"
 BUDGET="${BUDGET:-300}"   # the cap, measured rather than hoped for
 RESERVE="${RESERVE:-45}"  # shutdown, readout and the controls still happen inside it
 BURSTS=2            # player teleports per rung: each one makes the whole population re-path at once

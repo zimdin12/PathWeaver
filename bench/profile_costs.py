@@ -18,11 +18,16 @@ A frame's subtree time is counted once, at the outermost occurrence; a recursive
 itself is not added twice.
 """
 
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
 
-sys.path.insert(0, r"C:\Users\Administrator\AppData\Roaming\.minecraft-dev\benchmarks\spark-proto-py")
+# The generated spark protobuf bindings live outside this repository. Point SPARK_PROTO_PY
+# at them; the default is only a convenience for the machine they were generated on.
+sys.path.insert(0, os.environ.get(
+    "SPARK_PROTO_PY",
+    os.path.expanduser("~/AppData/Roaming/.minecraft-dev/benchmarks/spark-proto-py")))
 from spark import spark_sampler_pb2  # noqa: E402
 
 # The dedicated server overrides tickServer, so the frame that carries the tick is
@@ -77,10 +82,66 @@ def costs(path, thread_name="Server thread", depth=40):
     return None, None, None, None
 
 
+def under(path, frame, thread_name="Server thread", floor=0.004):
+    """Print the subtree beneath the first occurrence of a named frame.
+
+    The flat ranking says WHAT costs; this says what it is made of, which is the difference between
+    "GoalSelector.tick is 15%" and knowing whether that 15% is goal bookkeeping or the work goals
+    trigger. A share is printed against the named frame's own total, not against the tick, so the
+    children of a 15% frame read as fractions of that 15%.
+    """
+    data = spark_sampler_pb2.SamplerData()
+    data.ParseFromString(Path(path).read_bytes())
+    for thread in data.threads:
+        if thread.name != thread_name:
+            continue
+        pool = list(thread.children)
+
+        # The HEAVIEST match, not the first one depth-first search reaches. "GoalSelector.tick" is a
+        # substring of "GoalSelector.tickRunningGoals", and the first hit was the 2552 ms inner frame
+        # rather than the 14148 ms one asked for: a real subtree, of the wrong question.
+        found = []
+
+        def find(i):
+            if frame in label(pool[i]):
+                found.append(i)
+            for c in pool[i].children_refs:
+                find(c)
+
+        for root in thread.children_refs:
+            find(root)
+        if found:
+            hit = max(found, key=lambda j: sum(pool[j].times))
+            exact = [j for j in found if label(pool[j]).endswith("." + frame.split(".")[-1])]
+            if exact:
+                hit = max(exact, key=lambda j: sum(pool[j].times))
+            base = sum(pool[hit].times)
+            print("%s  under %s: %.0f ms" % (Path(path).name, label(pool[hit]), base))
+
+            def show(j, d):
+                node = pool[j]
+                t = sum(node.times)
+                if t / base < floor or d > 9:
+                    return
+                print("  %s%-66s %7.0f %5.1f%%"
+                      % ("  " * d, label(node)[-66:], t, 100.0 * t / base))
+                for c in node.children_refs:
+                    show(c, d + 1)
+            for c in pool[hit].children_refs:
+                show(c, 0)
+            return
+    print("%s: frame %r not found on %s" % (path, frame, thread_name))
+
+
 def main(argv):
     if len(argv) < 2:
         print(__doc__)
         return 2
+    if argv[1] == "--under":
+        for p in argv[3:]:
+            under(p, argv[2])
+            print()
+        return 0
     for path in argv[1:]:
         thread_total, tick, totals, depths = costs(path)
         if totals is None:
