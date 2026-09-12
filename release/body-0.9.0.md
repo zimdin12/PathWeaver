@@ -16,7 +16,11 @@ profiles you can check below.
 That is a real saving and it is not a rescue. If your server is at 200 ms a tick, this will not save
 it, and the page tells you how to find out what your own number is before you install anything.
 
-Free, no dependencies, and it does not change what paths your mobs take.
+Free, and it does not change what paths your mobs take.
+
+It needs Fabric API and Cloth Config. Cloth Config is there for the settings screen, which a
+dedicated server never shows, so on a server it is a dependency you install and never see. That
+is worth fixing and is not fixed yet.
 
 ### Why a 6% mod is worth installing
 
