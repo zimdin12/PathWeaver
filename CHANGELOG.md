@@ -4,22 +4,29 @@
 
 ### Measured
 
-No new core benchmark. The 6-10% of tick figure on the project page was measured for this build and
-nothing here changes what paths mobs take at the shipped defaults, so re-running the campaign would
-have produced the same number with a later timestamp. The method, the settings, the commit and a
-discarded round are in `docs/PERFORMANCE-2026-09.md`.
+Measured on the 26.1.2 build, on a 26.1.2 server; the evidence lives on the master branch.
 
-Distance LOD is unmeasured on purpose. It ships off, so its cost and its saving are both zero until
-somebody turns it on, and a benchmark of a feature in its non-default state would be a number nobody
-could act on.
+**No regression, and the 6-10% holds for this jar.** The page's figure was first measured on an earlier
+0.9.0 build. The release jar was put through the same ladder against the 0.8.0 file from Modrinth and
+against no mod, two rounds, the second reversed, with the machine's background load recorded: 0.9.0 is
+within 3.5% of 0.8.0 at every busy rung, and saves 9.6%, 8.2% and 7.1% of tick at 2500, 5000 and 10000
+zombies. A first attempt was voided by load on the machine that nobody had recorded, and is kept.
+`docs/evidence/regression-2026-09-13b/`; the original method is in `docs/PERFORMANCE-2026-09.md`.
+
+**Distance LOD, in a scenario built to favour it.** 400 zombies 70 to 110 blocks from the player, terrain
+changing among them every two ticks. With the mod's shipped settings and LOD switched on, 13 to 19% fewer
+path searches dispatched and no measurable change in tick time, because those searches already ran off
+the server thread. In a world whose terrain is not changing around distant mobs it does nothing at all.
+Preregistered, and every prediction held. `docs/evidence/lod-fixed-2026-09-13/`.
+
+The first LOD campaign is also kept, because it is how the defect below was found.
+`docs/evidence/lod-2026-09/`.
 
 ### Evidence
 
-28 witnesses, each a four-state run: green, then cause-specific red on reverting exactly the
-production change, then green again on restoring it. 502 unit tests across 66 suites. Eight game-test
+33 witnesses, each a four-state run: green, then cause-specific red on reverting exactly the
+production change, then green again on restoring it. 509 unit tests across 67 suites. Nine game-test
 harnesses, one attempt each, no reruns. Both branches.
-
-Five of those witnesses are new and all five exist because something got past the ordinary tests.
 
 ### Cloth Config is now optional
 
