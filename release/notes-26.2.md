@@ -18,12 +18,12 @@ The shipped default is still `UNSAFE`, which performs no such check.
 
 ### Verified on 26.2, at the commit this jar was built from
 
-- 67 suites, 508 unit tests, 0 failures
-- 32 four-state witnesses: green, then a cause-specific red on reverting exactly the production
+- 67 suites, 509 unit tests, 0 failures
+- 33 four-state witnesses: green, then a cause-specific red on reverting exactly the production
   change, then green again on restoring it
 - One of those tests reads 26.2's own compiled `PathNavigation` and fails if its refresh window ever
   stops being the 20-tick one the LOD setting's floor is derived from
-- 8 of 8 game-test harnesses, one attempt each, no reruns, every row checked against the manifest it
+- 9 of 9 game-test harnesses, one attempt each, no reruns, every row checked against the manifest it
   actually consumed and the providers on its classpath at launch
 - Booted on a clean Fabric 26.2 server with Fabric API and no Cloth Config: starts, reports all six
   movement families active, writes its config file. With the Cloth interface deliberately put back it

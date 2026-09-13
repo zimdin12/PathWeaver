@@ -1,4 +1,6 @@
-PathWeaver 0.9.0 witnesses, 32 entries, HEAD ff957af907fbdee3289df1eabfbf84fa23331bd4
+PathWeaver 0.9.0 witnesses, 33 entries, run at HEAD abc30945 on mc-26.2 (main and test sources as later tagged)
+
+PathWeaver 0.9.0 witnesses, 33 entries, HEAD 9e15365f3f6a93091d2915a2f309cbbdd1b50692
 
 ====================================================================================================
 expiry-parking
@@ -255,13 +257,13 @@ lod-scans-when-switched-off
 lod-hook-stops-cancelling
   file        src/main/java/dev/pathweaver/mixin/PathNavigationMixin.java
   expectation the throttle decides and the hook never acts on it
-  1 GREEN     exit=0 tests=5 skipped=0 failures=0 errors=0
+  1 GREEN     exit=0 tests=6 skipped=0 failures=0 errors=0
   0 EXPECT    theHookActsOnTheAnswerAndDecidesNothingElse :: 'it is allowed two'  (1 matching invocation(s) in the baseline)
-  2 RED       exit=1 tests=5 skipped=0 failures=1 errors=0
+  2 RED       exit=1 tests=6 skipped=0 failures=1 errors=0
               dev.pathweaver.lod.RecomputeThrottleAdapterTest#theHookActsOnTheAnswerAndDecidesNothingElse()
                 org.opentest4j.AssertionFailedError: the hook makes 3 decisions; it is allowed two, the server-level check and the throttle's answer. A thir
   MATCHED     dev.pathweaver.lod.RecomputeThrottleAdapterTest#theHookActsOnTheAnswerAndDecidesNothingElse() :: it is allowed two
-  3 RESTORED  exit=0 tests=5 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+  3 RESTORED  exit=0 tests=6 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 lod-interval-under-vanillas-floor
   file        src/main/java/dev/pathweaver/config/PathWeaverConfig.java
@@ -290,13 +292,13 @@ lod-floor-stops-being-vanillas
 lod-times-itself-on-our-own-clock
   file        src/main/java/dev/pathweaver/mixin/PathNavigationMixin.java
   expectation the hook times the interval on the server tick count instead of the game clock vanilla stamps with
-  1 GREEN     exit=0 tests=5 skipped=0 failures=0 errors=0
+  1 GREEN     exit=0 tests=6 skipped=0 failures=0 errors=0
   0 EXPECT    theHookTimesTheThrottleOnVanillasStampAndClock :: 'the hook does not read getGameTime'  (1 matching invocation(s) in the baseline)
-  2 RED       exit=1 tests=5 skipped=0 failures=1 errors=0
+  2 RED       exit=1 tests=6 skipped=0 failures=1 errors=0
               dev.pathweaver.lod.RecomputeThrottleAdapterTest#theHookTimesTheThrottleOnVanillasStampAndClock()
                 org.opentest4j.AssertionFailedError: the hook does not read getGameTime, so it is comparing vanilla's stamp against some other clock: [get, 
   MATCHED     dev.pathweaver.lod.RecomputeThrottleAdapterTest#theHookTimesTheThrottleOnVanillasStampAndClock() :: the hook does not read getGameTime
-  3 RESTORED  exit=0 tests=5 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+  3 RESTORED  exit=0 tests=6 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 lod-pin-stops-tracking-vanilla
   file        src/main/java/dev/pathweaver/lod/RecomputeThrottle.java
@@ -308,6 +310,17 @@ lod-pin-stops-tracking-vanilla
                 org.opentest4j.AssertionFailedError: vanilla's recompute window is no longer 25 ticks. RecomputeThrottle.VANILLA_RECOMPUTE_PERIOD_TICKS, the
   MATCHED     dev.pathweaver.lod.VanillaRecomputePeriodPinTest#vanillaStillHoldsTheRefreshFloorOurConstantWasDerivedFrom() :: vanilla's recompute window is no longer
   3 RESTORED  exit=0 tests=2 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+lod-drops-instead-of-deferring
+  file        src/main/java/dev/pathweaver/mixin/PathNavigationMixin.java
+  expectation a throttled refresh is cancelled without being marked pending, so it is dropped rather than delayed
+  1 GREEN     exit=0 tests=6 skipped=0 failures=0 errors=0
+  0 EXPECT    aRefusedRefreshIsMarkedPendingBeforeItIsCancelled :: 'without marking it pending'  (1 matching invocation(s) in the baseline)
+  2 RED       exit=1 tests=6 skipped=0 failures=1 errors=0
+              dev.pathweaver.lod.RecomputeThrottleAdapterTest#aRefusedRefreshIsMarkedPendingBeforeItIsCancelled()
+                org.opentest4j.AssertionFailedError: the hook cancels a refused refresh without marking it pending, so nothing will retry it and the block c
+  MATCHED     dev.pathweaver.lod.RecomputeThrottleAdapterTest#aRefusedRefreshIsMarkedPendingBeforeItIsCancelled() :: without marking it pending
+  3 RESTORED  exit=0 tests=6 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
 cloth-returns-to-the-server-path
   file        src/main/java/dev/pathweaver/config/PathCacheMode.java
@@ -409,9 +422,11 @@ pathfinder-pin-unused
   lod-floor-stops-being-vanillas witnessed
   lod-times-itself-on-our-own-clock witnessed
   lod-pin-stops-tracking-vanilla witnessed
+  lod-drops-instead-of-deferring witnessed
   cloth-returns-to-the-server-path witnessed
   serializer-derived-checks      witnessed
   status-sums-the-two-counts     witnessed
   status-saved-capacity          witnessed
   pathfinder-pin-value           witnessed
   pathfinder-pin-unused          witnessed
+exit=0
