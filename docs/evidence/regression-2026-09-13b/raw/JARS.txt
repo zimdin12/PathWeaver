@@ -1,0 +1,5 @@
+Jars under test, identified before the first run, 2026-09-13T02:46:28Z.
+0.9.0 built at a695c38dfa194c429fb2ff883e30401f25480643 (main sources unchanged since; later commits touch bench, docs and tests only)
+release-0.9.0-fixed/pathweaver-0.9.0+26.1.2.jar  file-sha256 63d7d123713ef660bbbe5ae0456ca7b143ccb1c58181a4006daede0fd3e5a029  content-sha256 2f5ad7cfd99cf77e103c2d73abcd3e9430786feee6ff894a4f5c5bd119a2651d  entries 138
+0.8.0 downloaded from Modrinth: sha512 f7aba38b5c016c49266bddbd32cef160700c4fd01bae3cf9980093b6d936efb2d70e5a8150a26ef95250bb53e526a74b88d15024869f15ec0962dcc252db0379
+  sha256 033b0b811f7b4e25f5e094188ed0cb49e77b1007b40c921926787ee9888261f5
