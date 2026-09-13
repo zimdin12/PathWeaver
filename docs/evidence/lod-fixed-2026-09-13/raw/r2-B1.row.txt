@@ -1,0 +1,2 @@
+r2-B1                  async=true  lod=off churn=on  zombies=400/400 chainTicks=1577 carpetSeen=0/6 dispatched=5105 at=100s
+  ticks: 5.1/6.1/7.5/23.3; 4.6/6.2/7.5/23.3

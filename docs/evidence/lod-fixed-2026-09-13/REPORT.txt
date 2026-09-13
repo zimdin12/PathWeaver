@@ -1,0 +1,25 @@
+attempt         valid     tick recompute workerFind dispatched mspt50 mspt95  gate
+r1-A1           yes      10640      1432         0          0    9.1   13.1  ok
+r1-A2           yes      10020      1128         0          0    8.4   12.4  ok
+r1-A3           yes       8752    ABSENT         0          0    7.2    9.8  ok
+r1-A4           yes       8636    ABSENT         0          0    7.4   10.0  ok
+r1-B1           yes       8568       172      2288       5391    7.4    9.5  ok
+r1-B2           yes       9020        64      1576       4380    7.3    9.4  ok
+r2-A1           yes       9980      1640         0          0    8.4   12.2  ok
+r2-A2           yes       9708       912         0          0    8.1   11.9  ok
+r2-A3           yes       9224    ABSENT         0          0    7.5   10.3  ok
+r2-A4           yes       9188    ABSENT         0          0    7.7   10.5  ok
+r2-B1           yes       7456       148      1832       5105    6.2    7.5  ok
+r2-B2           yes       8936        40      1720       4465    7.5    9.7  ok
+
+P1   r1   PASS        A1 1432 ms, A3 ABSENT ms
+P2   r1   PASS        A3 ABSENT ms, A4 ABSENT ms
+P3   r1   PASS        A2/A1 = 1128/1432 = 0.788  (window 0.45-0.85; mechanism predicts 0.525)
+P4a  r1   PASS        dispatched B1 5391 (r1-B1), B2 4380 (r1-B2): 18.8% fewer
+P4b  r1   PASS        worker findPath B1 2288 ms, B2 1576 ms: 31.1% less
+P1   r2   PASS        A1 1640 ms, A3 ABSENT ms
+P2   r2   PASS        A3 ABSENT ms, A4 ABSENT ms
+P3   r2   PASS        A2/A1 = 912/1640 = 0.556  (window 0.45-0.85; mechanism predicts 0.525)
+P4a  r2   PASS        dispatched B1 5105 (r2-B1), B2 4465 (r2-B2): 12.5% fewer
+P4b  r2   PASS        worker findPath B1 1832 ms, B2 1720 ms: 6.1% less
+P4c  both PASS        median MSPT B1 [7.4, 6.2] vs B2 [7.3, 7.5]; gap per round ['0.10', '1.30'] against same-arm drift 1.20; predicted NOT to separate

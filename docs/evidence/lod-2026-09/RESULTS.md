@@ -59,7 +59,8 @@ never by LOD. The data cannot say which of the two dominates.
 in a running game.** *Update 2026-09-13: since observed and fixed. `LodDeferralGameTest` failed on the
 tagged code with exactly this cause, passed with the flag set before cancelling, failed again with only
 that line reverted, and passed restored; see `docs/evidence/lod-deferral-2026-09-13/`. This campaign
-measured the defective hook, and the rerun on the fixed jar supersedes it for LOD's size.* The project
+measured the defective hook, and the rerun on the fixed jar, `docs/evidence/lod-fixed-2026-09-13/`,
+supersedes it for LOD's size.* The project
 page, the changelog and the in-game tooltip all described LOD as delaying a refresh "up to" the interval,
 and for a change that is not repeated that was false until the fix.
 

@@ -1,0 +1,6 @@
+P3b  r1   PASS        A2/A1 = 0.788, must be above 0.370
+P4d  r1   PASS        B2 dispatched 18.8% fewer than B1, at most 30%
+P5   r1   PASS        A2 (r1-A2) recompute 1128 ms = search 1096 + overhead 32; overhead must be under 150
+P3b  r2   PASS        A2/A1 = 0.556, must be above 0.370
+P4d  r2   PASS        B2 dispatched 12.5% fewer than B1, at most 30%
+P5   r2   PASS        A2 (r2-A2) recompute 912 ms = search 816 + overhead 96; overhead must be under 150

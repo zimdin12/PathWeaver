@@ -1,0 +1,10 @@
+r1-A1          tick  10640  recompute   1432 = search   1364 + overhead    68   search outside    596
+r1-A2          tick  10020  recompute   1128 = search   1096 + overhead    32   search outside    520
+r1-A3          tick   8752  recompute      0 = search      0 + overhead     0   search outside    404
+r1-A4          tick   8636  recompute      0 = search      0 + overhead     0   search outside    492
+r2-A1          tick   9980  recompute   1640 = search   1580 + overhead    60   search outside    452
+r2-A2          tick   9708  recompute    912 = search    816 + overhead    96   search outside    580
+r2-A3          tick   9224  recompute      0 = search      0 + overhead     0   search outside    544
+r2-A4          tick   9188  recompute      0 = search      0 + overhead     0   search outside    540
+r1  A2/A1  recompute 0.788 | search inside 0.804 | overhead inside 0.471 | search outside 0.872
+r2  A2/A1  recompute 0.556 | search inside 0.516 | overhead inside 1.600 | search outside 1.283

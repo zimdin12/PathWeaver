@@ -154,9 +154,11 @@ It ships off because it is the one thing here that does not give a mob the path 
 anyway. A throttled mob keeps walking an out-of-date route for longer after the ground under it
 changes. Worth turning on for mob farms, penned herds near redstone, or a high simulation distance.
 
-There is no benchmark number for it on this page. What it saves depends on how much terrain changes
-around mobs nobody is standing near, which is a property of your world, and for a mob in quiet
-surroundings it saves nothing because the game never redoes its search at all.
+The only number for it is a best case. In a test built to favour it, 400 zombies at least 70 blocks
+from the player with terrain changing among them all the time, it cut the path searches PathWeaver
+started by 13 to 19% and did not measurably change tick time. What it saves on your server depends on how
+much terrain changes around mobs nobody is standing near, and for a mob in quiet surroundings it saves
+nothing, because the game never redoes its search at all.
 
 ### Route sharing
 

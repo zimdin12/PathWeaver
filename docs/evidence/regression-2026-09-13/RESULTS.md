@@ -1,5 +1,8 @@
 # Regression check on the tagged 0.9.0: inconclusive
 
+*Superseded 2026-09-13 by `docs/evidence/regression-2026-09-13b/`, which repeated it on the release jar with
+the machine recorded, and concluded: no regression, and the page's 6-10% holds. This file is kept as it was.*
+
 Run 2026-09-12 21:45-22:20 UTC. Judged by `bench/regression_report.py` against `PREREGISTRATION.md`,
 which was committed first. **No conclusion about 0.9.0 against 0.8.0, or about the page's 6-10%, can be
 drawn from this run.** It has to be repeated on a quiet machine.

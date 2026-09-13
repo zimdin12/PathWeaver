@@ -1,0 +1,74 @@
+=== r1-A1  async=false lod=off churn=on  02:46:57
+  jar under test sha256 63d7d123713ef660
+label=r1-A1 jar=pathweaver-0.9.0+26.1.2.jar async=false lod=off churn=on mobs=400 profile=60s
+  server up at 39s
+r1-A1                  async=false lod=off churn=on  zombies=400/400 chainTicks=1595 carpetSeen=6/6 dispatched=0 at=101s
+  ticks: 5.7/9.2/13.5/15.8; 5.6/9.1/13.1/27.1
+=== r1-A2  async=false lod=on churn=on  02:49:48
+  jar under test sha256 63d7d123713ef660
+label=r1-A2 jar=pathweaver-0.9.0+26.1.2.jar async=false lod=on churn=on mobs=400 profile=60s
+  server up at 40s
+r1-A2                  async=false lod=on  churn=on  zombies=400/400 chainTicks=1594 carpetSeen=2/6 dispatched=0 at=101s
+  ticks: 5.5/8.5/13.1/28.3; 5.5/8.4/12.4/28.3
+=== r1-A3  async=false lod=off churn=off  02:52:38
+  jar under test sha256 63d7d123713ef660
+label=r1-A3 jar=pathweaver-0.9.0+26.1.2.jar async=false lod=off churn=off mobs=400 profile=60s
+  server up at 40s
+r1-A3                  async=false lod=off churn=off zombies=400/400 chainTicks=1593 carpetSeen=0/6 dispatched=0 at=100s
+  ticks: 5.2/7.3/9.8/23.7; 5.0/7.2/9.8/23.7
+=== r1-A4  async=false lod=on churn=off  02:55:28
+  jar under test sha256 63d7d123713ef660
+label=r1-A4 jar=pathweaver-0.9.0+26.1.2.jar async=false lod=on churn=off mobs=400 profile=60s
+  server up at 38s
+r1-A4                  async=false lod=on  churn=off zombies=400/400 chainTicks=1615 carpetSeen=0/6 dispatched=0 at=98s
+  ticks: 5.2/7.0/9.5/21.7; 5.1/7.4/10.0/21.7
+=== r1-B1  async=true lod=off churn=on  02:58:15
+  jar under test sha256 63d7d123713ef660
+label=r1-B1 jar=pathweaver-0.9.0+26.1.2.jar async=true lod=off churn=on mobs=400 profile=60s
+  server up at 38s
+r1-B1                  async=true  lod=off churn=on  zombies=400/400 chainTicks=1594 carpetSeen=6/6 dispatched=5391 at=100s
+  ticks: 5.6/7.2/9.2/11.7; 5.2/7.4/9.5/24.3
+=== r1-B2  async=true lod=on churn=on  03:01:05
+  jar under test sha256 63d7d123713ef660
+label=r1-B2 jar=pathweaver-0.9.0+26.1.2.jar async=true lod=on churn=on mobs=400 profile=60s
+  server up at 38s
+r1-B2                  async=true  lod=on  churn=on  zombies=400/400 chainTicks=1592 carpetSeen=4/6 dispatched=4380 at=99s
+  ticks: 4.8/7.2/9.1/25.2; 4.8/7.3/9.4/25.2
+=== r2-A2  async=false lod=on churn=on  03:03:54
+  jar under test sha256 63d7d123713ef660
+label=r2-A2 jar=pathweaver-0.9.0+26.1.2.jar async=false lod=on churn=on mobs=400 profile=60s
+  server up at 39s
+r2-A2                  async=false lod=on  churn=on  zombies=400/400 chainTicks=1575 carpetSeen=4/6 dispatched=0 at=100s
+  ticks: 5.2/8.0/11.6/34.5; 5.2/8.1/11.9/34.5
+=== r2-A1  async=false lod=off churn=on  03:06:42
+  jar under test sha256 63d7d123713ef660
+label=r2-A1 jar=pathweaver-0.9.0+26.1.2.jar async=false lod=off churn=on mobs=400 profile=60s
+  server up at 40s
+r2-A1                  async=false lod=off churn=on  zombies=400/400 chainTicks=1593 carpetSeen=0/6 dispatched=0 at=101s
+  ticks: 4.8/8.0/12.1/37.3; 4.8/8.4/12.2/37.3
+=== r2-A4  async=false lod=on churn=off  03:09:32
+  jar under test sha256 63d7d123713ef660
+label=r2-A4 jar=pathweaver-0.9.0+26.1.2.jar async=false lod=on churn=off mobs=400 profile=60s
+  server up at 40s
+r2-A4                  async=false lod=on  churn=off zombies=400/400 chainTicks=1593 carpetSeen=0/6 dispatched=0 at=100s
+  ticks: 5.4/7.5/10.0/24.2; 5.4/7.7/10.5/24.2
+=== r2-A3  async=false lod=off churn=off  03:12:21
+  jar under test sha256 63d7d123713ef660
+label=r2-A3 jar=pathweaver-0.9.0+26.1.2.jar async=false lod=off churn=off mobs=400 profile=60s
+  server up at 39s
+r2-A3                  async=false lod=off churn=off zombies=400/400 chainTicks=1615 carpetSeen=0/6 dispatched=0 at=99s
+  ticks: 5.9/7.8/10.0/29.2; 5.3/7.5/10.3/29.2
+=== r2-B2  async=true lod=on churn=on  03:15:10
+  jar under test sha256 63d7d123713ef660
+label=r2-B2 jar=pathweaver-0.9.0+26.1.2.jar async=true lod=on churn=on mobs=400 profile=60s
+  server up at 39s
+r2-B2                  async=true  lod=on  churn=on  zombies=400/400 chainTicks=1614 carpetSeen=6/6 dispatched=4465 at=99s
+  ticks: 5.2/7.2/9.9/22.5; 5.1/7.5/9.7/22.5
+=== r2-B1  async=true lod=off churn=on  03:17:58
+  jar under test sha256 63d7d123713ef660
+label=r2-B1 jar=pathweaver-0.9.0+26.1.2.jar async=true lod=off churn=on mobs=400 profile=60s
+  server up at 40s
+r2-B1                  async=true  lod=off churn=on  zombies=400/400 chainTicks=1577 carpetSeen=0/6 dispatched=5105 at=100s
+  ticks: 5.1/6.1/7.5/23.3; 4.6/6.2/7.5/23.3
+=== campaign complete 03:20:46
+lod-campaign-exit=0

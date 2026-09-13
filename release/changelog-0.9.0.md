@@ -77,9 +77,11 @@ search in the first place.
 
 ## Not in this release
 
-No new benchmark numbers for the mod's core. The figures on the project page were measured for 0.9.0
-and nothing here changes what paths your mobs take when LOD is off, which is how it ships.
+No change to the mod's core numbers. This exact jar was put back through the benchmark against 0.8.0
+and against no mod: it is within 3.5% of 0.8.0 and still saves 7 to 10% of tick time on that test.
 
-There is no figure for LOD either, and it would be dishonest to invent one: what it saves depends
-entirely on how much terrain changes around mobs nobody is standing near, which is a property of your
-world rather than of this mod.
+For LOD there is only a best case. In a test built to favour it, 400 zombies at least 70 blocks from the
+player with terrain changing among them all the time, turning it on cut the path searches PathWeaver
+started by 13 to 19% and did not measurably change tick time. What it saves on your server depends on
+how much terrain changes around mobs nobody is standing near, and in a world where it does not change,
+it saves nothing.
