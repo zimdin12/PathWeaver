@@ -72,7 +72,7 @@ PathWeaver already brackets it with `pathweaver$navigationRequestDepth`: increme
 `:415`, `:440`, `:457`, `:473`, and the matching decrements at `:194`, `:231`, `:422`, `:444`, `:461`,
 `:477`. The slot is cleared wherever the depth returns to zero, so a nested request cannot clear its
 outer attempt. A synchronous `findPath` on the server thread with no current attempt is
-`UNATTRIBUTED_SYNC`: a direct `createPath` from a mod, or a vanilla caller outside the four wrappers.
+`UNATTRIBUTED_SYNC`: a direct `createPath` from a mod, or a vanilla caller outside those wrappers.
 
 ## Events
 
