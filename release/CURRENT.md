@@ -1,6 +1,15 @@
 # What the live Modrinth page currently shows
 
-**body-0.9.0.md**
+**body-0.9.0-correction-1.md**, with **changelog-0.9.0-correction-1.md** on both 0.9.0 versions.
+
+Corrected 2026-09-14 by `release/correct-0.9.0-page.py`, which read the text back from the public API
+and confirmed the summary, status, files, dependencies and featured flags did not change. The
+0.9.0 page and changelog said every feature except LOD gives a mob the path it would have had, with
+two exceptions; `repathToleranceBlocks` defaults to 1, which is a third. Found by the senior dev's
+review of the 0.10 plan. `body-0.9.0.md` and `changelog-0.9.0.md` stay as the record of what was
+first published.
+
+The original publication, for the record:
 
 Published with the 0.9.0 release on 2026-09-14 by `release/publish-0.9.0.py`, and read back from the
 public API the same day without credentials: 17 versions listed, `0.9.0+26.1.2` (game versions 26.1.1,
