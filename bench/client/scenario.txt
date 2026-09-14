@@ -1,0 +1,26 @@
+# Seconds after the player joins | command. "server <cmd>" runs as the server; anything else runs as
+# the player where the player stands. Read by bench/frameprobe ScenarioScript.
+60|time set 1000
+60|gamemode survival
+60|effect give @s minecraft:resistance infinite 255 true
+60|effect give @s minecraft:regeneration infinite 255 true
+65|server say PWMARK base
+105|server spark profiler start --thread * --not-combined
+108|server say PWMARK one
+108|summon minecraft:cat ~3 ~ ~
+108|summon minecraft:husk ~8 ~ ~
+150|server say PWMARK horde
+150|summon minecraft:husk ~8 ~ ~1
+150|summon minecraft:husk ~8 ~ ~2
+150|summon minecraft:husk ~8 ~ ~3
+150|summon minecraft:husk ~8 ~ ~4
+150|summon minecraft:husk ~8 ~ ~5
+150|summon minecraft:husk ~8 ~ ~6
+150|summon minecraft:husk ~8 ~ ~7
+150|summon minecraft:husk ~8 ~ ~8
+150|summon minecraft:husk ~8 ~ ~9
+150|summon minecraft:husk ~8 ~ ~10
+195|server say PWMARK end
+196|server spark profiler stop --save-to-file
+206|server pathweaver status
+210|server say PWMARK done

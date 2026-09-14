@@ -21,6 +21,7 @@ public final class FrameProbe implements ModInitializer {
     static final long REPORT_NANOS = 5_000_000_000L;
 
     private final Window ticks = new Window();
+    private final ScenarioScript scenario = new ScenarioScript();
     private long tickStart;
     private long lastTickReport = System.nanoTime();
 
@@ -30,6 +31,7 @@ public final class FrameProbe implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             long now = System.nanoTime();
             ticks.add(now - tickStart);
+            scenario.tick(server);
             if (now - lastTickReport >= REPORT_NANOS) {
                 int entities = 0;
                 for (var level : server.getAllLevels()) {
