@@ -49,7 +49,7 @@ public class PathWorkerPool {
             this.exec = new ThreadPoolExecutor(threads, threads, 30, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(),
                 r -> {
-                    Thread t = new Thread(r, "PathWeaver-Worker");
+                    Thread t = new PathWeaverThread.Worker(r, "PathWeaver-Worker");
                     t.setDaemon(true);
                     t.setPriority(Thread.NORM_PRIORITY - 1);
                     return t;
@@ -82,11 +82,11 @@ public class PathWorkerPool {
         try {
             generation.exec.execute(() -> {
                 PathOutcome outcome;
-                // Inside the try. ThreadLocal.set allocates on first use per thread, so this can
-                // throw under memory pressure -- and outside the try that escapes before the finally
-                // that returns the admission slot. Enough of those and the generation runs out of
-                // slots permanently, silently reverting the server to synchronous pathfinding with
-                // POOL_SATURATED as the only symptom. exitWorker is idempotent.
+                // Inside the try. A thread from any other factory is refused by throwing, and outside
+                // the try that would escape before the finally that returns the admission slot. Enough
+                // of those and the generation runs out of slots permanently, silently reverting the
+                // server to synchronous pathfinding with POOL_SATURATED as the only symptom.
+                // exitWorker is idempotent.
                 try {
                     PathWeaverThread.enterWorker();
                     // Ask before computing, not after. A request can wait several ticks for a

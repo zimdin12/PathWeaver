@@ -149,6 +149,9 @@ EXPECTED_CAUSE = {
     "pathfinder-pin-unused":
         ("theLithiumAuditUsesThatConstantAndNotAnotherDigest",
          "does not use the PathFinder pin"),
+    "hot-loop-check-reads-a-threadlocal":
+        ("thePerNodeChecksNeverTouchAThreadLocal",
+         "reach a ThreadLocal"),
 }
 
 
@@ -383,6 +386,18 @@ WITNESSES = [
         "    public static final int VANILLA_RECOMPUTE_PERIOD_TICKS = 26;",
         "*VanillaRecomputePeriodPinTest*",
         "the pinned vanilla refresh period stops matching the bytecode it was derived from",
+    ),
+    (
+        "hot-loop-check-reads-a-threadlocal",
+        "src/main/java/dev/pathweaver/async/PathWeaverThread.java",
+        "        Worker worker = currentWorker();\n"
+        "        return worker != null && worker.inSearch;",
+        "        Worker worker = currentWorker();\n"
+        "        return worker != null && worker.inSearch && !PREPARING_FOR_WORKER.get().equals(Boolean.TRUE)\n"
+        "            || worker != null && worker.inSearch;",
+        "*PathWeaverThreadHotPathTest*",
+        "the per-node worker check reads a ThreadLocal again, with identical results, so only its cost "
+        "changes",
     ),
     (
         "lod-drops-instead-of-deferring",
