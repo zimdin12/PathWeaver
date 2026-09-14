@@ -70,6 +70,8 @@ case "$ARM" in
   *) echo "unknown arm $ARM"; exit 1 ;;
 esac
 cp "$PROBE" "$MC/mods/"
+# The jar record is started here, before the added and held lines are appended to it.
+{ sha256sum "$MC"/mods/pathweaver-*.jar 2>/dev/null; echo "arm=$ARM"; } > "$OUT/jars.txt"
 # PW_ADD_MODS: space-separated jar paths added to mods/ for this run only (a disabled mod brought back to
 # test against), removed by restore().
 for added in ${PW_ADD_MODS:-}; do
@@ -84,7 +86,6 @@ for held in ${PW_HOLD_MODS:-}; do
   mv "$MC/mods/$held" "$MC/mods-pw-held/other-$held"
   echo "held out: $held" >> "$OUT/jars.txt"
 done
-{ sha256sum "$MC"/mods/pathweaver-*.jar 2>/dev/null; echo "arm=$ARM"; } > "$OUT/jars.txt"
 [ -f "$MC/config/pathweaver.json" ] && cp "$MC/config/pathweaver.json" "$OUT/config-used.json"
 # A game that pauses when it loses focus would stop the integrated server, and Dynamic FPS throttles an
 # unfocused window. Nothing here keeps the focus, so both are switched off for the run.
