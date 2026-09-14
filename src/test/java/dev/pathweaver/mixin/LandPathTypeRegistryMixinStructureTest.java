@@ -50,9 +50,26 @@ class LandPathTypeRegistryMixinStructureTest {
         }
         assertEquals(Set.of(
             "[register(Lnet/minecraft/world/level/block/Block;Lnet/fabricmc/fabric/api/registry/LandPathTypeRegistry$StaticPathTypeProvider;)V]|INVOKE|false",
-            "[registerDynamic(Lnet/minecraft/world/level/block/Block;Lnet/fabricmc/fabric/api/registry/LandPathTypeRegistry$DynamicPathTypeProvider;)V]|INVOKE|false",
-            "[getPathTypeProvider(Lnet/minecraft/world/level/block/Block;)Lnet/fabricmc/fabric/api/registry/LandPathTypeRegistry$PathTypeProvider;]|HEAD|true"
+            "[registerDynamic(Lnet/minecraft/world/level/block/Block;Lnet/fabricmc/fabric/api/registry/LandPathTypeRegistry$DynamicPathTypeProvider;)V]|INVOKE|false"
         ), Set.copyOf(hooks));
+
+        // The per-node lookup is a redirect on the one Map.get, never a cancellable inject: a
+        // cancellable inject allocates a CallbackInfoReturnable per call, on every thread, per node.
+        List<String> redirects = new ArrayList<>();
+        for (MethodNode method : node.methods) {
+            for (AnnotationNode annotation : annotations(method)) {
+                if (!annotation.desc.equals("Lorg/spongepowered/asm/mixin/injection/Redirect;")) continue;
+                assertEquals(1, (Integer) value(annotation, "require"));
+                assertEquals(1, (Integer) value(annotation, "expect"));
+                Object atRaw = value(annotation, "at");
+                AnnotationNode at = atRaw instanceof List<?> l ? (AnnotationNode) l.get(0) : (AnnotationNode) atRaw;
+                redirects.add(value(annotation, "method") + "|" + value(at, "value") + "|" + value(at, "target"));
+            }
+        }
+        assertEquals(List.of(
+            "[getPathTypeProvider(Lnet/minecraft/world/level/block/Block;)Lnet/fabricmc/fabric/api/registry/LandPathTypeRegistry$PathTypeProvider;]"
+                + "|INVOKE|Ljava/util/Map;get(Ljava/lang/Object;)Ljava/lang/Object;"
+        ), redirects, "the per-node provider lookup must be decided on its Map.get, without a cancellable inject");
     }
 
     private static List<AnnotationNode> annotations(MethodNode method) {
