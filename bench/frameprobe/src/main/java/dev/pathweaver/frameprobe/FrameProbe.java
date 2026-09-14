@@ -38,6 +38,7 @@ public final class FrameProbe implements ModInitializer {
                     for (var ignored : level.getAllEntities()) entities++;
                 }
                 LOG.info("[PWPROBE] ticks  wall={} entities={} {}", System.currentTimeMillis(), entities, ticks.drain());
+                LOG.info("[PWPROBE] paths  {}", PathCalls.drain());
                 lastTickReport = now;
             }
         });

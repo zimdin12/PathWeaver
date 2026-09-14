@@ -1,0 +1,15 @@
+{
+  "enabled": true,
+  "configVersion": 2,
+  "allowModdedMobAsync": true,
+  "compatibilityTier": "UNSAFE",
+  "trustedMods": [],
+  "poolThreads": 30,
+  "maxInFlight": 2560,
+  "brainSinkAsync": false,
+  "repathToleranceBlocks": 1,
+  "stalenessMoveThreshold": 4.0,
+  "maxResultAgeTicks": 40,
+  "workerFailureLimit": 3,
+  "workerFailureWindowTicks": 1200
+}

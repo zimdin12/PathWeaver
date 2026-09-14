@@ -10,6 +10,7 @@
 #        v090      the release 0.9.0 jar, with the player's own config
 #        v090def   the release 0.9.0 jar, with no config file (shipped defaults)
 #        cand      a candidate jar (PW_CAND), with the player's own config
+#        cfg       the release 0.9.0 jar with the config file named by PW_CONFIG_FILE
 #
 # WHY THE CLIENT. The complaint is "the moment I spawn a cat or a monster the game lags", in
 # singleplayer, where the integrated server shares a process and a CPU with the render thread. A
@@ -48,8 +49,9 @@ cp "$MC/config/dynamic_fps.json" "$OUT/dynamic_fps.json.before"
 PID=""
 restore() {
   [ -n "$PID" ] && taskkill //PID "$PID" //F >/dev/null 2>&1
-  rm -f "$MC"/mods/pathweaver-*.jar "$MC/mods/pw-frameprobe-1.0.0.jar" "$MC/pwprobe-script.txt"
+  rm -f "$MC"/mods/pathweaver-*.jar "$MC"/mods/added-*.jar "$MC/mods/pw-frameprobe-1.0.0.jar" "$MC/pwprobe-script.txt"
   mv "$MC"/mods-pw-held/pathweaver-*.jar "$MC/mods/" 2>/dev/null
+  for f in "$MC"/mods-pw-held/other-*; do [ -e "$f" ] && mv "$f" "$MC/mods/$(basename "$f" | sed 's/^other-//')"; done
   rmdir "$MC/mods-pw-held" 2>/dev/null
   cp "$PLAYER_CONFIG" "$MC/config/pathweaver.json"
   cp "$OUT/options.txt.before" "$MC/options.txt"
@@ -64,10 +66,26 @@ case "$ARM" in
   v090)    cp "${PW_V090:?}" "$MC/mods/"; cp "$PLAYER_CONFIG" "$MC/config/pathweaver.json" ;;
   v090def) cp "${PW_V090:?}" "$MC/mods/"; rm -f "$MC/config/pathweaver.json" ;;
   cand)    cp "${PW_CAND:?}" "$MC/mods/"; cp "$PLAYER_CONFIG" "$MC/config/pathweaver.json" ;;
+  cfg)     cp "${PW_V090:?}" "$MC/mods/"; cp "${PW_CONFIG_FILE:?}" "$MC/config/pathweaver.json" ;;
   *) echo "unknown arm $ARM"; exit 1 ;;
 esac
 cp "$PROBE" "$MC/mods/"
+# PW_ADD_MODS: space-separated jar paths added to mods/ for this run only (a disabled mod brought back to
+# test against), removed by restore().
+for added in ${PW_ADD_MODS:-}; do
+  [ -f "$added" ] || { echo "REFUSING: $added does not exist"; exit 3; }
+  cp "$added" "$MC/mods/added-$(basename "$added")"
+  echo "added: $(basename "$added")" >> "$OUT/jars.txt"
+done
+# PW_HOLD_MODS: space-separated jar file names held out of mods/ for this run only, to attribute a cost
+# to another mod. Held in mods-pw-held/ and put back by restore().
+for held in ${PW_HOLD_MODS:-}; do
+  [ -f "$MC/mods/$held" ] || { echo "REFUSING: $held is not in mods/"; exit 3; }
+  mv "$MC/mods/$held" "$MC/mods-pw-held/other-$held"
+  echo "held out: $held" >> "$OUT/jars.txt"
+done
 { sha256sum "$MC"/mods/pathweaver-*.jar 2>/dev/null; echo "arm=$ARM"; } > "$OUT/jars.txt"
+[ -f "$MC/config/pathweaver.json" ] && cp "$MC/config/pathweaver.json" "$OUT/config-used.json"
 # A game that pauses when it loses focus would stop the integrated server, and Dynamic FPS throttles an
 # unfocused window. Nothing here keeps the focus, so both are switched off for the run.
 sed -i 's/^pauseOnLostFocus:true/pauseOnLostFocus:false/' "$MC/options.txt"

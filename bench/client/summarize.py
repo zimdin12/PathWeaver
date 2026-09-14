@@ -60,9 +60,16 @@ def run(folder):
             "tick_p95": med([float(p.group(7)) for p in ticks]),
             "entities": med([int(p.group(3)) for p in ticks if p.group(3)]),
         }
-    status = [l.split("[CHAT]", 1)[1].strip() for l in lines if "[CHAT]" in l and
-              ("since server start" in l or "workers:" in l or "installed" in l and "§" in l or "target changed" in l
-               or "nobody wanted" in l)]
+    # The status reply reaches the log as chat when a player ran it and as plain server lines when the
+    # scenario ran it as the server; take whichever form is there, once.
+    wanted = ("since server start", "workers:", "target changed", "nobody wanted", "installed§")
+    status = []
+    for l in lines:
+        if not any(w in l for w in wanted) or "PathWeaver stats" in l:
+            continue
+        text = l.split("[CHAT]", 1)[1] if "[CHAT]" in l else l.split("]: ", 1)[-1]
+        if text.strip() not in status:
+            status.append(text.strip())
     return out, status
 
 
