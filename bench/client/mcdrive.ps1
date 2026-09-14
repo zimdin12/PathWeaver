@@ -89,16 +89,26 @@ function Focus-Game {
     [Win]::ShowWindow($hwnd, 9) | Out-Null   # SW_RESTORE
     [Win]::SetForegroundWindow($hwnd) | Out-Null
     Start-Sleep -Milliseconds 400
-    if ([Win]::GetForegroundWindow() -ne $hwnd) { Write-Output "WARN_NOT_FOREGROUND" }
+    # FAIL CLOSED. This used to warn and type anyway, and on 2026-09-14 a campaign run lost focus and
+    # typed its chat commands into the operator's terminal, where they arrived as messages. Keystrokes
+    # injected with SendInput go to whatever window is in front, so nothing is sent unless it is the game.
+    if ([Win]::GetForegroundWindow() -ne $hwnd) { Write-Output "REFUSED_NOT_FOREGROUND"; exit 3 }
+}
+
+# Checked again before EVERY key, not only once: focus can move while a command is half typed.
+function Assert-Foreground {
+    if ([Win]::GetForegroundWindow() -ne $hwnd) { Write-Output "REFUSED_NOT_FOREGROUND"; exit 3 }
 }
 
 function Press([uint16]$vk, [int]$holdMs = 40) {
+    Assert-Foreground
     [Win]::Scan($vk, $false); Start-Sleep -Milliseconds $holdMs; [Win]::Scan($vk, $true)
     Start-Sleep -Milliseconds 60
 }
 
 function Type-Text([string]$s) {
     foreach ($ch in $s.ToCharArray()) {
+        Assert-Foreground
         [Win]::Unicode($ch, $false); [Win]::Unicode($ch, $true)
         Start-Sleep -Milliseconds 18
     }

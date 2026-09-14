@@ -110,5 +110,6 @@ for i in $(seq 1 30); do tasklist //FI "PID eq $PID" | grep -q "$PID" || break; 
 cp "$MC/logs/latest.log" "$OUT/latest.log"
 newest=$(ls -t "$MC"/spark/*.sparkprofile "$MC"/config/spark/*.sparkprofile 2>/dev/null | head -1)
 [ -n "$newest" ] && [ "$(stat -c %Y "$newest")" -gt "$BEFORE" ] && cp "$newest" "$OUT/profile.sparkprofile"
+grep -q "REFUSED_NOT_FOREGROUND" "$OUT/driver.txt" && { say "VOID: the game lost focus, keystrokes were withheld"; echo VOID-focus > "$OUT/VOID"; }
 grep -q "PWMARK horde" "$OUT/latest.log" && ! grep -q "Program Files/Git" "$OUT/latest.log" || { say "VOID: chat commands did not reach the game"; echo VOID > "$OUT/VOID"; }
 say "run complete"
