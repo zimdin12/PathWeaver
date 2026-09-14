@@ -33,16 +33,27 @@ class PathfindingContextIsolationContractTest {
         redirect.setAccessible(true);
         PathfindingContextMixin receiver = new PathfindingContextMixin();
 
-        PathWeaverThread.enterWorker();
-        try {
-            Object first = redirect.invoke(receiver, new Object[]{null});
-            Object second = redirect.invoke(receiver, new Object[]{null});
-            assertInstanceOf(PathTypeCache.class, first);
-            assertInstanceOf(PathTypeCache.class, second);
-            assertNotSame(first, second, "each worker context must receive a fresh cache");
-        } finally {
-            PathWeaverThread.exitWorker();
-        }
+        // On a real worker thread: only a PathWeaver worker can enter a search.
+        AtomicReference<Object> first = new AtomicReference<>();
+        AtomicReference<Object> second = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread worker = new PathWeaverThread.Worker(() -> {
+            PathWeaverThread.enterWorker();
+            try {
+                first.set(redirect.invoke(receiver, new Object[]{null}));
+                second.set(redirect.invoke(receiver, new Object[]{null}));
+            } catch (Throwable t) {
+                failure.set(t);
+            } finally {
+                PathWeaverThread.exitWorker();
+            }
+        }, "contract-worker");
+        worker.start();
+        worker.join(5000);
+        assertNull(failure.get());
+        assertInstanceOf(PathTypeCache.class, first.get());
+        assertInstanceOf(PathTypeCache.class, second.get());
+        assertNotSame(first.get(), second.get(), "each worker context must receive a fresh cache");
         assertFalse(PathWeaverThread.isWorker());
 
         MethodNode method = redirectMethodBytecode();

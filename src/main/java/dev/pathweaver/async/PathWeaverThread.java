@@ -13,9 +13,47 @@ package dev.pathweaver.async;
  * covered regardless of which Callable was submitted.</p>
  */
 public final class PathWeaverThread {
-    // Not an inheritable ThreadLocal: worker threads are the only ones that should ever see true, and
-    // they never spawn children that do pathfinding. Default false everywhere (incl. the main thread).
-    private static final ThreadLocal<Boolean> WORKER = ThreadLocal.withInitial(() -> Boolean.FALSE);
+    /**
+     * The thread type every PathWeaver worker runs on, holding its per-search state as plain fields.
+     *
+     * <p>WHY NOT THREADLOCALS. {@link #isWorker()}, {@link #workerStepHeight()} and
+     * {@link #workerMaxFallDistance()} are called from inside the A* inner loop, once per node, in
+     * EVERY search -- including the ones PathWeaver leaves on the server thread. They used to be
+     * ThreadLocal reads. On the server thread of a large pack, whose ThreadLocalMap is crowded by
+     * every mod, that read takes the slow probing path: profiled in a 317-mod client with an MCA
+     * village, {@code ThreadLocalMap.getEntryAfterMiss} was 5.7 s of 20.6 s of synchronous search, and
+     * villagers' point-of-interest searches cost 50-70% more per call than with no PathWeaver at all.
+     * The mod was making every search it did not offload slower.
+     *
+     * <p>A type check on {@code Thread.currentThread()} costs the server thread one failed
+     * {@code instanceof} per node, and a worker reads its own fields. Every field below is written and
+     * read only by the worker thread that owns it, so none needs to be volatile.
+     */
+    public static final class Worker extends Thread {
+        private boolean inSearch;
+        private Float stepHeight;
+        private Integer maxFallDistance;
+        private net.minecraft.util.RandomSource random;
+
+        public Worker(Runnable task, String name) {
+            super(task, name);
+        }
+    }
+
+    /** The calling thread as a worker, or null when it is any other thread. */
+    private static Worker currentWorker() {
+        return Thread.currentThread() instanceof Worker worker ? worker : null;
+    }
+
+    /** The calling thread as a worker, refusing any other thread: these calls belong to a search. */
+    private static Worker requireWorker(String what) {
+        Worker worker = currentWorker();
+        if (worker == null) {
+            throw new IllegalStateException(what + " called on " + Thread.currentThread().getName()
+                + ", which is not a PathWeaver worker thread");
+        }
+        return worker;
+    }
 
     /**
      * A randomness source confined to one worker thread.
@@ -31,8 +69,7 @@ public final class PathWeaverThread {
      * sequence — Minecraft offers no reproducibility guarantee there, and trading an unobservable
      * sequence difference for a real race is the right way round.
      */
-    private static final ThreadLocal<net.minecraft.util.RandomSource> WORKER_RANDOM =
-        ThreadLocal.withInitial(net.minecraft.util.RandomSource::create);
+    // Held on Worker.random, created on first use by that worker.
 
     /**
      * Set on the MAIN thread while it runs an off-thread search's prologue.
@@ -71,17 +108,17 @@ public final class PathWeaverThread {
      * being visible to the main thread, leaving the mob's step height permanently wrong for the rest
      * of the session with nothing in the log.
      *
-     * <p>Same shape as {@link #WORKER_RANDOM}, and for the same reason: the search does not need the
+     * <p>Same shape as {@link #workerRandom()}, and for the same reason: the search does not need the
      * live value, it needs <em>a</em> value fixed for the duration. Vanilla resolves it once per
      * search anyway, microseconds after the prologue, so a value captured at dispatch is what a
      * synchronous search would have observed.
      */
-    private static final ThreadLocal<Float> WORKER_STEP_HEIGHT = new ThreadLocal<>();
+    // Held on Worker.stepHeight, boxed once at publication so the per-node read allocates nothing.
 
     /**
      * The mob's max fall distance, resolved on the main thread at dispatch.
      *
-     * <p>The same hazard as {@link #WORKER_STEP_HEIGHT} reached by a different route, and it was
+     * <p>The same hazard as the step height reached by a different route, and it was
      * missed when that one was fixed. {@code WalkNodeEvaluator.tryFindFirstGroundNodeBelow} — reached
      * from {@code getNeighbors} via {@code findAcceptedNode}, so inside the A* loop — calls
      * {@code Mob.getMaxFallDistance()}, which for a mob with a target reads {@code getMaxHealth()}
@@ -98,13 +135,14 @@ public final class PathWeaverThread {
      * reads only {@code getHealth()} ({@code SynchedEntityData}, no attribute). The redirect is on the
      * call site rather than the implementation, so it covers both regardless.
      */
-    private static final ThreadLocal<Integer> WORKER_MAX_FALL = new ThreadLocal<>();
+    // Held on Worker.maxFallDistance.
 
     private PathWeaverThread() {}
 
     /** True only while a PathWeaver worker is executing a search Callable. */
     public static boolean isWorker() {
-        return WORKER.get();
+        Worker worker = currentWorker();
+        return worker != null && worker.inSearch;
     }
 
     /**
@@ -114,7 +152,7 @@ public final class PathWeaverThread {
      * <p>This is the condition every shared-state isolation decision must use.
      */
     public static boolean searchRunsOffThread() {
-        return WORKER.get() || PREPARING_FOR_WORKER.get();
+        return isWorker() || PREPARING_FOR_WORKER.get();
     }
 
     /**
@@ -139,17 +177,20 @@ public final class PathWeaverThread {
 
     /** The calling worker's own randomness. Never call from the main thread; use the mob's own. */
     public static net.minecraft.util.RandomSource workerRandom() {
-        return WORKER_RANDOM.get();
+        Worker worker = requireWorker("workerRandom");
+        if (worker.random == null) worker.random = net.minecraft.util.RandomSource.create();
+        return worker.random;
     }
 
     /** Set by {@link PathWorkerPool} at the very start of a worker search. */
     public static void enterWorker() {
-        WORKER.set(Boolean.TRUE);
+        requireWorker("enterWorker").inSearch = true;
     }
 
     /** Cleared by {@link PathWorkerPool} in a finally after the search, so pooled threads reset cleanly. */
     public static void exitWorker() {
-        WORKER.set(Boolean.FALSE);
+        Worker worker = currentWorker();
+        if (worker != null) worker.inSearch = false;
     }
 
     /**
@@ -160,11 +201,12 @@ public final class PathWeaverThread {
      * the next mob to run on that thread.
      */
     public static void setWorkerStepHeight(float stepHeight) {
-        WORKER_STEP_HEIGHT.set(stepHeight);
+        requireWorker("setWorkerStepHeight").stepHeight = stepHeight;
     }
 
     public static void clearWorkerStepHeight() {
-        WORKER_STEP_HEIGHT.remove();
+        Worker worker = currentWorker();
+        if (worker != null) worker.stepHeight = null;
     }
 
     /**
@@ -177,16 +219,18 @@ public final class PathWeaverThread {
      * in any log to connect it to pathfinding.
      */
     public static void setWorkerMaxFallDistance(int maxFall) {
-        WORKER_MAX_FALL.set(maxFall);
+        requireWorker("setWorkerMaxFallDistance").maxFallDistance = maxFall;
     }
 
     public static void clearWorkerMaxFallDistance() {
-        WORKER_MAX_FALL.remove();
+        Worker worker = currentWorker();
+        if (worker != null) worker.maxFallDistance = null;
     }
 
     /** Null when this thread has none; the redirect then falls back to the live call. */
     public static Integer workerMaxFallDistance() {
-        return WORKER_MAX_FALL.get();
+        Worker worker = currentWorker();
+        return worker == null ? null : worker.maxFallDistance;
     }
 
     /**
@@ -199,6 +243,7 @@ public final class PathWeaverThread {
      * behaviour change, whereas the race is at least the status quo ante.
      */
     public static Float workerStepHeight() {
-        return WORKER_STEP_HEIGHT.get();
+        Worker worker = currentWorker();
+        return worker == null ? null : worker.stepHeight;
     }
 }
