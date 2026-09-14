@@ -23,7 +23,14 @@ class LandProviderLookupRedirectTest {
         Method handler = LandPathTypeRegistryMixin.class.getDeclaredMethod(
             "pathweaver$keepWorkerOutOfLiveProviderMap", Map.class, Object.class);
         handler.setAccessible(true);
-        return handler.invoke(null, map, block);
+        try {
+            return handler.invoke(null, map, block);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            // Unwrapped, so a failure names its cause rather than the reflection that carried it.
+            if (e.getCause() instanceof Exception ex) throw ex;
+            if (e.getCause() instanceof Error err) throw err;
+            throw e;
+        }
     }
 
     @Test
