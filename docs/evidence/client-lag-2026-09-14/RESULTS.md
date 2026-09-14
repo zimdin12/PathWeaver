@@ -99,12 +99,13 @@ to 4.11 ms per call across six runs.
 ## What stands, and on what
 
 - **The defect is gone from the code.** PROVEN in the bytecode: `PathWeaverThreadHotPathTest` finds no
-  path from the per-node checks to a ThreadLocal, and `LandPathTypeRegistryMixinStructureTest` requires a
-  redirect and no cancellable inject on the provider lookup. Both carry four-state witnesses
-  (`hot-loop-check-reads-a-threadlocal`, `worker-reads-the-live-provider-map`), each watched failing
-  for its own reason when the fix was reverted.
+  path from the per-node checks to a ThreadLocal (witness `hot-loop-check-reads-a-threadlocal`), and
+  `LandPathTypeRegistryMixinStructureTest` requires a redirect and no cancellable inject on the provider
+  lookup (witness `provider-lookup-allocates-per-node`). Each witness puts the old code back and watches
+  its test fail for that reason.
 - **The fixes preserve behaviour.** PASSES IN TESTS: `LandProviderLookupRedirectTest` pins both answers
-  of the lookup, off a worker and on one; the unit suite and the Fabric-aggregate game test pass.
+  of the lookup, off a worker and on one (witness `worker-reads-the-live-provider-map`); the unit suite
+  and the Fabric-aggregate game test pass.
 - **Villager search costs about what it costs without PathWeaver again.** Measured on the outcome, in
   two preregistered series (T3, H2), on one world and one machine. Not measured: any other world, and the
   size of the gain on a dedicated server.

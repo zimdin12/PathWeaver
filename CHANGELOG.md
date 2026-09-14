@@ -4,12 +4,15 @@
 
 ### Measured
 
-**No regression, and the 6-10% holds for this jar.** The page's figure was first measured on an earlier
-0.9.0 build. The release jar was put through the same ladder against the 0.8.0 file from Modrinth and
+**No regression, measured on the jar that ships.** The ladder against the 0.8.0 file from Modrinth and
 against no mod, two rounds, the second reversed, with the machine's background load recorded: 0.9.0 is
-within 3.5% of 0.8.0 at every busy rung, and saves 9.6%, 8.2% and 7.1% of tick at 2500, 5000 and 10000
-zombies. A first attempt was voided by load on the machine that nobody had recorded, and is kept.
-`docs/evidence/regression-2026-09-13b/`; the original method is in `docs/PERFORMANCE-2026-09.md`.
+0.8 to 4.7% faster than 0.8.0 at every busy rung in both rounds (below what the method resolves, so not
+claimed), and saves 7.8%, 9.1% and 5.2% of tick at 2500, 5000 and 10000 zombies.
+`docs/evidence/regression-2026-09-14/`. The same ladder on the build before the hot-path fixes below
+measured 9.6%, 8.2% and 7.1% (`docs/evidence/regression-2026-09-13b/`); the fixes were predicted not to
+move this benchmark and moved it by under 2 points in both directions. A first attempt on that build was
+voided by load on the machine that nobody had recorded, and is kept. The method is in
+`docs/PERFORMANCE-2026-09.md`.
 
 **Distance LOD, in a scenario built to favour it.** 400 zombies 70 to 110 blocks from the player, terrain
 changing among them every two ticks. With the mod's shipped settings and LOD switched on, 13 to 19% fewer
@@ -25,6 +28,29 @@ The first LOD campaign is also kept, because it is how the defect below was foun
 33 witnesses, each a four-state run: green, then cause-specific red on reverting exactly the
 production change, then green again on restoring it. 509 unit tests across 67 suites. Nine game-test
 harnesses, one attempt each, no reruns. Both branches.
+
+### The per-node path stops charging searches PathWeaver does not take
+
+Two hooks run once per node in every A* search on every thread. `PathWeaverThread.isWorker`,
+`workerStepHeight` and `workerMaxFallDistance` were ThreadLocal reads, and on a server thread with many
+thread-locals they spent their time in `ThreadLocalMap.getEntryAfterMiss`. The land path-type provider
+lookup was a cancellable `@Inject`, which allocates a `CallbackInfoReturnable` on every call. Workers are
+now `PathWeaverThread.Worker` and keep those values as fields; the lookup is a `@Redirect` on the one
+`Map.get` in Fabric's method, and off a worker it is exactly that `get`.
+
+Found in the client, chasing a report that spawning a cat or a monster made the game lag. That lag was
+Enhanced Cats: every cat near a villager asks for a path every tick, on the client and the server, and
+88% of server-thread path requests came from it. PathWeaver was not the cause (the preregistered
+prediction that it was failed), but the profiles showed synchronous search costing more with it than
+without. Villager point-of-interest search as a share of tick, three runs per arm in each of two
+series: 0.9.0 above every run with no PathWeaver in all six of its runs (24.1-30.2% against 19.7-23.5%),
+both fixes 23.1, 23.3, 26.1%.
+
+What does not stand: a number for how much of search time the hooks cost. Two instruments built for
+that were refuted by their own controls, because the JIT moves the cost between frames from run to run,
+and they are recorded as not working. The fixes are held in place by bytecode tests (no path from the
+per-node checks to a ThreadLocal; no inject on the provider lookup), each with a four-state witness.
+`docs/evidence/client-lag-2026-09-14/`.
 
 ### Cloth Config is now optional
 
