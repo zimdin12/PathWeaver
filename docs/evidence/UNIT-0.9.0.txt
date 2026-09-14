@@ -5,15 +5,15 @@ directory before anything can overwrite it, and fails closed rather than reporti
 if Gradle produced no XML or the copy came up short.
 
 The raw XML is NOT in this repository. build/ is gitignored, so it exists only on the
-machine that ran it, at build/unit-6a94a22-234328/xml/.
+machine that ran it, at build/unit-91a4586-131146/xml/.
 What is below is the parse of that XML, not a raw Gradle transcript.
 
 PathWeaver unit suite
-commit       6a94a22d7f7d4ae62747d3013c985cc14a463835
+commit       91a4586efa255395c45589f3789783b6361868a2
 command      ./gradlew test --rerun-tasks
 gradle exit  0
-raw XML      build/unit-6a94a22-234328/xml/ (kept, pass or fail)
-totals       suites=67 tests=509 failures=0 errors=0 skipped=0
+raw XML      build/unit-91a4586-131146/xml/ (kept, pass or fail)
+totals       suites=69 tests=515 failures=0 errors=0 skipped=0
 
   dev.pathweaver.LowCoreAdviceTest                               tests=7    fail=0 err=0 skip=0
   dev.pathweaver.PathWeaverRuntimeTest                           tests=6    fail=0 err=0 skip=0
@@ -23,6 +23,7 @@ totals       suites=67 tests=509 failures=0 errors=0 skipped=0
   dev.pathweaver.async.EvaluatorClonerTest                       tests=5    fail=0 err=0 skip=0
   dev.pathweaver.async.NavigationIdentityTest                    tests=1    fail=0 err=0 skip=0
   dev.pathweaver.async.PathOutcomeTest                           tests=3    fail=0 err=0 skip=0
+  dev.pathweaver.async.PathWeaverThreadHotPathTest               tests=4    fail=0 err=0 skip=0
   dev.pathweaver.async.PathWorkerPoolTest                        tests=14   fail=0 err=0 skip=0
   dev.pathweaver.async.RequestOutcomeTest                        tests=8    fail=0 err=0 skip=0
   dev.pathweaver.async.RequestTargetTest                         tests=2    fail=0 err=0 skip=0
@@ -73,6 +74,7 @@ totals       suites=67 tests=509 failures=0 errors=0 skipped=0
   dev.pathweaver.mixin.DispatchAttributionContractTest           tests=1    fail=0 err=0 skip=0
   dev.pathweaver.mixin.DispatchGatePresenceContractTest          tests=4    fail=0 err=0 skip=0
   dev.pathweaver.mixin.LandPathTypeRegistryMixinStructureTest    tests=1    fail=0 err=0 skip=0
+  dev.pathweaver.mixin.LandProviderLookupRedirectTest            tests=2    fail=0 err=0 skip=0
   dev.pathweaver.mixin.LiveMobReadCoverageContractTest           tests=6    fail=0 err=0 skip=0
   dev.pathweaver.mixin.MoveToTargetSinkContractTest              tests=2    fail=0 err=0 skip=0
   dev.pathweaver.mixin.NavigationOverrideCoverageTest            tests=3    fail=0 err=0 skip=0

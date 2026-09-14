@@ -1,5 +1,22 @@
 Correctness and honesty, plus two changes you will notice: Cloth Config is no longer required, and there is a new optional setting for distant mobs.
 
+## Searches PathWeaver leaves on the server thread no longer pay for it
+
+Some path searches stay on the server thread: villager brains that ask for a path and need the answer
+the same tick, and any mob PathWeaver decides not to take. Those searches were slower than with no
+PathWeaver at all. Two checks ran once for every node of every search, on every thread, including the
+ones they had nothing to say about: a thread-local lookup, and a hook that created a small object on
+every call. Both are in 0.8.0 too; only the 0.9.0 build was measured.
+
+Both are gone. In a 317-mod client with a village, villager point-of-interest searches took 24 to 30% of
+the server tick in every run with the old build, 20 to 24% with no PathWeaver, and 23 to 26% with this
+one. It is a few percent of tick, not a lag spike, but it was a cost on exactly the searches this mod
+cannot move off the thread.
+
+**If your game lags when cats are near villagers, that is Enhanced Cats, not PathWeaver.** It asks for
+a path every tick for every cat near a villager, on the client as well as the server, and it does that
+with PathWeaver removed too. Found while chasing a lag report on this release.
+
 ## Route sharing survives a settings change
 
 Switching route sharing or the master switch off and on again could leave a stored route in play across changes made while it was off. PathWeaver stops watching for block changes when either switch is off, but stored routes were only discarded when the server stopped, so a route could be handed out after terrain nobody had been watching moved underneath it.
@@ -78,7 +95,7 @@ search in the first place.
 ## Not in this release
 
 No change to the mod's core numbers. This exact jar was put back through the benchmark against 0.8.0
-and against no mod: it is within 3.5% of 0.8.0 and still saves 7 to 10% of tick time on that test.
+and against no mod: it is no slower than 0.8.0 and saves 5 to 9% of tick time at 2500 to 10000 zombies.
 
 For LOD there is only a best case. In a test built to favour it, 400 zombies at least 70 blocks from the
 player with terrain changing among them all the time, turning it on cut the path searches PathWeaver

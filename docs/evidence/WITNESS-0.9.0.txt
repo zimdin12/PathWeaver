@@ -1,6 +1,6 @@
-PathWeaver 0.9.0 witnesses, 33 entries, run at HEAD abc30945 on mc-26.2 (main and test sources as later tagged)
+PathWeaver 0.9.0 witnesses, 36 entries, run at HEAD 91a4586e on mc-26.2 branch (main and test sources as later tagged)
 
-PathWeaver 0.9.0 witnesses, 33 entries, HEAD 9e15365f3f6a93091d2915a2f309cbbdd1b50692
+PathWeaver 0.9.0 witnesses, 36 entries, HEAD 91a4586efa255395c45589f3789783b6361868a2
 
 ====================================================================================================
 expiry-parking
@@ -311,6 +311,39 @@ lod-pin-stops-tracking-vanilla
   MATCHED     dev.pathweaver.lod.VanillaRecomputePeriodPinTest#vanillaStillHoldsTheRefreshFloorOurConstantWasDerivedFrom() :: vanilla's recompute window is no longer
   3 RESTORED  exit=0 tests=2 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
 ====================================================================================================
+worker-reads-the-live-provider-map
+  file        src/main/java/dev/pathweaver/mixin/LandPathTypeRegistryMixin.java
+  expectation the lookup redirect reads the live provider map on a worker too
+  1 GREEN     exit=0 tests=2 skipped=0 failures=0 errors=0
+  0 EXPECT    aWorkerInASearchNeverReadsTheLiveMap :: 'a worker read the live provider map'  (1 matching invocation(s) in the baseline)
+  2 RED       exit=1 tests=2 skipped=0 failures=1 errors=0
+              dev.pathweaver.mixin.LandProviderLookupRedirectTest#aWorkerInASearchNeverReadsTheLiveMap()
+                org.opentest4j.AssertionFailedError: worker lookup failed: java.lang.AssertionError: a worker read the live provider map ==> expected: &lt;n
+  MATCHED     dev.pathweaver.mixin.LandProviderLookupRedirectTest#aWorkerInASearchNeverReadsTheLiveMap() :: a worker read the live provider map
+  3 RESTORED  exit=0 tests=2 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+provider-lookup-allocates-per-node
+  file        src/main/java/dev/pathweaver/mixin/LandPathTypeRegistryMixin.java
+  expectation the per-node provider lookup is a cancellable inject again, deciding the same way
+  1 GREEN     exit=0 tests=1 skipped=0 failures=0 errors=0
+  0 EXPECT    productionConfigRequiresAllThreeExactRegistryHooks :: 'allocates a CallbackInfoReturnable on every call'  (1 matching invocation(s) in the baseline)
+  2 RED       exit=1 tests=1 skipped=0 failures=1 errors=0
+              dev.pathweaver.mixin.LandPathTypeRegistryMixinStructureTest#productionConfigRequiresAllThreeExactRegistryHooks()
+                org.opentest4j.AssertionFailedError: the per-node provider lookup is an inject, which allocates a CallbackInfoReturnable on every call ==> e
+  MATCHED     dev.pathweaver.mixin.LandPathTypeRegistryMixinStructureTest#productionConfigRequiresAllThreeExactRegistryHooks() :: allocates a CallbackInfoReturnable on every call
+  3 RESTORED  exit=0 tests=1 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
+hot-loop-check-reads-a-threadlocal
+  file        src/main/java/dev/pathweaver/async/PathWeaverThread.java
+  expectation the per-node worker check reads a ThreadLocal again, with identical results, so only its cost changes
+  1 GREEN     exit=0 tests=4 skipped=0 failures=0 errors=0
+  0 EXPECT    thePerNodeChecksNeverTouchAThreadLocal :: 'reach a ThreadLocal'  (1 matching invocation(s) in the baseline)
+  2 RED       exit=1 tests=4 skipped=0 failures=1 errors=0
+              dev.pathweaver.async.PathWeaverThreadHotPathTest#thePerNodeChecksNeverTouchAThreadLocal()
+                org.opentest4j.AssertionFailedError: per-node checks reach a ThreadLocal, which costs a hash-map lookup per node in every search, synchronou
+  MATCHED     dev.pathweaver.async.PathWeaverThreadHotPathTest#thePerNodeChecksNeverTouchAThreadLocal() :: reach a ThreadLocal
+  3 RESTORED  exit=0 tests=4 skipped=0 failures=0 errors=0, file byte-identical, population matches baseline
+====================================================================================================
 lod-drops-instead-of-deferring
   file        src/main/java/dev/pathweaver/mixin/PathNavigationMixin.java
   expectation a throttled refresh is cancelled without being marked pending, so it is dropped rather than delayed
@@ -422,6 +455,9 @@ pathfinder-pin-unused
   lod-floor-stops-being-vanillas witnessed
   lod-times-itself-on-our-own-clock witnessed
   lod-pin-stops-tracking-vanilla witnessed
+  worker-reads-the-live-provider-map witnessed
+  provider-lookup-allocates-per-node witnessed
+  hot-loop-check-reads-a-threadlocal witnessed
   lod-drops-instead-of-deferring witnessed
   cloth-returns-to-the-server-path witnessed
   serializer-derived-checks      witnessed
@@ -429,4 +465,3 @@ pathfinder-pin-unused
   status-saved-capacity          witnessed
   pathfinder-pin-value           witnessed
   pathfinder-pin-unused          witnessed
-exit=0

@@ -9,9 +9,10 @@ the scratch directory are replaced with `<USER>`, `<HOME>` and `<SERVER>`; nothi
 | `1-fabricapi-only-STARTS.log` | Fabric API 0.157.0+26.2 | starts, `Done (0.887s)` |
 | `2-pathweaver-no-cloth-STARTS.log` | + PathWeaver 0.9.0+26.2, built at `6a94a22` (sha256 `13986336...`) | starts, `PathWeaver is ACTIVE: all 6 movement families can path off-thread`, `Done (0.163s)` |
 | `3-CONTROL-cloth-interface-FAILS.log` | + the same jar, one line changed | never starts |
+| `4-pathweaver-hotpath-fixes-STARTS.log` | + PathWeaver 0.9.0+26.2 at `91a4586` (sha256 `5a77d70a...`) | starts, `PathWeaver is ACTIVE: all 6 movement families can path off-thread`, `Done (0.160s)` |
 | `first-run-config.json` | | what row 2 wrote on its first run |
 
-Row 2 and the config were retaken after the LOD fix changed the shipped interval, and row 2 again on 2026-09-13 on the jar carrying the drop-not-delay fix; the config it wrote parses to the same JSON as the committed one. Row 3 is the control build, made from the earlier jar, and was not retaken: what it controls, a Cloth interface on a config enum, is untouched by the LOD fix. Row 1 has no PathWeaver in it.
+Row 2 and the config were retaken after the LOD fix changed the shipped interval, and row 2 again on 2026-09-13 on the jar carrying the drop-not-delay fix; the config it wrote parses to the same JSON as the committed one. Row 4 was added on 2026-09-14, on the jar carrying the per-node hot-path fixes, from no config file; what it wrote is identical to `first-run-config.json`. Row 3 is the control build, made from the earlier jar, and was not retaken: what it controls, a Cloth interface on a config enum, is untouched by the LOD fix. Row 1 has no PathWeaver in it.
 
 Row 3 is the reason the other two mean anything. The equivalent evidence on the 26.1.2 branch has a
 genuine before-and-after, because there the failure was found rather than constructed. On this branch

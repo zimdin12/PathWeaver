@@ -18,8 +18,8 @@ The shipped default is still `UNSAFE`, which performs no such check.
 
 ### Verified on 26.2, at the commit this jar was built from
 
-- 67 suites, 509 unit tests, 0 failures
-- 33 four-state witnesses: green, then a cause-specific red on reverting exactly the production
+- 69 suites, 515 unit tests, 0 failures
+- 36 four-state witnesses: green, then a cause-specific red on reverting exactly the production
   change, then green again on restoring it
 - One of those tests reads 26.2's own compiled `PathNavigation` and fails if its refresh window ever
   stops being the 20-tick one the LOD setting's floor is derived from
