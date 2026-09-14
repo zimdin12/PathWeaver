@@ -1,0 +1,13 @@
+c1-r1-none       base tick 30.3 fps 73.0  one tick 35.4 fps 55.6  horde tick 34.4 fps 56.7
+c1-r1-v080       base tick 24.4 fps 46.1  one tick 30.2 fps 35.7  horde tick 33.9 fps 40.9
+c1-r1-v090       base tick 24.8 fps 76.2  one tick 31.1 fps 61.4  horde tick 33.3 fps 62.1
+c1-r1-v090def    base tick 26.0 fps 94.3  one tick 30.9 fps 72.7  horde tick 32.6 fps 63.9
+c1-r2-none       base tick 29.6 fps 30.0  one tick 31.0 fps 29.4  horde tick 35.0 fps 29.8
+c1-r2-v080b      base tick 20.2 fps 30.0  one tick 26.2 fps 29.8  horde tick 27.0 fps 29.8
+c1-r2-v090       base tick 26.6 fps 70.4  one tick 33.9 fps 59.4  horde tick 33.1 fps 56.0
+c1-r2-v090def    base tick 24.9 fps 83.2  one tick 30.7 fps 62.2  horde tick 30.7 fps 60.7
+
+K0  PASS  none base tick mean 30.3 vs 29.6 ms (within 15%)
+C1  v090 is not worse than none
+C2  v090 is not worse than v080
+C3  v090 is WORSE than v090def in one

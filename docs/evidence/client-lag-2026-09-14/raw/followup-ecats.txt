@@ -1,0 +1,46 @@
+== h1-e-v090
+-- PathFinder.findPath
+      24720 ms  Render thread
+      15268 ms  Server thread
+      10316 ms  PathWeaver-Worker
+== h1-e-cand
+-- PathFinder.findPath
+      12196 ms  Server thread
+       6764 ms  PathWeaver-Worker
+       5516 ms  Render thread
+== h1-e2-cand
+-- PathFinder.findPath
+      11300 ms  Server thread
+       6508 ms  PathWeaver-Worker
+       3396 ms  Render thread
+== h1-e2-v090
+-- PathFinder.findPath
+      15488 ms  Server thread
+       9492 ms  PathWeaver-Worker
+       4944 ms  Render thread
+== h1-e-v090  added: EnhancedCats-26.1.x-1.0.1-variantfix.jar
+   phase      fps   frame50   frame95   >50ms%  tickmean   tick50   tick95 entities
+   base      21.5      44.1      65.5     32.3      25.5     23.5     41.9      494
+   one       32.2      36.0      54.1     23.1      34.3     31.1     51.4      491
+   horde     27.9      34.0      47.8      4.1      33.1     31.9     49.9      496
+== h1-e-cand  added: EnhancedCats-26.1.x-1.0.1-variantfix.jar
+   phase      fps   frame50   frame95   >50ms%  tickmean   tick50   tick95 entities
+   base      30.0      33.3      33.7      0.0      19.7     18.6     31.0      490
+   one       29.0      33.4      39.4      0.0      27.2     25.3     41.0      484
+   horde     28.9      33.5      38.9      0.5      27.2     25.6     42.5      490
+== h1-e2-cand  added: EnhancedCats-26.1.x-1.0.1-variantfix.jar
+   phase      fps   frame50   frame95   >50ms%  tickmean   tick50   tick95 entities
+   base      30.0      33.3      33.6      0.0      20.7     19.6     31.6      495
+   one       29.8      33.4      34.5      0.1      25.4     23.5     40.6      488
+   horde     29.7      33.4      35.8      0.3      27.1     25.8     39.6      504
+== h1-e2-v090  added: EnhancedCats-26.1.x-1.0.1-variantfix.jar
+   phase      fps   frame50   frame95   >50ms%  tickmean   tick50   tick95 entities
+   base      30.0      33.3      33.6      0.0      21.6     20.4     32.9      488
+   one       30.0      33.4      34.5      0.1      27.7     26.4     46.0      490
+   horde     29.8      33.4      34.9      0.0      30.7     29.0     46.9      496
+background load = total CPU % - java share; flag when a run's median is more than 8 points from the campaign median (33.2%)
+  h1-e2-cand        33.3%  over  26 samples  ok
+  h1-e2-v090        33.2%  over  25 samples  ok
+Q5 PASS: no run's background moved
+7d5fb0ed158fc49edb33596ce953d31d1e7f306ca17382705314947c365baddc *h1-e2-cand/profile.sparkprofile
+be953222aff89519c6aa72852a741a50e424bc1461e7347eb6f738e40bd7e9a6 *h1-e2-v090/profile.sparkprofile

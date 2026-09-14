@@ -1,0 +1,15 @@
+run           tick ms  sync ms  TL share    POI pts   tick one tick horde
+t1-r1-none      49140    13360      0.0%       21.3       25.2       26.2
+t1-r1-v090      69000    17416      0.0%       24.7       32.6       43.3
+t1-r1-cand      68096    17888      0.0%       25.4       32.4       42.3
+t1-r2-none      66232    16860      0.0%       19.7       37.8       29.3
+t1-r2-v090      72644    22552     22.5%       30.2       36.1       41.7
+t1-r2-cand      61352    14684      0.0%       23.4       34.7       31.8
+t1-r3-none      55048    16100      0.0%       21.1       30.7       32.4
+t1-r3-v090      47380    13560      0.0%       28.1       25.9       26.9
+t1-r3-cand      43408    10664      0.0%       24.0       22.8       26.3
+
+T1  FAIL        v090 ThreadLocal share of synchronous search: 0.0%, 22.5%, 0.0% (each must be >= 10%)
+T2  PASS        cand ThreadLocal share: 0.0%, 0.0%, 0.0% (each must be < 2%)
+T3  PASS        POI search share of tick, medians: none 21.1, v090 28.1, cand 24.0 points (cand within 3 of none, v090 more than 3 above)
+T4  reported    median tick mean, one / horde: none 30.7 / 29.3, v090 32.6 / 41.7, cand 32.4 / 31.8 ms
