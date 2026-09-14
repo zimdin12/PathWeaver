@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "dev.pathweaver.frameprobe.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": ["MinecraftFrameMixin"],
+  "injectors": { "defaultRequire": 1 }
+}

@@ -25,3 +25,6 @@ logs/
 run/
 __pycache__/
 *.pyc
+bench/client-runs/
+bench/frameprobe/build/
+bench/frameprobe/.gradle/
