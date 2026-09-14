@@ -44,12 +44,16 @@ Not preregistered. Each is one run; they located the cause, and the series after
 
 - `e2-none` / `e2-v090` (Enhanced Cats in) against `e3-noecats-none` / `e3-noecats-v090` (held out).
   Frames over 50 ms in the one phase: 4.1 and 3.7% with Enhanced Cats, 0.1 and 0.2% without.
-- With Enhanced Cats (`e2-v090`), 88% of server-thread path requests came from its two cat behaviours
-  (184,960 villagers sent towards a cat, 90,496 cats sent after fish, of 312,753; the probe attributes
-  every 32nd call). 88.5% of PathWeaver's dispatched searches were superseded before they finished;
-  without Enhanced Cats (`e3-noecats-v090`), 0.1%.
-- Superseded requests do not fall back to synchronous search at any real cost: synchronous searches
-  that went through PathWeaver's gate were 1.5-1.7% of synchronous search time (`fallback.py`).
+- With Enhanced Cats (`e2-v090`), an estimated 88% of server-thread path requests came from two of its
+  behaviours: about 184,960 villagers sent towards a cat and 90,496 cats sent after fish, of 312,753.
+  The probe counts every entry but attributes only every 32nd, so the per-behaviour figures are
+  estimates. 88.5% of PathWeaver's dispatched requests ended with the outcome "target changed"; without
+  Enhanced Cats (`e3-noecats-v090`), 0.1%. That outcome means the main thread replaced the request's
+  registration. It does not say whether the search had not started, was running, or had already
+  finished and was waiting to be drained, so it is not a measure of wasted worker time.
+- Synchronous searches wrapped by PathWeaver were 1.5-1.7% of sampled synchronous search time in these
+  two profiles (`fallback.py`). That reader does not identify why a search ran synchronously, so it
+  says nothing specific about superseded requests.
 - The run script overwrote its record of mods held out, so `e3`'s `jars.txt` does not say Enhanced Cats
   was held. The game's own mod list does: `enhanced-cats 1.0.1` is listed in both `e2` logs and in
   neither `e3` log. Fixed in bae221a.
