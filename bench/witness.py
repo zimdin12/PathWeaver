@@ -155,6 +155,9 @@ EXPECTED_CAUSE = {
     "worker-reads-the-live-provider-map":
         ("aWorkerInASearchNeverReadsTheLiveMap",
          "a worker read the live provider map"),
+    "provider-lookup-allocates-per-node":
+        ("productionConfigRequiresAllThreeExactRegistryHooks",
+         "allocates a CallbackInfoReturnable on every call"),
 }
 
 
@@ -397,6 +400,48 @@ WITNESSES = [
         "        if (!PathWeaverThread.isWorker() || liveProviders.get(block) != null || true) return liveProviders.get(block);",
         "*LandProviderLookupRedirectTest*",
         "the lookup redirect reads the live provider map on a worker too",
+    ),
+    (
+        "provider-lookup-allocates-per-node",
+        "src/main/java/dev/pathweaver/mixin/LandPathTypeRegistryMixin.java",
+        "    @Redirect(\n"
+        "        method = \"getPathTypeProvider(Lnet/minecraft/world/level/block/Block;)Lnet/fabricmc/fabric/api/registry/LandPathTypeRegistry$PathTypeProvider;\",\n"
+        "        at = @At(value = \"INVOKE\",\n"
+        "            target = \"Ljava/util/Map;get(Ljava/lang/Object;)Ljava/lang/Object;\"),\n"
+        "        require = 1,\n"
+        "        expect = 1)\n"
+        "    private static Object pathweaver$keepWorkerOutOfLiveProviderMap(Map<?, ?> liveProviders, Object block) {\n"
+        "        // isWorker(), not searchRunsOffThread(): provider lookups happen in getPathType during the\n"
+        "        // search itself, never in the prologue the main thread runs on a worker's behalf. The\n"
+        "        // prologue only builds a PathfindingContext, which resolves no path types. If that ever\n"
+        "        // changes, this needs the destination-based check for the same reason the cache isolation\n"
+        "        // did -- a main-thread lookup would reach the live provider map on a worker's behalf.\n"
+        "        if (!PathWeaverThread.isWorker()) return liveProviders.get(block);\n"
+        "        FabricLandPathRegistryLatch.recordWorkerProviderLookupBypass();\n"
+        "        // Serve the frozen answer for certified blocks. Returning null here would mean \"no rule\n"
+        "        // exists\", which is the wrong answer once a mod has registered one, and is exactly how a\n"
+        "        // mob would be routed over a block the mod marked dangerous.\n"
+        "        return block instanceof Block b && CertifiedLandProviders.isCertified(b)\n"
+        "            ? CertifiedLandProviders.frozenProvider()\n"
+        "            : null;\n"
+        "    }\n",
+        "    @Inject(\n"
+        "        method = \"getPathTypeProvider(Lnet/minecraft/world/level/block/Block;)Lnet/fabricmc/fabric/api/registry/LandPathTypeRegistry$PathTypeProvider;\",\n"
+        "        at = @At(\"HEAD\"),\n"
+        "        cancellable = true,\n"
+        "        require = 1,\n"
+        "        expect = 1)\n"
+        "    private static void pathweaver$keepWorkerOutOfLiveProviderMap(\n"
+        "            Block block,\n"
+        "            org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<LandPathTypeRegistry.PathTypeProvider> cir) {\n"
+        "        if (!PathWeaverThread.isWorker()) return;\n"
+        "        FabricLandPathRegistryLatch.recordWorkerProviderLookupBypass();\n"
+        "        cir.setReturnValue(CertifiedLandProviders.isCertified(block)\n"
+        "            ? CertifiedLandProviders.frozenProvider()\n"
+        "            : null);\n"
+        "    }\n",
+        "*LandPathTypeRegistryMixinStructureTest*",
+        "the per-node provider lookup is a cancellable inject again, deciding the same way",
     ),
     (
         "hot-loop-check-reads-a-threadlocal",

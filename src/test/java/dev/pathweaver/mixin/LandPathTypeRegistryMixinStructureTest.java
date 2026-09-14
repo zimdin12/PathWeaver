@@ -48,6 +48,11 @@ class LandPathTypeRegistryMixinStructureTest {
                 hooks.add(selector + "|" + atValue(at) + "|" + cancellable);
             }
         }
+        // Checked before the full set, so a lookup inject that comes back is named for what it costs
+        // rather than reported as one more unexpected hook.
+        List<String> lookupInjects = hooks.stream().filter(h -> h.startsWith("[getPathTypeProvider(")).toList();
+        assertEquals(List.of(), lookupInjects,
+            "the per-node provider lookup is an inject, which allocates a CallbackInfoReturnable on every call");
         assertEquals(Set.of(
             "[register(Lnet/minecraft/world/level/block/Block;Lnet/fabricmc/fabric/api/registry/LandPathTypeRegistry$StaticPathTypeProvider;)V]|INVOKE|false",
             "[registerDynamic(Lnet/minecraft/world/level/block/Block;Lnet/fabricmc/fabric/api/registry/LandPathTypeRegistry$DynamicPathTypeProvider;)V]|INVOKE|false"
