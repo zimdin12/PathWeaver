@@ -152,6 +152,9 @@ EXPECTED_CAUSE = {
     "hot-loop-check-reads-a-threadlocal":
         ("thePerNodeChecksNeverTouchAThreadLocal",
          "reach a ThreadLocal"),
+    "worker-reads-the-live-provider-map":
+        ("aWorkerInASearchNeverReadsTheLiveMap",
+         "a worker read the live provider map"),
 }
 
 
@@ -386,6 +389,14 @@ WITNESSES = [
         "    public static final int VANILLA_RECOMPUTE_PERIOD_TICKS = 26;",
         "*VanillaRecomputePeriodPinTest*",
         "the pinned vanilla refresh period stops matching the bytecode it was derived from",
+    ),
+    (
+        "worker-reads-the-live-provider-map",
+        "src/main/java/dev/pathweaver/mixin/LandPathTypeRegistryMixin.java",
+        "        if (!PathWeaverThread.isWorker()) return liveProviders.get(block);",
+        "        if (!PathWeaverThread.isWorker() || liveProviders.get(block) != null || true) return liveProviders.get(block);",
+        "*LandProviderLookupRedirectTest*",
+        "the lookup redirect reads the live provider map on a worker too",
     ),
     (
         "hot-loop-check-reads-a-threadlocal",

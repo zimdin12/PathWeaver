@@ -9,7 +9,9 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.Redirect;
+
+import java.util.Map;
 
 /**
  * Publishes provider mutation before the live map changes and keeps workers out of that map.
@@ -69,27 +71,36 @@ abstract class LandPathTypeRegistryMixin {
         FabricLandPathRegistryLatch.beforeProviderMutation();
     }
 
-    @Inject(
+    /**
+     * Keep a worker out of the live provider map, without costing the server thread anything.
+     *
+     * <p>{@code getPathTypeProvider} is reached once per node from Fabric's node-type hook, in every
+     * search on every thread. It used to carry a cancellable {@code @Inject} at HEAD, and a cancellable
+     * inject allocates a {@code CallbackInfoReturnable} on every call, on every thread, including the
+     * server thread's own synchronous searches that this hook has nothing to say about. Profiled in a
+     * 317-mod client, that and the ThreadLocal read it made came to 10-30% of all synchronous search
+     * time. Fabric's body is a single {@code PATH_TYPES.get(block)}, so the decision now sits on that
+     * one call: a static redirect, no allocation, and a non-worker thread does exactly what Fabric does.
+     */
+    @Redirect(
         method = "getPathTypeProvider(Lnet/minecraft/world/level/block/Block;)Lnet/fabricmc/fabric/api/registry/LandPathTypeRegistry$PathTypeProvider;",
-        at = @At("HEAD"),
-        cancellable = true,
+        at = @At(value = "INVOKE",
+            target = "Ljava/util/Map;get(Ljava/lang/Object;)Ljava/lang/Object;"),
         require = 1,
         expect = 1)
-    private static void pathweaver$keepWorkerOutOfLiveProviderMap(
-            Block block,
-            CallbackInfoReturnable<LandPathTypeRegistry.PathTypeProvider> cir) {
+    private static Object pathweaver$keepWorkerOutOfLiveProviderMap(Map<?, ?> liveProviders, Object block) {
         // isWorker(), not searchRunsOffThread(): provider lookups happen in getPathType during the
         // search itself, never in the prologue the main thread runs on a worker's behalf. The
         // prologue only builds a PathfindingContext, which resolves no path types. If that ever
         // changes, this needs the destination-based check for the same reason the cache isolation
         // did -- a main-thread lookup would reach the live provider map on a worker's behalf.
-        if (!PathWeaverThread.isWorker()) return;
+        if (!PathWeaverThread.isWorker()) return liveProviders.get(block);
         FabricLandPathRegistryLatch.recordWorkerProviderLookupBypass();
         // Serve the frozen answer for certified blocks. Returning null here would mean "no rule
         // exists", which is the wrong answer once a mod has registered one, and is exactly how a
         // mob would be routed over a block the mod marked dangerous.
-        cir.setReturnValue(CertifiedLandProviders.isCertified(block)
+        return block instanceof Block b && CertifiedLandProviders.isCertified(b)
             ? CertifiedLandProviders.frozenProvider()
-            : null);
+            : null;
     }
 }
