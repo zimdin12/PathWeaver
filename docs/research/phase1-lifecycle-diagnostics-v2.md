@@ -164,12 +164,19 @@ counted as censored, never dropped from the denominator.
 
 ## Decision inputs, all ceilings
 
-**C_D, PathWeaver server-thread overhead ceiling, per tick.** For attempts closed in the window:
-the sum of AC wall minus the sum of SY wall inside those same attempts, divided by window ticks. It
-includes every outcome, early returns included. It also includes vanilla's own non-search
-`createPath` work, the evaluator `prepare` a synchronous search would have run anyway, and the
-recorder's own cost. Each of those only inflates it. It therefore bounds from above anything D
-could remove.
+**C_D, request setup-and-delivery ceiling, per tick.** For the window: (sum of AC wall minus the
+sum of SY wall inside those same attempts) plus the wall of every `ResultInstaller.drain` call
+(`PathWeaverRuntime.java:483`, bracketed in `try/finally` as **DR DRAIN**, which contains install,
+parking, discards and every epilogue), divided by window ticks. The attempt part includes every
+outcome, early returns included, vanilla's own non-search `createPath` work and the `prepare` a
+synchronous search would have run anyway. The drain part includes vanilla's own install work. Both
+include the recorder's own cost. Each of those only inflates it.
+
+C_D bounds what D could remove **from request setup and delivery**, and that is D's whole scope.
+Other PathWeaver server-thread code falls outside it and outside D: the block-change listener, the
+brain-sink hooks in `MoveToTargetSinkMixin`, the `recomputePath` and `stop` injections, and status
+reporting. A future proposal to optimise any of those needs its own measurement; C_D says nothing
+about them.
 
 **C_S, obsolete search CPU ceiling.** Sum of W4 thread CPU (end minus begin) for keys whose
 disposition is SUPERSEDED, NAVIGATION_STOPPED, ARRIVED_STALE or INSTALL_REJECTED, or whose
@@ -190,7 +197,7 @@ or the executor queue is non-empty in at least 50% of its tick samples. Otherwis
 
 ## Decisions, written before any result
 
-**D (cheaper server-thread setup).** Threshold: **2% of that load's ABSENT-state tick mean, and at
+**D (cheaper request setup and delivery).** Threshold: **2% of that load's ABSENT-state tick mean, and at
 least 0.5 ms per tick**. If C_D is below it at every W1 and W4 load, in both rounds: **STOP D**.
 Otherwise a D investigation may be proposed, with its own preregistration, and nothing is claimed.
 
