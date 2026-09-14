@@ -1,0 +1,28 @@
+PathWeaver 0.9.0 real-client singleplayer game test (mc-26.2 branch)
+
+command      ./gradlew runClientGameTest
+commit       c54f373186683b3241fb1761a0e37a5869a25e28
+result       BUILD SUCCESSFUL: 1, PW_CLIENT DONE: 1
+
+A real client with an integrated server: searches dispatch and install on the integrated server, and
+the settings screen is drawn and captured. The lines below are the test's own report, paths removed.
+
+[17:58:05] [Server thread/INFO] (pathweaver) PathWeaver is ACTIVE: all 6 movement families can path off-thread (waived: 1 mod(s)).
+[17:58:09] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT runtime running=true
+[17:58:09] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT workers=8
+[17:58:09] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT deniedFamilies=0
+[17:58:09] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT zombie accepted=true registered=true alive=true removed=false onGround=true tick=0 pos=BlockPos{x=-10, y=101, z=-3} below=Block{minecraft:stone} path=null difficulty=NORMAL
+[17:58:09] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT bee accepted=true registered=true alive=true removed=false onGround=true tick=0 pos=BlockPos{x=-10, y=101, z=0} below=Block{minecraft:stone} path=null difficulty=NORMAL
+[17:58:09] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT drowned accepted=true registered=true alive=true removed=false onGround=true tick=0 pos=BlockPos{x=-10, y=101, z=3} below=Block{minecraft:stone} path=null difficulty=NORMAL
+[17:58:09] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT dispatchedDelta=3
+[17:58:09] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT drownedMalus 0.0 -> 6.0
+[17:58:12] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT installed=3
+[17:58:12] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT discarded=0
+[17:58:12] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT dispatched=3
+[17:58:13] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT configScreen=me.shedaniel.clothconfig2.gui.ClothConfigScreen
+[17:58:13] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT screenshot=<RUN>/screenshots/0000_pathweaver-config-general.png
+[17:58:13] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT screenshot=<RUN>/screenshots/0001_pathweaver-config-general-scrolled.png
+[17:58:13] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT category-tab-not-clickable=Worker capacity (restart required)
+[17:58:13] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT category-tab-not-clickable=Repath and result validity
+[17:58:13] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT DONE
+[17:58:13] [Server thread/INFO] (pathweaver) PathWeaver stats: dispatched=3, installed=3, discarded=0.
