@@ -22,20 +22,22 @@ bytecode scan of the real pack. It does not design the fix.
   (99 sites). 20 of those rely only on direct or same-class links.
 - **16 mods** have an every-tick Entity-target site where the same method neither checks navigation
   state nor shows a throttle hint.
-- **Only 1 mod** in the pack (enderzoology, one site) makes an every-tick request inside a loop over a
-  list. That fan-out is what made Enhanced Cats extreme. Nothing else in the pack matches it
-  statically.
+- **One detected site** (enderzoology) makes an every-tick request inside an iterator loop over a
+  list, the shape that made Enhanced Cats extreme. The loop heuristic does not see `forEach` or stream
+  loops, so this is a lower bound on fan-out sites, not a finding that fan-out is rare.
 - **The mod count overstates how many independent codebases do this.** 11 of the 21 every-tick
   Entity-target mods are one author's family: 10 `animalgarden_*` species mods plus `aquarius_libs`,
   each with its own copy of goals named like vanilla's (`ModFollowOwnerGoal`, `ModMeleeAttackGoal`,
   `ModTemptGoal`). Counted by codebase, it is 11.
-- **Vanilla does it too.** Minecraft 26.1.2 itself has 24 every-tick Entity-target sites, 19 with no
+- **Vanilla has the same call shape.** Minecraft 26.1.2 itself has 24 every-tick Entity-target sites, 19 with no
   throttle hint (for example `TemptGoal`, `OcelotAttackGoal`, the ranged attack goals and the spear
   behaviours). So a general fix would apply to vanilla mobs as well as to mods.
 
-The shape of the pack: Entity-target requests from `Goal.tick` are everywhere, and nearly all look
-like vanilla's per-mob follow and attack goals. The per-tick N-by-M fan-out that Enhanced Cats does
-is rare. Static counts say nothing about how often each site fires. See the last section.
+The shape of the pack: Entity-target request sites in `Goal.tick` are common, and nearly all look
+like vanilla's per-mob follow and attack goals. These are candidate sites. "Every tick" here means the
+call sits in tick-driven code, not that a search runs every tick; an Entity argument does not mean the
+target moves; and nothing here shows a storm at runtime. Which sites actually storm needs runtime
+counts joined by request. See the last section.
 
 ## Method
 
