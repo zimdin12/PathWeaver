@@ -16,7 +16,8 @@ Two later bodies are written and NOT published:
   It now also states the measured tick saving with the scenario it came from, says the mod needs
   Fabric API alone, and describes the optional distance-LOD setting and that it ships off, with the one
   LOD figure that exists, a best case from a preregistered test built to favour it. The saving is
-  5 to 11%, measured on 2026-09-14 on the jar with the hot-path fixes (sha256 `0ba3d71a...`), which
+  5 to 11%, measured on 2026-09-14 on the jar with the hot-path fixes (sha256 `0ba3d71a...`; the jar that ships,
+  `47e24d24...`, differs from it only in one JSON file's line endings), which
   replaced the 6-10% table from an earlier build. The live 0.8.0 page carries no such figure.
 
 Publishing either needs Steven's confirmation. A page-only correction goes through

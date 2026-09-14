@@ -51,3 +51,12 @@ measured on. It says nothing about villager-heavy worlds, where the fixes do mat
 
 `REPORT.txt` and `MACHINE.txt` are the judges' outputs, regenerated from `raw/`. `raw/` holds each run's
 rungs file, the campaign console with local paths removed, the machine-load samples, and `JARS.txt`.
+
+## The jar that ships is not byte-identical to the one measured here
+
+Found while staging the release, after this series: the checkout the measured jar (`0ba3d71a...`) was built
+in had CRLF line endings on disk in `src/main/resources/pathweaver.mixins.json`, which git stores as LF.
+A fresh checkout of the same commit builds `47e24d24...`. The two jars have the same entries in the same
+order and differ in that one file only, whose bytes are equal once CR is removed and whose parsed JSON is
+equal (`docs/evidence/RELEASE-JARS-0.9.0.txt`). Mixin reads that file as JSON, so the measured behaviour
+is the shipped jar's; the claim this rests on is that comparison, not a re-run.

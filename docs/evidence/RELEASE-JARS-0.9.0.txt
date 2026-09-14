@@ -1,0 +1,33 @@
+PathWeaver 0.9.0 release jars, and how they relate to the jars that were measured
+
+Shipped, each built from a fresh detached worktree of the commit named, clean, and rebuilt in the main
+checkout after its line endings were normalised, with the same bytes both times:
+
+  26.1.1 / 26.1.2   commit 013dcf6
+    47e24d240003c90e8700b53cb2d8845ef31219d8ad790622ffc61291cf9732c9  pathweaver-0.9.0+26.1.2.jar
+    6dcb21dd80b075e3be936e60722eecdfb30302cd1a0511a3cc2cc141205d1760  pathweaver-0.9.0+26.1.2-sources.jar
+  26.2              commit c54f373
+    5a77d70a41f681cf4bc131e2e63ea2138e9fab1eff91e17008372d6a3c4614ca  pathweaver-0.9.0+26.2.jar
+    4f38490a5f8966da0cc66d1b7e97737821092642afbc8e9c17d7643eb5aef54b  pathweaver-0.9.0+26.2-sources.jar
+
+Measured: the client series h1, the regression check 2026-09-14 and no-Cloth boot row 5 used
+0ba3d71ae2621ea827969f42691e98e2a6c823c4c80524cf767c535c9fe84856, built in the main checkout.
+
+Why they differ. Git stores every file under src/ with LF endings (.gitattributes eol=lf). In the main
+checkouts, seven files on master and one on mc-26.2 had CRLF on disk, which git status does not report.
+Java sources compile to the same classes either way; resources are packed as they sit on disk, so the one
+resource among them, pathweaver.mixins.json, went into the jar with CR bytes. On mc-26.2 the CRLF file was
+a Java source, so its main jar was unaffected and only its sources jar differed (a6dd3028... before).
+
+The comparison, 0ba3d71a against 47e24d24:
+  same entry names, same order        True
+  entries whose bytes differ          pathweaver.mixins.json
+  equal after removing CR             True
+  parsed JSON equal                   True
+
+What stands on it: the measured jar and the shipped jar give Mixin the same configuration, so the
+measurements describe the shipped jar. The shipped 26.1.2 jar was also booted itself on a clean server
+without Cloth Config (no-cloth-2026-09 row 6). The tag message before this correction named 0ba3d71a
+and the pre-normalisation sources jars.
+
+The release script builds only from pinned clean worktrees, so it cannot pick up a checkout's disk state.
