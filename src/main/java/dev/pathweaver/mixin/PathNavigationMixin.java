@@ -528,7 +528,9 @@ public abstract class PathNavigationMixin implements PWNavigation {
     /**
      * Feature B: answer with the path already in hand when the target only drifted.
      *
-     * <p>Opt-in, and off by default. Recompute -- including changed-block invalidation -- always
+     * <p>On by default at one block since 0.8.0 ({@code repathToleranceBlocks}), and 0 turns it off. It
+     * hands back a path vanilla would not have computed for the new target, which the project page has
+     * to list as an exception. Recompute -- including changed-block invalidation -- always
      * bypasses tolerance reuse; ordinary target drift must still satisfy endpoint, reach and
      * navigation validity before the existing route is handed back.
      *

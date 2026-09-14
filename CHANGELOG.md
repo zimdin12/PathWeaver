@@ -42,7 +42,7 @@ now `PathWeaverThread.Worker` and keep those values as fields; the lookup is a `
 
 Found in the client, chasing a report that spawning a cat or a monster made the game lag. That lag was
 Enhanced Cats: every cat near a villager asks for a path every tick, on the client and the server, and
-88% of server-thread path requests came from it. PathWeaver was not the cause (the preregistered
+an estimated 88% of server-thread path requests came from it. PathWeaver was not the cause (the preregistered
 prediction that it was failed), but the profiles showed synchronous search costing more with it than
 without. Villager point-of-interest search as a share of tick, three runs per arm in each of two
 series: 0.9.0 above every run with no PathWeaver in all six of its runs (24.1-30.2% against 19.7-23.5%),
