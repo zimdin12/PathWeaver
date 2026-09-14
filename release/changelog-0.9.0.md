@@ -1,9 +1,9 @@
-Correctness and honesty, plus two changes you will notice: Cloth Config is no longer required, and there is a new optional setting for distant mobs.
+Correctness and honesty, a per-search cost removed from searches that stay on the server thread, and two changes you will notice: Cloth Config is no longer required, and there is a new optional setting for distant mobs.
 
 ## Searches PathWeaver leaves on the server thread no longer pay for it
 
-Some path searches stay on the server thread: villager brains that ask for a path and need the answer
-the same tick, and any mob PathWeaver decides not to take. Those searches were slower than with no
+Some path searches stay on the server thread: villagers looking for a bed or a workplace, which use the
+answer straight away, and any mob PathWeaver decides not to take. Those searches were slower than with no
 PathWeaver at all. Two checks ran once for every node of every search, on every thread, including the
 ones they had nothing to say about: a thread-local lookup, and a hook that created a small object on
 every call. Both are in 0.8.0 too; only the 0.9.0 build was measured.
@@ -13,9 +13,10 @@ the server tick in every run with the old build, 20 to 24% with no PathWeaver, a
 one. It is a few percent of tick, not a lag spike, but it was a cost on exactly the searches this mod
 cannot move off the thread.
 
-**If your game lags when cats are near villagers, that is Enhanced Cats, not PathWeaver.** It asks for
-a path every tick for every cat near a villager, on the client as well as the server, and it does that
-with PathWeaver removed too. Found while chasing a lag report on this release.
+**The lag report that led here was not PathWeaver.** In that pack, Enhanced Cats sends every villager
+within 10 blocks of a cat towards it, every tick, on the client as well as the server, and the game
+lagged with PathWeaver removed too. If your game lags when cats are near villagers, try without
+that mod before blaming this one.
 
 ## Route sharing survives a settings change
 
