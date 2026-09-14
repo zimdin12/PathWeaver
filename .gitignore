@@ -28,3 +28,5 @@ __pycache__/
 bench/client-runs/
 bench/frameprobe/build/
 bench/frameprobe/.gradle/
+bench/regression-c/
+bench/regression-c.console.txt

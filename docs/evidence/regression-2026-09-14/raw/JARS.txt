@@ -1,0 +1,6 @@
+Jars under test, identified before the first run, 2026-09-14T12:33:46Z.
+0.9.0 built at 3d10163748ceec1031117bd0aecca779da69a3f8 (main sources unchanged since: git diff 3d10163 HEAD -- src/main is empty)
+cand-3d10163/pathweaver-0.9.0+26.1.2.jar  file-sha256 0ba3d71ae2621ea827969f42691e98e2a6c823c4c80524cf767c535c9fe84856  content-sha256 a708082a631e16ae083ef177a88f81eb65ffa05e1e5749169ad2c165f73f9735  entries 139
+0.8.0 downloaded from Modrinth: sha512 f7aba38b5c016c49266bddbd32cef160700c4fd01bae3cf9980093b6d936efb2d70e5a8150a26ef95250bb53e526a74b88d15024869f15ec0962dcc252db0379
+  sha256 033b0b811f7b4e25f5e094188ed0cb49e77b1007b40c921926787ee9888261f5
+  verified now: 033b0b811f7b4e25f5e094188ed0cb49e77b1007b40c921926787ee9888261f5
