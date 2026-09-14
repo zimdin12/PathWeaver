@@ -25,9 +25,9 @@ The first LOD campaign is also kept, because it is how the defect below was foun
 
 ### Evidence
 
-33 witnesses, each a four-state run: green, then cause-specific red on reverting exactly the
-production change, then green again on restoring it. 509 unit tests across 67 suites. Nine game-test
-harnesses, one attempt each, no reruns. Both branches.
+36 witnesses, each a four-state run: green, then cause-specific red on reverting exactly the
+production change, then green again on restoring it. 515 unit tests across 69 suites. Nine game-test
+harnesses, one attempt each, no reruns. Both branches, re-run in full after the hot-path fixes.
 
 ### The per-node path stops charging searches PathWeaver does not take
 

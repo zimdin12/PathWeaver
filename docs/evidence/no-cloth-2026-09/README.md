@@ -9,9 +9,11 @@ and <HOME>; nothing else edited.
 | `2-pathweaver-before-fix-FAILS.log` | + PathWeaver, no Cloth | `NoClassDefFoundError`, never starts |
 | `3-pathweaver-after-fix-STARTS.log` | + PathWeaver, no Cloth | starts, and writes the config file |
 | `4-pathweaver-at-release-STARTS.log` | + PathWeaver at `a695c38`, sha256 `63d7d123...`, no Cloth | starts, all 6 families active, writes the config file |
+| `5-pathweaver-hotpath-fixes-STARTS.log` | + PathWeaver at `aa65791`, sha256 `0ba3d71a...`, no Cloth | starts, all 6 families active, writes the config file |
 | `first-run-config.json` | | what row 4 wrote on its first run |
 
-Row 4 was added on 2026-09-13, on the jar carrying both LOD fixes. Row 3's first run wrote
+Row 5 was added on 2026-09-14, on the jar carrying the per-node hot-path fixes; the config it wrote on
+its first run is identical to `first-run-config.json`. Row 4 was added on 2026-09-13, on the jar carrying both LOD fixes. Row 3's first run wrote
 `lodIntervalTicks: 10`, the default before the first LOD fix raised it to 40. Kept, that file would have
 shown a server owner a default the mod no longer has, so it was replaced by row 4's, which differs in
 that one value.
