@@ -1,0 +1,30 @@
+median ms, spark health 10 s window
+rung      r1-off   r1-v080   r1-v090    r2-off   r2-v080   r2-v090
+100          2.8       2.8       2.6       2.9       2.8       2.7
+500          7.4       6.9       6.5       7.4       6.7       6.6
+1000        13.4      12.6      12.3      13.8      12.3      12.3
+2500        34.3      32.2      31.3      33.7      32.2      31.4
+5000        81.0      75.2      71.7      78.6      75.2      73.4
+10000      196.9     185.8     183.0     190.4     185.7     184.3
+
+Q1  r1-off       PASS        [13.4, 34.3, 81.0, 196.9]
+Q1  r1-v080      PASS        [12.6, 32.2, 75.2, 185.8]
+Q1  r1-v090      PASS        [12.3, 31.3, 71.7, 183.0]
+Q1  r2-off       PASS        [13.8, 33.7, 78.6, 190.4]
+Q1  r2-v080      PASS        [12.3, 32.2, 75.2, 185.7]
+Q1  r2-v090      PASS        [12.3, 31.4, 73.4, 184.3]
+Q4  off@2500     PASS        rounds 34.3 and 33.7, +1.8% apart
+Q4  v080@2500    PASS        rounds 32.2 and 32.2, +0.0% apart
+Q4  v090@2500    PASS        rounds 31.3 and 31.4, +0.3% apart
+Q4  off@5000     PASS        rounds 81.0 and 78.6, +3.1% apart
+Q4  v080@5000    PASS        rounds 75.2 and 75.2, +0.0% apart
+Q4  v090@5000    PASS        rounds 71.7 and 73.4, +2.4% apart
+Q4  off@10000    PASS        rounds 196.9 and 190.4, +3.4% apart
+Q4  v080@10000   PASS        rounds 185.8 and 185.7, +0.1% apart
+Q4  v090@10000   PASS        rounds 183.0 and 184.3, +0.7% apart
+Q2  2500         PASS        0.9.0 vs 0.8.0: -2.8%, -2.5% (a regression needs both above +3%)
+Q2  5000         PASS        0.9.0 vs 0.8.0: -4.7%, -2.4% (a regression needs both above +3%)
+Q2  10000        PASS        0.9.0 vs 0.8.0: -1.5%, -0.8% (a regression needs both above +3%)
+Q3  2500         PASS        saving +7.8% (off 34.0, 0.9.0 31.4); page says +9.0%; window +4.0% to +12.0%
+Q3  5000         PASS        saving +9.1% (off 79.8, 0.9.0 72.6); page says +6.0%; window +4.0% to +12.0%
+Q3  10000        PASS        saving +5.2% (off 193.7, 0.9.0 183.7); page says +6.0%; window +4.0% to +12.0%

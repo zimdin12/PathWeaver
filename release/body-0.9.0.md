@@ -8,7 +8,7 @@ deciding at once is a few hundred searches the tick waits for, and that wait is 
 PathWeaver runs those searches on spare cores instead. The mob gets the same path it would have got;
 the tick just stops waiting for it.
 
-**What that is worth, measured rather than asserted: about 6 to 10% of server tick time on a busy
+**What that is worth, measured rather than asserted: about 5 to 11% of server tick time on a busy
 server, and a great deal more if your mobs repath constantly.** Pathfinding is roughly 6% of a loaded
 server's tick, and this moves about three quarters of it off the main thread. Both figures come from
 profiles you can check below.
@@ -74,20 +74,20 @@ On a machine with two cores or fewer, PathWeaver tells you at world start to lea
 Two scenarios, because the honest answer is that it depends on how much pathfinding your server is
 actually doing, and quoting only the flattering one is how this page used to oversell itself.
 
-### A busy server: 6 to 10% of tick time
+### A busy server: 5 to 11% of tick time
 
-5000 zombies chasing a player who moves every 11 seconds, on a 219-mod server. Median tick, the
-average of two agreeing rounds:
+Zombies chasing a player who moves every 11 seconds, on a 219-mod server, measured on the jar you
+download. Median tick, the average of two agreeing rounds:
 
 | zombies | without | with | gain |
 |---|---|---|---|
-| 500 | 7.4 ms | 6.7 ms | 10% |
-| 1000 | 13.2 ms | 12.4 ms | 6% |
-| 2500 | 34.0 ms | 31.1 ms | 9% |
-| 5000 | 77.6 ms | 73.4 ms | 6% |
-| 10000 | 193.6 ms | 182.8 ms | 6% |
+| 500 | 7.4 ms | 6.6 ms | 11% |
+| 1000 | 13.6 ms | 12.3 ms | 10% |
+| 2500 | 34.0 ms | 31.4 ms | 8% |
+| 5000 | 79.8 ms | 72.6 ms | 9% |
+| 10000 | 193.7 ms | 183.7 ms | 5% |
 
-Why it is that number, from a profile of the same load: **pathfinding is 6.1% of server tick time,
+Why it is that number, from a profile of the same load on an earlier build: **pathfinding is 6.1% of server tick time,
 and PathWeaver moves about three quarters of it off the tick** (6.12% to 1.55%). The tick improvement
 follows from that and could not be much larger. Nothing here is a rounding error, and nothing here is
 a rescue.

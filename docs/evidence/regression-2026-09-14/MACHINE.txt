@@ -1,0 +1,8 @@
+background load = total CPU % - java share; flag when a run's median is more than 8 points from the campaign median (31.2%)
+  reg-r1-off        31.4%  over  33 samples  ok
+  reg-r1-v080       29.7%  over  31 samples  ok
+  reg-r1-v090       31.0%  over  32 samples  ok
+  reg-r2-v090       31.4%  over  32 samples  ok
+  reg-r2-v080       30.7%  over  32 samples  ok
+  reg-r2-off        31.8%  over  32 samples  ok
+Q5 PASS: no run's background moved
