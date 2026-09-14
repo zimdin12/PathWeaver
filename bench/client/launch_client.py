@@ -12,7 +12,7 @@ import pathlib
 import subprocess
 import sys
 
-MC = pathlib.Path(r"C:\Users\Administrator\AppData\Roaming\.minecraft")
+MC = pathlib.Path(os.environ.get("PW_MC_WIN") or os.path.join(os.environ["APPDATA"], ".minecraft"))
 VERSIONS = MC / "versions"
 LIBS = MC / "libraries"
 VERSION = "fabric-loader-0.19.3-26.1.2"
