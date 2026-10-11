@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
@@ -40,7 +41,7 @@ class PathfindingMixinContractTest {
         for (Redirect redirect : byTarget.values()) {
             assertEquals(1, redirect.method().length);
             assertEquals(FIND_PATH, redirect.method()[0], "must target the public findPath overload");
-            assertEquals("INVOKE", redirect.at().value());
+            assertEquals("INVOKE", onlyAt(redirect).value());
             assertEquals(1, redirect.require(), "must fail closed on mapping drift");
             assertEquals(1, redirect.expect(), "must lock the call count");
         }
@@ -59,9 +60,19 @@ class PathfindingMixinContractTest {
         assertEquals("iteratePathfindingStartNodeCandidatePositions"
                 + "(Lnet/minecraft/world/entity/Mob;)Ljava/lang/Iterable;",
             redirect.method()[0]);
-        assertEquals("INVOKE", redirect.at().value());
+        assertEquals("INVOKE", onlyAt(redirect).value());
         assertEquals(1, redirect.require(), "must fail closed on mapping drift");
         assertEquals(1, redirect.expect(), "a second draw would be an unaudited live read");
+    }
+
+    /**
+     * The one injection point of a redirect. On 26.3's Mixin, {@code @Redirect.at()} is an array, so a
+     * redirect can declare several injection points; this fails rather than reading the first of many,
+     * because a second point is a second call site the contract above never examined.
+     */
+    private static At onlyAt(Redirect redirect) {
+        assertEquals(1, redirect.at().length, "a redirect must declare exactly one injection point");
+        return redirect.at()[0];
     }
 
     private static Map<String, Redirect> redirectsOf(Class<?> mixin) {
@@ -69,7 +80,7 @@ class PathfindingMixinContractTest {
         for (var method : mixin.getDeclaredMethods()) {
             Redirect redirect = method.getAnnotation(Redirect.class);
             if (redirect == null) continue;
-            assertNull(byTarget.put(redirect.at().target(), redirect),
+            assertNull(byTarget.put(onlyAt(redirect).target(), redirect),
                 "two redirects share an injection target");
         }
         return byTarget;
