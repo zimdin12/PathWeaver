@@ -261,9 +261,21 @@ class LiveMobReadCoverageContractTest {
                                     // redirect at all, which the "no sites resolved" assertion
                                     // catches rather than reporting zero confined reads as safe.
                                     if (!key.equals("at")) return null;
+                                    int[] points = new int[1];
                                     return new AnnotationVisitor(Opcodes.ASM9) {
                                         @Override public AnnotationVisitor visitAnnotation(String ig,
                                                                                            String d) {
+                                            // Reading the array member by member means the LAST @At
+                                            // would silently win and the earlier ones would vanish
+                                            // from the coverage set. Refuse instead: a redirect with
+                                            // two injection points is two call sites, and this
+                                            // contract has only ever reasoned about one.
+                                            if (++points[0] > 1) {
+                                                throw new IllegalStateException(
+                                                    "a @Redirect in the shipped mixins declares more"
+                                                        + " than one @At; this contract reads exactly"
+                                                        + " one injection point per redirect");
+                                            }
                                             return atReader(call);
                                         }
                                     };

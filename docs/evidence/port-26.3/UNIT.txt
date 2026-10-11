@@ -12,3 +12,26 @@ produced:
   production  Lithium left pinned to 0.25.3+mc26.2 and so refusing on 26.3, with the reason in the class
   test        three annotation readers taught that 26.3 Mixin declares @Redirect.at() as an At[]
   test        COMPATIBILITY.md re-derived so the published table quotes the pins the code enforces
+
+Two corrections to claims made in the commits above, both found by an independent review on
+2026-10-12 and then reproduced here.
+
+1. Commit 24d775e says "52 classes name the old one" about the descriptor scan for
+   moveTo(Entity, double). 52 is the number of classes whose constant pool contains that descriptor
+   STRING for any method name. The counts for the noun actually meant: 22 classes contain both that
+   descriptor and the name moveTo, and 18 hold a real method reference to
+   PathNavigation.moveTo(Entity, double). The conclusion the scan was for, that the old overload is
+   still widely called while only MeleeAttackGoal moved, holds on all three figures. The other two
+   halves of that scan reproduced exactly: 2 classes name the new descriptor, 0 name an invented one.
+
+2. Commit 700f1bf's Lithium reasoning was wrong and is corrected in
+   LithiumPathfindingCompatibility, COMPATIBILITY.md, README.md and release/notes-26.3.md. The
+   reachable lazy-write chain it cited is identical in the 0.25.3 build the audit accepts, and 0.26.2
+   is the build that added a lock around it: initializeBlockInfo has 0 monitorenter in 0.25.3 and 3
+   in 0.26.2. The decision not to re-pin stands on a different and sound reason, that three audited
+   classes changed and two gained field writers outside the allowed set.
+
+Control for tools/audit_field_writes.py, which the tool does not run itself: on the 26.3 Minecraft
+jar, net/minecraft/world/entity/ai/navigation/PathNavigation reports writes in 13 methods, so the
+parser finds writes where writes exist. The negative direction came from the audited classes
+themselves, five of which report "writes in: nothing".

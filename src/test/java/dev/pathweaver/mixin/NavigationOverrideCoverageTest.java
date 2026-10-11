@@ -35,11 +35,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class NavigationOverrideCoverageTest {
 
-    /** The methods {@code PathNavigationMixin} injects into to mark a real movement request. */
-    private static final Set<String> MOVEMENT_ENTRY_POINTS = Set.of(
-        "moveTo(DDDD)Z",
-        "moveTo(DDDID)Z",
-        "moveTo(Lnet/minecraft/world/entity/Entity;D)Z");
+    /**
+     * The methods {@code PathNavigationMixin} claims a movement request in, read out of the mixin
+     * itself rather than listed here.
+     *
+     * <p>It was a hand-written list of three, and 26.3 made it stale: vanilla added
+     * {@code moveTo(Entity, int, double)}, the mixin moved its entity-target claim onto that
+     * overload, and the list still named the two-argument method. Nothing failed, because this file
+     * only looks for descriptors it was told about, so an override of the method that now carries
+     * every entity-target request on a non-wall-climber navigation would have opted out in silence.
+     * That is the third instance of the exact bug this test exists to catch, and a list you have to
+     * remember to update is how it got in.
+     *
+     * <p>The source of truth is the one {@code @WrapOperation} per approved caller in
+     * {@code PathNavigationMixin} plus the one in {@code WallClimberNavigationMixin}, which claims
+     * the subclass override the base mixin cannot reach. Each names exactly one method, and
+     * {@code PathNavigationRoutingContractTest} independently locks that set against the call sites
+     * vanilla actually has. A claim added or moved there appears here on the next run.
+     */
+    private static final Set<String> MOVEMENT_ENTRY_POINTS = wrappedMovementCallers();
 
     /**
      * Every {@code PathNavigation} subclass Minecraft ships, discovered rather than listed.
@@ -284,6 +298,57 @@ class NavigationOverrideCoverageTest {
                 }
             }, ClassReader.SKIP_CODE);
         return out;
+    }
+
+    /**
+     * The method each {@code @WrapOperation} in {@code PathNavigationMixin} names, from its bytecode.
+     *
+     * <p>Fails rather than returning a short set: an empty or unreadable result would make every
+     * assertion in this file vacuously true, which is the failure mode the file is about.
+     */
+    private static Set<String> wrappedMovementCallers() {
+        String wrap = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
+        Set<String> callers = new LinkedHashSet<>();
+        try {
+            for (String mixin : List.of("dev/pathweaver/mixin/PathNavigationMixin",
+                                        "dev/pathweaver/mixin/WallClimberNavigationMixin")) {
+            new ClassReader(classBytes(mixin))
+                .accept(new ClassVisitor(Opcodes.ASM9) {
+                    @Override
+                    public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                                     String signature, String[] exceptions) {
+                        return new MethodVisitor(Opcodes.ASM9) {
+                            @Override
+                            public org.objectweb.asm.AnnotationVisitor visitAnnotation(String desc,
+                                                                                       boolean vis) {
+                                if (!wrap.equals(desc)) return null;
+                                return new org.objectweb.asm.AnnotationVisitor(Opcodes.ASM9) {
+                                    @Override
+                                    public org.objectweb.asm.AnnotationVisitor visitArray(String key) {
+                                        if (!"method".equals(key)) return null;
+                                        return new org.objectweb.asm.AnnotationVisitor(Opcodes.ASM9) {
+                                            @Override
+                                            public void visit(String ignored, Object value) {
+                                                callers.add((String) value);
+                                            }
+                                        };
+                                    }
+                                };
+                            }
+                        };
+                    }
+                }, ClassReader.SKIP_CODE);
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("cannot read a PathWeaver mixin to derive its claims", e);
+        }
+        if (callers.size() < 4) {
+            throw new IllegalStateException(
+                "the mixins named " + callers + " as wrapped movement callers; fewer than four"
+                    + " (three on PathNavigation, one on the WallClimber override) means this test"
+                    + " would check almost nothing");
+        }
+        return Set.copyOf(callers);
     }
 
     /** Movement entry points this class DECLARES itself, from real bytecode. */

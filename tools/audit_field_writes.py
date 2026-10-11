@@ -13,8 +13,11 @@ direction that wastes time rather than the direction that ships a bad audit:
   - javap prints a static initializer as `static {};`, which did not match the member pattern, so its
     writes were attributed to whichever method happened to be printed above it.
 
-So the member parser is checked in both directions before any verdict is believed: it must find
-writes in a class known to have them, and must find none in a class known to have none.
+So the member parser has to be checked in both directions before any verdict is believed: it must
+find writes in a class known to have them, and none in a class known to have none. THAT CHECK IS
+THE CALLER'S JOB and is not implemented here; an earlier version of this docstring claimed the
+file did it, which was false. What the file does implement is the javap exit status and the
+empty-dump guard below, both of which are real.
 
 A third failure sits above both, and neither control could see it: javap failing to read the file at
 all. That produced an empty dump, no parsed members, and a clean HOLDS for a class nobody had looked
@@ -101,6 +104,11 @@ def check(jar, claims, workdir):
 
 
 if __name__ == "__main__":
+    # REPORT ONLY. Every class is passed with allowed=None, which is check()'s reporting arm, so this
+    # prints where each class writes fields and exits 0 whatever it printed. It cannot say VIOLATED:
+    # deciding that needs the allowed writer set, which lives in the audit, not here. Read the lines.
     jar = sys.argv[1]
     targets = {c: None for c in sys.argv[2:]}
-    sys.exit(1 if check(jar, targets, "build/audit-scratch") else 0)
+    print("audit_field_writes: REPORT ONLY, exit status says nothing about the verdict")
+    check(jar, targets, "build/audit-scratch")
+    sys.exit(0)

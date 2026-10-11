@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Locks the exact 26.1.2 virtual-call seams that are allowed to arm async path creation. */
+/** Locks the exact 26.3 virtual-call seams that are allowed to arm async path creation. */
 class PathNavigationRoutingContractTest {
     private static final String NAV = "net/minecraft/world/entity/ai/navigation/PathNavigation";
     private static final String PATH = "Lnet/minecraft/world/level/pathfinder/Path;";

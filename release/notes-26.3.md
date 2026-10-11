@@ -18,16 +18,13 @@ so that is a refusal to load rather than a mod that runs with a hole in it.
 ### `AUDITED` does not cover Lithium on 26.3
 
 Lithium 0.26.2 is the build a 26.3 pack installs, and this release does not audit it. Five of the
-eight audited classes are byte-identical to the 0.25.3 build that was audited for 26.2, but two
-gained a field writer and the mixin plugin moved. The exemption rests on every field write sitting in
-an initializer that nothing on a search path calls, and on 0.26.2 that is no longer the shape:
-reading an uninitialized block-state flag now initializes it under a static lock, so a write is
-reachable from a read a search performs.
-
-Lithium's own initialization got safer. The point is that the claim which makes it safe became
-"idempotent under a monitor" instead of "cannot happen on a worker thread", and that is a different
-proof from the one this audit carries. Pinning the new hashes without it would make the audit's claim
-false while leaving every test green, so the audit refuses 0.26.2 by version and says so in the log.
+eight audited classes are byte-identical to the 0.25.3 build audited for 26.2. Three are not: two
+gained a field writer, and one differs only because 26.3's Mixin declares an injection point as an
+array. The exemption allows field writes only in constructors, static initializers and one named
+initializer per class, and the two new writers are not in that set, so certifying 0.26.2 needs an
+argument about when they run and whether a worker can reach them. Nobody has written that argument.
+The audit is a statement about exact bytes, so it refuses 0.26.2 by version and says so in the log
+rather than being re-pinned on a proof nobody ran.
 
 What this means in practice. At `compatibilityTier=AUDITED` on 26.3, any pack containing Lithium has
 every movement family denied, so PathWeaver does nothing. The shipped default is `UNSAFE`, which reads

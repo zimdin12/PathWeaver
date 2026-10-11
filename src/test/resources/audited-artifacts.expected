@@ -16,9 +16,17 @@ rabbit-pathfinding-fix=pinned
 fabric-events-interaction-v0=pinned
 fabric-content-registries-v0=pinned
 
-# THIS BRANCH IS AUDITED FOR 26.2.
+# THIS BRANCH IS AUDITED FOR 26.3.
 #
-# The audits were re-derived against the artifacts 26.2 resolves: servercore 1.5.19+26.2,
-# rabbit-pathfinding-fix 1.4.0, and Fabric API 0.157.0+26.2 (events-interaction 5.2.7+515ac5339e,
-# content-registries 11.3.1+37b1aa249e). Every shape proof passes on those bytes. See
-# docs/AUDITS-ON-26.2.md for what changed and how it was checked.
+# Re-derived against the artifacts 26.3 resolves: servercore 1.5.20+26.3 (pinned by its Modrinth
+# version id LCG1Bm84, because that version number also exists as a NeoForge build),
+# rabbit-pathfinding-fix 1.5.0, and Fabric API 0.162.0+26.3 (events-interaction 5.3.7+b9b88df45d,
+# content-registries 15.0.4+74ed1ea55d). Every shape proof passed on those bytes with no change.
+# Both Fabric modules are pinned in two packaging forms: the standalone artifact a dev environment
+# resolves and the recompressed copy nested in the aggregate fabric-api jar, which a real install
+# loads. On 26.2 those were byte-identical; on 26.3 they are not.
+#
+# NOT listed here and NOT audited on 26.3: lithium. Its 0.26.2 build changes three of the eight
+# audited classes, so the proofs behind those pins have not been re-run; see
+# LithiumPathfindingCompatibility. It is absent rather than "unpinned" because this file is read only
+# for artifacts on the unit-test classpath, and Lithium is not on it.

@@ -154,10 +154,18 @@ public abstract class PathNavigationMixin implements PWNavigation {
     /**
      * 26.3 added {@code moveTo(Entity, int, double)}. {@code moveTo(Entity, double)} now does nothing
      * but delegate to it, and {@code MeleeAttackGoal} calls the new overload directly, so the claim is
-     * made on the inner one: it is where {@code createPath} is called and where every entity-target
-     * request now arrives. Claiming on the delegate as well would count one request twice, and the
+     * made on the inner one: it is where {@code createPath} is called, and it is what the delegate
+     * funnels into. Claiming on the delegate as well would count one request twice, and the
      * delegate returns the inner result unchanged, so the deferred-acceptance return needs no hook
      * there either.
+     *
+     * <p>Not every entity-target call arrives here. On 26.3 most goals still call the two-argument
+     * method ({@code BreedGoal}, {@code TemptGoal}, {@code FollowOwnerGoal} and others; only
+     * {@code MeleeAttackGoal} moved), and on a base {@code PathNavigation} the delegate funnels those
+     * straight into this hook. The distinction matters for {@code WallClimberNavigation}, which
+     * overrides the two-argument method and never calls {@code super}: those goals reach the override,
+     * claimed separately by {@code WallClimberNavigationMixin}, while {@code MeleeAttackGoal} now
+     * reaches this one. Each request is claimed exactly once, by whichever of the two runs.
      */
     @Inject(method = "moveTo(Lnet/minecraft/world/entity/Entity;ID)Z", at = @At("HEAD"),
             require = 1, expect = 1)

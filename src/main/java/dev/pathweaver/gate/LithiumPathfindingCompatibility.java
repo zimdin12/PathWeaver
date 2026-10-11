@@ -67,35 +67,44 @@ import java.util.Set;
  * statement about <em>these</em> bytes and nothing else.
  */
 /*
- * NOT RE-PINNED FOR 26.3, and the reason is a changed argument rather than changed bytes.
+ * NOT RE-PINNED FOR 26.3, because three of the audited class files changed and their proofs were
+ * never re-run against the new bytes. The audit is a statement about exact bytes and nothing else.
  *
- * Lithium 0.26.2+mc26.3 is the build a 26.3 pack installs, and five of the eight audited classes are
- * byte-identical to 0.25.3+mc26.2. Three are not, and the difference matters:
+ * Lithium 0.26.2+mc26.3 is the build a 26.3 pack installs. Five of the eight audited classes are
+ * byte-identical to 0.25.3+mc26.2. What differs:
  *
  *   - ai/pathing/BlockStateBaseMixin gained a writer, lithium$clearPathTypeCache;
- *   - util/block_tracking/BlockStateBaseMixin gained lithium$resetFlags and an AtomicBoolean;
- *   - the mixin plugin moved to net.caffeinemc.mods.lithium.common.LithiumMixinPlugin.
+ *   - util/block_tracking/BlockStateBaseMixin gained lithium$resetFlags and lithium$getAllFlagsOrNull,
+ *     and wraps its initializer in a catch that writes BlockStateFlags.FALLBACK_FLAGS;
+ *   - ai/pathing/WalkNodeEvaluatorMixin differs only in that @Redirect.at is now an array, which is
+ *     26.3's Mixin and not a change in what the mod does;
+ *   - the mixin plugin moved from ...lithium.mixin.LithiumMixinPlugin to ...lithium.common.
  *
- * The exemption below rests on every field write sitting in a constructor, a static initializer or a
- * named initializer that nothing on the search path calls. On 0.26.2 that is no longer the shape.
- * lithium$getAllFlags reads the flag field and, when it is uninitialized, calls
- * handleUninitializedBlockStateFlags, which either throws or calls
- * BlockInfoInitializer.initializeBlockInfoAndGetFlags under a static lock. So a write is reachable
- * from a read a search performs. Lithium's own initialization got safer, a lock and an eager pass at
- * registry time, but the claim that makes it safe is now "idempotent under a monitor" and not "cannot
- * happen on a worker". That is a different proof, and this audit does not carry it.
+ * requireWritesConfinedTo below allows writes only in <init>, <clinit> and one named initializer per
+ * class. clearPathTypeCache and resetFlags are not in those sets, so the audit cannot certify 0.26.2
+ * without a new argument about when they run and whether a worker can reach them. Nobody has written
+ * that argument, and the plugin's new class and bytes need their contribution claim re-checked too.
+ * So MOD_VERSION stays at the artifact the proofs are about, the audit refuses 0.26.2 on the version
+ * gate and names it, and on 26.3 compatibilityTier=AUDITED denies the movement families on any pack
+ * containing Lithium. The shipped default, UNSAFE, reads none of this.
  *
- * So MOD_VERSION stays at the artifact the proof is about and the audit refuses 0.26.2 on the version
- * gate, naming it. On 26.3 that means compatibilityTier=AUDITED denies the movement families on any
- * pack containing Lithium, which is most performance packs. The shipped default, UNSAFE, reads none
- * of this. COMPATIBILITY.md and release/notes-26.3.md say so.
+ * A CORRECTION, kept rather than edited away. The first version of this comment said 0.26.2 "moved a
+ * field write onto a lock-guarded path a search can reach" and refused it for that. That was wrong in
+ * the worst direction: the chain it described, lithium$getAllFlags -> handleUninitializedBlockStateFlags
+ * -> BlockInfoInitializer.initializeBlockInfo, is present and identical in 0.25.3, the version this
+ * audit ACCEPTS, and 0.26.2 is the build that put a lock around it. Measured with javap on both jars:
+ * initializeBlockInfo has 0 monitorenter in 0.25.3 and 3 in 0.26.2, where it also gained
+ * BLOCK_INFO_INITIALIZATION_LOCK. On that property 0.26.2 is strictly safer. A reviewer found this; it
+ * came from reading only the new jar and inferring the rest.
  *
- * What a 26.3 re-pin needs, for whoever does it: every write to the pathing cache and the flag field
- * on 0.26.2 happens while holding BLOCK_INFO_INITIALIZATION_LOCK; the value written is a pure
- * function of the block state, so two initializations cannot disagree; and a reader that sees the
- * pre-initialization state either initializes under that lock or throws, never reads a torn value.
- * Hashes for the three changed classes are not listed here on purpose: a pin without that proof is
- * the thing this file exists to prevent.
+ * WHAT THAT LEAVES OPEN, and it is about the SHIPPED audit rather than about 26.3. If a worker search
+ * can reach lithium$getAllFlags, then the unsynchronized initializeBlockInfo in 0.25.3 is a worker
+ * write this exemption certified, on 26.1.2 and 26.2, in 0.9.0, live now. The evidence available
+ * points the other way: the pathing read is lithium$getPathNodeType, a bare getfield with no lazy
+ * init, and every direct caller of lithium$getAllFlags in both jars is a chunk-section or
+ * random-block-ticking class. That is a direct-call scan, not a reachability proof, and this audit's
+ * own scan does not follow callees, so neither answer is established. Raised with Steven on
+ * 2026-10-12 as a question about 0.9.0, not as a 26.3 blocker.
  */
 final class LithiumPathfindingCompatibility {
     static final String MOD_ID = "lithium";

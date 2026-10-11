@@ -6,6 +6,9 @@ delegates to it, so the HEAD capture, the RETURN deferred-acceptance inject and 
 WrapOperation all moved to the inner overload. MeleeAttackGoal calls the new one directly.
 
 == 1-unfixed  (production and test both on moveTo(Entity, double), the state inherited from mc-26.2)
+   Read this state for the named failure only. Its 10 failures are the whole port's starting point,
+   not this change's: the hook, four stale pins and three annotation readers. State 3 is the
+   cause-specific control for the hook, because it reverts exactly this change and nothing else.
    gradle exit: 1
    515 tests completed, 10 failed
    - PathNavigationRoutingContractTest.vanillaNavigationCallersHaveExactlyOneExpectedVirtualCreatePathInvoke:

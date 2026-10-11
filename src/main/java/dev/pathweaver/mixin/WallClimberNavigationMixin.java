@@ -25,6 +25,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * thread, while {@code /pathweaver mobs} counted spiders as eligible. The mod reported coverage it
  * did not have — the same shape as the banner bug 0.6.0 fixes, one layer down.
  *
+ * <p>What changed on 26.3: {@code MeleeAttackGoal}, the chase this class is named for, now calls
+ * {@code moveTo(Entity, int, double)}, which {@code WallClimberNavigation} does not override. A
+ * spider's melee chase is therefore claimed by the base mixin on that overload, and this class
+ * covers the goals that still call the two-argument method, which for a wall climber is most of
+ * them. The fifteen-tick chase-stall consequence described below belongs to the base RETURN inject
+ * for spiders on 26.3; everything about why an override needs its own claim still holds.
+ *
  * <p>0.5.1 was the first instance ({@code AmphibiousNodeEvaluator} overriding {@code getNeighbors},
  * so four families kept racing an attribute). 0.5.2 was the second. The general fix is the
  * reachability work on the 0.6 roadmap; this is the specific one.
