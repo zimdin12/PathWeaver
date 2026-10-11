@@ -12,7 +12,6 @@
   "depends": {
     "fabric-gametest-api-v1": "*",
     "pathweaver": "*",
-    "lithium": "*",
     "diagonalblocks": "*"
   }
 }
