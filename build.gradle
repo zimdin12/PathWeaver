@@ -51,8 +51,12 @@ dependencies {
     // LauncherSessionListener so Minecraft's registries boot before the first test class is loaded.
     testImplementation "org.junit.platform:junit-platform-launcher:1.10.2"
     // Exact audited artifacts used by compatibility fingerprint/ASM-shape tests.
-    testRuntimeOnly "maven.modrinth:servercore:1.5.19+26.2"
-    testRuntimeOnly "maven.modrinth:rabbit-pathfinding-fix:1.4.0"
+    // ServerCore 1.5.20+26.3 exists twice on Modrinth, once for Fabric and once for NeoForge, both
+    // under that same version number. maven.modrinth resolves the number and handed back the
+    // NeoForge jar, which carries the audited mixin class but no fabric.mod.json, so the bundle read
+    // returned null and the audit refused. LCG1Bm84 is the Fabric version's id, which names one file.
+    testRuntimeOnly "maven.modrinth:servercore:LCG1Bm84"
+    testRuntimeOnly "maven.modrinth:rabbit-pathfinding-fix:1.5.0"
 }
 
 fabricApi {
@@ -65,8 +69,12 @@ fabricApi {
 }
 
 dependencies {
-    gametestRuntimeOnly "maven.modrinth:servercore:1.5.19+26.2"
-    gametestRuntimeOnly "maven.modrinth:rabbit-pathfinding-fix:1.4.0"
+    // ServerCore 1.5.20+26.3 exists twice on Modrinth, once for Fabric and once for NeoForge, both
+    // under that same version number. maven.modrinth resolves the number and handed back the
+    // NeoForge jar, which carries the audited mixin class but no fabric.mod.json, so the bundle read
+    // returned null and the audit refused. LCG1Bm84 is the Fabric version's id, which names one file.
+    gametestRuntimeOnly "maven.modrinth:servercore:LCG1Bm84"
+    gametestRuntimeOnly "maven.modrinth:rabbit-pathfinding-fix:1.5.0"
 }
 
 // The audited-tier mods decide whether PathWeaver does anything on a real modpack, so their
@@ -82,20 +90,20 @@ if (providers.gradleProperty("auditedTierHarness").isPresent()) {
     // the 126183-byte release file that actually contains the library. Pin the release hash and
     // fail on mismatch, because a silently substituted parent would stage a library the audit never
     // examined.
-    ext.diagonalFencesUrl = "https://cdn.modrinth.com/data/IKARgflD/versions/XxnvsgPA/" +
-        "DiagonalFences-v26.2.0-mc26.2.x-Fabric.jar"
-    ext.diagonalFencesSha1 = "a8425317bab2e4c2742e8928f998f7851e531db8"
+    ext.diagonalFencesUrl = "https://cdn.modrinth.com/data/IKARgflD/versions/CHD6edDK/" +
+        "diagonalfences-v26.3.0-mc26.3.x%2Bfabric.jar"
+    ext.diagonalFencesSha1 = "98b5e5215cb84500a8b00cdde605aedf49090933"
     // diagonalblocks declares hard dependencies of its own; loader refuses to start without them.
     // They are staging scaffolding only -- nothing about them is audited or exempted.
     ext.diagonalBlocksDepSources = [
         "puzzleslib.jar": [
-            "https://cdn.modrinth.com/data/QAGBst4M/versions/KU5rZUAR/" +
-                "PuzzlesLib-v26.2.3-mc26.2.x-Fabric.jar",
-            "65381561284b83e8d6b0fb316ed44a7e60b543f5"],
+            "https://cdn.modrinth.com/data/QAGBst4M/versions/7SSd41Tf/" +
+                "puzzleslib-v26.3.14-mc26.3.x%2Bfabric.jar",
+            "72a8a1c67a0a582399c028eba4f423ca604d0cbd"],
         "forgeconfigapiport.jar": [
-            "https://cdn.modrinth.com/data/ohNO6lps/versions/rSd3GiG8/" +
-                "ForgeConfigAPIPort-v26.2.1-mc26.2.x-Fabric.jar",
-            "a4083de0d8e0c19b993d21f7a576216efb5ceb23"]]
+            "https://cdn.modrinth.com/data/ohNO6lps/versions/JpKvrr9J/" +
+                "ForgeConfigAPIPort-v26.3.1-mc26.3.x-Fabric.jar",
+            "a0d802d2cb010a5054c72f1ccf248433b6e0bafb"]]
     ext.diagonalBlocksDeps = diagonalBlocksDepSources.collectEntries { name, spec ->
         [(name): layout.buildDirectory.file("auditedHarness/${name}").get().asFile]
     }
@@ -151,7 +159,11 @@ if (providers.gradleProperty("auditedTierHarness").isPresent()) {
         }
     }
     dependencies {
-        gametestRuntimeOnly "maven.modrinth:lithium:${lithium_version}"
+        // Lithium is NOT staged on 26.3. Its 0.26.2 build moved a field write onto a lock-guarded
+        // path a search can reach, so LithiumPathfindingCompatibility stays pinned to 0.25.3+mc26.2
+        // and refuses the artifact a 26.3 pack installs; the reasoning is in that class. Staging it
+        // here would deny every movement family and this witness would measure the denial instead of
+        // Diagonal Blocks' exemption, which is what it exists to witness.
         gametestRuntimeOnly files(extractedDiagonalBlocks) { builtBy "extractDiagonalBlocks" }
         gametestRuntimeOnly files(diagonalBlocksDeps.values()) { builtBy "extractDiagonalBlocks" }
     }

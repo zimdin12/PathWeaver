@@ -44,7 +44,7 @@ import java.util.Set;
  */
 final class FabricInteractionCompatibility {
     static final String MOD_ID = "fabric-events-interaction-v0";
-    static final String MOD_VERSION = "5.2.7+515ac5339e";
+    static final String MOD_VERSION = "5.3.7+b9b88df45d";
     static final String CONFIG = "fabric-events-interaction-v0.mixins.json";
     static final String MIXIN =
         "net.fabricmc.fabric.mixin.event.interaction.BlockBehaviourBlockStateBaseMixin";
@@ -68,14 +68,16 @@ final class FabricInteractionCompatibility {
      * remain pinned exactly, so accepting either packaging does not widen what is trusted.
      */
     private static final Set<String> MODULE_SHAS = Set.of(
-        // One hash on 26.2: the dev environment resolves the same bytes that ship nested in
-        // fabric-api-0.157.0+26.2, confirmed by extracting the nested jar and hashing it.
-        "9e73edbb9be73696000c2e4eee9c4e246ca59c2031e5856f9d88062019f83ecd");
+        // Two hashes again on 26.3. The dev environment resolves the standalone artifact; the
+        // copy nested in fabric-api-0.162.0+26.3 is recompressed and differs. Both were taken from
+        // the files themselves, the nested one by extracting it from the aggregate and hashing it.
+        "8605eb052c5889b1965a3914ffc30977b655e12acb95ea3f0775ba3da9dcbd3f",
+        "e507339676f4ae1a6468bdac128e077e6022a702aedeea07232573eacb20207f");
     private static final String CONFIG_SHA = "9a8445db121fce8e80c928290b8623f2f6e126459fddcb259b2016ae777f9759";
     private static final String MIXIN_SHA = "c35a9d60b12e32f2b1540b0116f6459bf515e8d1901dc18be5ebff9fd5bf72e7";
-    private static final String BLOCK_STATE_BASE_SHA = "6391d498b3e1aff66783374415253021b9ed46e5c8110da97700b305652c4991";
+    private static final String BLOCK_STATE_BASE_SHA = "a712b300de9f9e9bc1a48cdf38c7386ce10bd33bc3dc001861884e6d17029ad1";
     private static final String NODE_EVALUATOR_SHA = "8ac7d5eef6bad45b148a051ee8d5d3d890281c66672d761e785361c506f421e1";
-    static final String WALK_SHA = "3e8ec632e2fb9949d9460507b0288e1752acd40b029d1499f05bcbf195204936";
+    static final String WALK_SHA = "6f459f9ea6c2d8db4c397a448da569386571f90744f22f15973e865cfe5dfd67";
     static final String PATH_CONTEXT_SHA = "30aae3ceae3c27e7f3071d8d9b8232035ad8b15ae8d7999da3fbbaa49add6a9b";
     private static final String PATH_TYPE_CACHE_SHA = "1073ec12b68b267a928316c2ddab85cd7af2220c8b8eeca482a84fdff164a7d3";
     private static final String PATH_REGION_SHA = "96b574637c3782d38ea2af0534ee644bd899fdf19f803bfd6bebe922ab016d8d";

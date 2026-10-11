@@ -248,20 +248,29 @@ class LiveMobReadCoverageContractTest {
                                     if (key.equals("require")) require[0] = (Integer) v;
                                 }
                                 @Override public AnnotationVisitor visitArray(String key) {
-                                    if (!key.equals("method")) return null;
+                                    if (key.equals("method")) {
+                                        return new AnnotationVisitor(Opcodes.ASM9) {
+                                            @Override public void visit(String ig, Object v) {
+                                                methods.add((String) v);
+                                            }
+                                        };
+                                    }
+                                    // 26.3 declares @Redirect.at() as an At[], so the injection
+                                    // point arrives as an array member and visitAnnotation("at")
+                                    // is never called. Reading only the single form found no
+                                    // redirect at all, which the "no sites resolved" assertion
+                                    // catches rather than reporting zero confined reads as safe.
+                                    if (!key.equals("at")) return null;
                                     return new AnnotationVisitor(Opcodes.ASM9) {
-                                        @Override public void visit(String ig, Object v) {
-                                            methods.add((String) v);
+                                        @Override public AnnotationVisitor visitAnnotation(String ig,
+                                                                                           String d) {
+                                            return atReader(call);
                                         }
                                     };
                                 }
                                 @Override public AnnotationVisitor visitAnnotation(String key, String d) {
                                     if (!key.equals("at")) return null;
-                                    return new AnnotationVisitor(Opcodes.ASM9) {
-                                        @Override public void visit(String k, Object v) {
-                                            if (k.equals("target")) call[0] = signatureOf((String) v);
-                                        }
-                                    };
+                                    return atReader(call);
                                 }
                                 @Override public void visitEnd() {
                                     if (call[0] == null || !CONFINED_MOB_READS.contains(bareName(call[0]))) {
@@ -295,6 +304,15 @@ class LiveMobReadCoverageContractTest {
             }, ClassReader.SKIP_FRAMES);
         }
         return sites;
+    }
+
+    /** Reads an {@code @At}'s target, whichever form the annotation arrives in. */
+    private static AnnotationVisitor atReader(String[] call) {
+        return new AnnotationVisitor(Opcodes.ASM9) {
+            @Override public void visit(String key, Object value) {
+                if (key.equals("target")) call[0] = signatureOf((String) value);
+            }
+        };
     }
 
     /**

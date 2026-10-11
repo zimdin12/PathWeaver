@@ -62,7 +62,7 @@ class PathfindingContextIsolationContractTest {
             .findFirst().orElseThrow();
         assertEquals(List.of("<init>(Lnet/minecraft/world/level/CollisionGetter;"
             + "Lnet/minecraft/world/entity/Mob;)V"), annotationValue(redirectAnnotation, "method"));
-        AnnotationNode at = (AnnotationNode) annotationValue(redirectAnnotation, "at");
+        AnnotationNode at = onlyAt(annotationValue(redirectAnnotation, "at"));
         assertEquals("INVOKE", annotationValue(at, "value"));
         assertEquals("Lnet/minecraft/server/level/ServerLevel;getPathTypeCache()"
             + "Lnet/minecraft/world/level/pathfinder/PathTypeCache;",
@@ -119,6 +119,20 @@ class PathfindingContextIsolationContractTest {
         } finally {
             pool.shutdown();
         }
+    }
+
+    /**
+     * The one injection point of a redirect. On 26.3 Mixin declares {@code @Redirect.at()} as an
+     * {@code At[]}, so ASM hands back a list; 26.1.2 and 26.2 hand back the annotation itself. Both
+     * are accepted, and anything else fails rather than reading the first of several injection
+     * points, because a second point is a second call site this contract never examined.
+     */
+    private static AnnotationNode onlyAt(Object value) {
+        if (value instanceof AnnotationNode node) return node;
+        assertInstanceOf(List.class, value, "@Redirect.at() is neither an At nor a list of At");
+        List<?> list = (List<?>) value;
+        assertEquals(1, list.size(), "a redirect must declare exactly one injection point");
+        return assertInstanceOf(AnnotationNode.class, list.get(0));
     }
 
     private static MethodNode redirectMethodBytecode() throws Exception {

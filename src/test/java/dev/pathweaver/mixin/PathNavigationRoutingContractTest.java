@@ -38,7 +38,7 @@ class PathNavigationRoutingContractTest {
         "recomputePath()V", NAV_TARGET + "createPath(" + BLOCK_POS + "I)" + PATH,
         "moveTo(DDDD)Z", NAV_TARGET + "createPath(DDDI)" + PATH,
         "moveTo(DDDID)Z", NAV_TARGET + "createPath(DDDI)" + PATH,
-        "moveTo(" + ENTITY + "D)Z", NAV_TARGET + "createPath(" + ENTITY + "I)" + PATH
+        "moveTo(" + ENTITY + "ID)Z", NAV_TARGET + "createPath(" + ENTITY + "I)" + PATH
     );
 
     @Test void vanillaNavigationCallersHaveExactlyOneExpectedVirtualCreatePathInvoke() throws Exception {
@@ -82,8 +82,10 @@ class PathNavigationRoutingContractTest {
         assertInjection("pathweaver$captureCoordinateReachSpeed", 1, 1,
             double.class, double.class, double.class, int.class, double.class,
             CallbackInfoReturnable.class);
+        // 26.3's inner overload carries the reach range, so the capture takes it too.
         assertInjection("pathweaver$captureEntitySpeed", 1, 1,
-            net.minecraft.world.entity.Entity.class, double.class, CallbackInfoReturnable.class);
+            net.minecraft.world.entity.Entity.class, int.class, double.class,
+            CallbackInfoReturnable.class);
         assertInjection("pathweaver$deferredMovementResult", 3, 3, CallbackInfoReturnable.class);
         // Injects at recomputePath's canUpdatePath() call, deliberately upstream of the branches
         // where vanilla recomputes nothing. Review has twice proposed moving it down to the

@@ -33,7 +33,7 @@ import java.util.Set;
 /** Runtime fingerprint and ASM proof for one exact Fabric Swim compatibility tuple. */
 final class FabricSwimCompatibility {
     static final String MOD_ID = "fabric-content-registries-v0";
-    static final String MOD_VERSION = "11.3.1+37b1aa249e";
+    static final String MOD_VERSION = "15.0.4+74ed1ea55d";
     static final String CONFIG = "fabric-content-registries-v0.mixins.json";
     static final String CONTEXT_MIXIN =
         "net.fabricmc.fabric.mixin.content.registry.PathfindingContextMixin";
@@ -42,10 +42,20 @@ final class FabricSwimCompatibility {
     static final String BLOCK_STATE_BASE_MIXIN =
         "net.fabricmc.fabric.mixin.content.registry.BlockBehaviourBlockStateBaseMixin";
 
-    private static final String MODULE_SHA =
-        "2411c889e9d3709a5a7fa91fe2417fefd010070c4819b996a9e7fa1bdd43e0dc";
+    /**
+     * The module jar in both the forms Fabric API distributes it in, for the reason
+     * {@link FabricInteractionCompatibility} records: a development environment resolves the
+     * standalone artifact, a real install loads the copy nested inside the aggregate jar, and the
+     * two are the same module recompressed. On 26.2 they were byte-identical and one hash covered
+     * both. On 26.3 they are not, so pinning only the one the harness sees would deny every real
+     * install while every game test passed. The mixin class, the config and the land registry stay
+     * pinned exactly, so accepting either packaging does not widen what is trusted.
+     */
+    private static final Set<String> MODULE_SHAS = Set.of(
+        "e83273ce3a8d06e08c00f31bdc38497d653f678af3693a2fc3ba094537fa8879",
+        "f25c676005d542fe8d0ea742a2eb98cba964218d774f6e17e0ae82ad0ce87889");
     private static final String CONFIG_SHA =
-        "0aede4db261cdbf3323d195b51f596c2b7a041a047399172af181ff549f4d5f9";
+        "fe4ac8f6348bf83e26dbe0afb4c32283a9c1d244029953e786ced26a8f8c462c";
     private static final String CONTEXT_MIXIN_SHA =
         "d0c6db69f100e9b49c81fc9ea205566ab0effeba6bc17a73e5884e8c1e0a951e";
     private static final String WALK_MIXIN_SHA =
@@ -61,7 +71,7 @@ final class FabricSwimCompatibility {
     private static final String PATH_CONTEXT_SHA =
         "30aae3ceae3c27e7f3071d8d9b8232035ad8b15ae8d7999da3fbbaa49add6a9b";
     private static final String BLOCK_STATE_BASE_SHA =
-        "6391d498b3e1aff66783374415253021b9ed46e5c8110da97700b305652c4991";
+        "a712b300de9f9e9bc1a48cdf38c7386ce10bd33bc3dc001861884e6d17029ad1";
 
     private static final String CONTEXT_INTERNAL =
         "net/minecraft/world/level/pathfinder/PathfindingContext";
@@ -186,7 +196,8 @@ final class FabricSwimCompatibility {
         List<String> diagnostics = new ArrayList<>();
         Set<String> injected = new HashSet<>();
         Set<String> swimCalls = new HashSet<>();
-        AuditedMixinCompatibility.checkHash("module jar", bundle.moduleJar(), MODULE_SHA, diagnostics);
+        String moduleSha = AuditedMixinCompatibility.sha256(bundle.moduleJar());
+        if (!MODULE_SHAS.contains(moduleSha)) diagnostics.add("module jar hash mismatch: " + moduleSha);
         AuditedMixinCompatibility.checkHash("mixin config", bundle.config(), CONFIG_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("Fabric PathfindingContextMixin", bundle.contextMixin(), CONTEXT_MIXIN_SHA, diagnostics);
         AuditedMixinCompatibility.checkHash("Fabric WalkNodeEvaluatorMixin", bundle.walkMixin(), WALK_MIXIN_SHA, diagnostics);

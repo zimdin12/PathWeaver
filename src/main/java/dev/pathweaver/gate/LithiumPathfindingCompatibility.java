@@ -66,6 +66,37 @@ import java.util.Set;
  * class, or a changed mixin plugin fails verification and denies, because the proof above is a
  * statement about <em>these</em> bytes and nothing else.
  */
+/*
+ * NOT RE-PINNED FOR 26.3, and the reason is a changed argument rather than changed bytes.
+ *
+ * Lithium 0.26.2+mc26.3 is the build a 26.3 pack installs, and five of the eight audited classes are
+ * byte-identical to 0.25.3+mc26.2. Three are not, and the difference matters:
+ *
+ *   - ai/pathing/BlockStateBaseMixin gained a writer, lithium$clearPathTypeCache;
+ *   - util/block_tracking/BlockStateBaseMixin gained lithium$resetFlags and an AtomicBoolean;
+ *   - the mixin plugin moved to net.caffeinemc.mods.lithium.common.LithiumMixinPlugin.
+ *
+ * The exemption below rests on every field write sitting in a constructor, a static initializer or a
+ * named initializer that nothing on the search path calls. On 0.26.2 that is no longer the shape.
+ * lithium$getAllFlags reads the flag field and, when it is uninitialized, calls
+ * handleUninitializedBlockStateFlags, which either throws or calls
+ * BlockInfoInitializer.initializeBlockInfoAndGetFlags under a static lock. So a write is reachable
+ * from a read a search performs. Lithium's own initialization got safer, a lock and an eager pass at
+ * registry time, but the claim that makes it safe is now "idempotent under a monitor" and not "cannot
+ * happen on a worker". That is a different proof, and this audit does not carry it.
+ *
+ * So MOD_VERSION stays at the artifact the proof is about and the audit refuses 0.26.2 on the version
+ * gate, naming it. On 26.3 that means compatibilityTier=AUDITED denies the movement families on any
+ * pack containing Lithium, which is most performance packs. The shipped default, UNSAFE, reads none
+ * of this. COMPATIBILITY.md and release/notes-26.3.md say so.
+ *
+ * What a 26.3 re-pin needs, for whoever does it: every write to the pathing cache and the flag field
+ * on 0.26.2 happens while holding BLOCK_INFO_INITIALIZATION_LOCK; the value written is a pure
+ * function of the block state, so two initializations cannot disagree; and a reader that sees the
+ * pre-initialization state either initializes under that lock or throws, never reads a torn value.
+ * Hashes for the three changed classes are not listed here on purpose: a pin without that proof is
+ * the thing this file exists to prevent.
+ */
 final class LithiumPathfindingCompatibility {
     static final String MOD_ID = "lithium";
     static final String MOD_VERSION = "0.25.3+mc26.2";

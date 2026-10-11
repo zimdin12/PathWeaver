@@ -1,0 +1,30 @@
+PathNavigationRoutingContractTest, four-state witness for the 26.3 entity-move retarget, run
+2026-10-11 on mc-26.3 (JAVA_HOME = jdk-25.0.3.9, ./gradlew test).
+
+The change: 26.3 added PathNavigation.moveTo(Entity, int, double) and moveTo(Entity, double) now only
+delegates to it, so the HEAD capture, the RETURN deferred-acceptance inject and the createPath
+WrapOperation all moved to the inner overload. MeleeAttackGoal calls the new one directly.
+
+== 1-unfixed  (production and test both on moveTo(Entity, double), the state inherited from mc-26.2)
+   gradle exit: 1
+   515 tests completed, 10 failed
+   - PathNavigationRoutingContractTest.vanillaNavigationCallersHaveExactlyOneExpectedVirtualCreatePathInvoke:
+     Minecraft caller drifted: moveTo(Lnet/minecraft/world/entity/Entity;D)Z
+     expected: {createPath(Lnet/minecraft/world/entity/Entity;I)...=1} but was: {}
+
+== 2-fixed  (hooks and the caller table on moveTo(Entity, int, double))
+   gradle exit: 0
+   BUILD SUCCESSFUL, 515 tests, 0 failed
+
+== 3-reverted  (exactly the three mixin descriptors and the capture signature put back; the test's
+                caller table left at 26.3)
+   gradle exit: 1
+   6 tests completed, 2 failed
+   - routingAndMovementResultInjectionsFailClosedOnMappingDrift: NoSuchMethodException:
+     pathweaver$captureEntitySpeed(Entity, int, double, CallbackInfoReturnable)
+   - mixinDeclaresOneRequiredWrapOperationPerApprovedCaller:
+     missing wrapper for moveTo(Lnet/minecraft/world/entity/Entity;ID)Z
+
+== 4-restored  (file restored, restored-identical=yes: diff against HEAD unchanged at 12 added, 4 removed)
+   gradle exit: 0
+   BUILD SUCCESSFUL, 515 tests, 0 failed

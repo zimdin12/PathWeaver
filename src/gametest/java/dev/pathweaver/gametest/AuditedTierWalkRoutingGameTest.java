@@ -20,9 +20,13 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Live witness that the audited tier actually routes vanilla Walk searches off-thread with
- * Lithium and Diagonal Blocks loaded — between them, the reason PathWeaver was inert on real
- * modpacks.
+ * Live witness that the audited tier actually routes vanilla Walk searches off-thread with Diagonal
+ * Blocks loaded, one of the two mods that made PathWeaver inert on real modpacks.
+ *
+ * <p>On 26.1.2 and 26.2 this witness carried Lithium as well. On 26.3 it does not, because Lithium
+ * 0.26.2 is not audited there: see LithiumPathfindingCompatibility for what changed and what a
+ * re-pin would have to prove. With Lithium present the audited tier denies every movement family on
+ * 26.3, so staging it here would witness that denial rather than Diagonal Blocks' exemption.
  *
  * <p>The interesting failure this guards against is a vacuous pass: if either mod happened to
  * contribute no sensitive claim, every assertion below would succeed while proving nothing about
@@ -32,7 +36,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class AuditedTierWalkRoutingGameTest {
     /** Every mod the audited tier claims to unlock must be present and must be doing work. */
-    private static final List<String> AUDITED_MODS = List.of("lithium", "diagonalblocks");
+    private static final List<String> AUDITED_MODS = List.of("diagonalblocks");
 
     public AuditedTierWalkRoutingGameTest() {}
 

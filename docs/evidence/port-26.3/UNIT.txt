@@ -1,0 +1,14 @@
+Unit suite on mc-26.3, 2026-10-11, JDK 25.0.3.9, Gradle 9.5, after the retarget and the re-pins.
+
+  ./gradlew test  ->  BUILD SUCCESSFUL, 515 tests, 0 failed
+
+Same count as mc-26.2 at 0.9.0. What changed to get there, from the 10 failures the first 26.3 build
+produced:
+
+  production  the three entity-move hooks moved to moveTo(Entity, int, double)  (WITNESS-hook-retarget.txt)
+  production  ServerCore, rabbit, Fabric interaction and Fabric content-registries pins re-derived
+  production  Diagonal Blocks re-pinned: module jar and WalkNodeEvaluatorMixin bytes, config unchanged
+  production  the content-registries module now accepts both packaging forms, as interaction already did
+  production  Lithium left pinned to 0.25.3+mc26.2 and so refusing on 26.3, with the reason in the class
+  test        three annotation readers taught that 26.3 Mixin declares @Redirect.at() as an At[]
+  test        COMPATIBILITY.md re-derived so the published table quotes the pins the code enforces

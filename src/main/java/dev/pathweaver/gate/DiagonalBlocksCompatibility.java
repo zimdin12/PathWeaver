@@ -57,18 +57,18 @@ import java.util.Set;
  */
 final class DiagonalBlocksCompatibility {
     static final String MOD_ID = "diagonalblocks";
-    static final String MOD_VERSION = "26.2.0";
+    static final String MOD_VERSION = "26.3.0";
     static final String CONFIG = "diagonalblocks.common.mixins.json";
     private static final String PACKAGE = "fuzs.diagonalblocks.common.mixin";
     static final String WALK_MIXIN = PACKAGE + ".WalkNodeEvaluatorMixin";
     static final String WALK = "net.minecraft.world.level.pathfinder.WalkNodeEvaluator";
 
     private static final String MODULE_SHA =
-        "ef2fc49de90018c022b63d36a871f64ecf1744e81183cca494976e9f5729d36b";
+        "635cec21c76b603223059eb9432b48df07a1c20aaac65f5a64d7a034aafc3003";
     private static final String CONFIG_SHA =
         "8aeca65fac6618bb8d7c266c5b4194af876a963fabd77c55f86c9131abfe6ea8";
     private static final String WALK_MIXIN_SHA =
-        "fb5324c681fac2f33145fc67560f2162059353ab5e010d29405af1119d063381";
+        "9f91711ed6ea7e5139369b8ff3e87bebe9056ea65a6cc68028ab4b4f8f3657bb";
 
     private static final String STAR_COLLISION_BLOCK =
         "fuzs/diagonalblocks/common/api/v2/block/StarCollisionBlock";

@@ -151,9 +151,17 @@ public abstract class PathNavigationMixin implements PWNavigation {
         pathweaver$beginMovement(speed);
     }
 
-    @Inject(method = "moveTo(Lnet/minecraft/world/entity/Entity;D)Z", at = @At("HEAD"),
+    /**
+     * 26.3 added {@code moveTo(Entity, int, double)}. {@code moveTo(Entity, double)} now does nothing
+     * but delegate to it, and {@code MeleeAttackGoal} calls the new overload directly, so the claim is
+     * made on the inner one: it is where {@code createPath} is called and where every entity-target
+     * request now arrives. Claiming on the delegate as well would count one request twice, and the
+     * delegate returns the inner result unchanged, so the deferred-acceptance return needs no hook
+     * there either.
+     */
+    @Inject(method = "moveTo(Lnet/minecraft/world/entity/Entity;ID)Z", at = @At("HEAD"),
             require = 1, expect = 1)
-    private void pathweaver$captureEntitySpeed(Entity entity, double speed,
+    private void pathweaver$captureEntitySpeed(Entity entity, int reachRange, double speed,
                                                 CallbackInfoReturnable<Boolean> cir) {
         pathweaver$beginMovement(speed);
     }
@@ -161,7 +169,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
     @Inject(method = {
             "moveTo(DDDD)Z",
             "moveTo(DDDID)Z",
-            "moveTo(Lnet/minecraft/world/entity/Entity;D)Z"
+            "moveTo(Lnet/minecraft/world/entity/Entity;ID)Z"
         }, at = @At("RETURN"), cancellable = true, require = 3, expect = 3)
     private void pathweaver$deferredMovementResult(CallbackInfoReturnable<Boolean> cir) {
         if (pathweaver$acceptedDeferred) cir.setReturnValue(true);
@@ -463,7 +471,7 @@ public abstract class PathNavigationMixin implements PWNavigation {
     }
 
     @WrapOperation(
-        method = "moveTo(Lnet/minecraft/world/entity/Entity;D)Z",
+        method = "moveTo(Lnet/minecraft/world/entity/Entity;ID)Z",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/ai/navigation/PathNavigation;createPath(Lnet/minecraft/world/entity/Entity;I)Lnet/minecraft/world/level/pathfinder/Path;"),
         require = 1,
         expect = 1
