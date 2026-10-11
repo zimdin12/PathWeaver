@@ -18,4 +18,19 @@ Read back from the built jar itself, not from the sources:
 Note on the loader bound: the jar asks for 0.19 or newer, while Minecraft 26.3 itself needs 0.19.5.
 The game, not this mod, enforces that.
 
-NOT PUBLISHED. This jar has not been uploaded anywhere and no tag has been moved.
+After the review fixes, rebuilt the same way from 0843903:
+
+  pathweaver-0.9.0+26.3.jar
+    sha256  7905f731958b6f925389f840f5574c4990cff04cb6337207dd0464e58e55cc63
+
+That jar is NOT byte-identical to the 53c591f one, and the commit message for 0843903 claimed "no
+production bytecode changed", which is wrong as written. Measured: of 118 class entries, 4 differ,
+all of them files whose only edit was comments (LithiumPathfindingCompatibility and its Bundle,
+PathNavigationMixin, WallClimberNavigationMixin). Adding comment lines moves the LineNumberTable.
+
+What is true, and is what the harness series rests on: the instruction streams are identical. javap -p -c
+output for all four classes is byte-for-byte equal between the two jars, and the other 114 class
+entries and every non-class entry hash the same. So the nine-harness series taken at 53c591f describes
+the same executable behaviour as 0843903, and it was not re-run for a comment and unit-test commit.
+
+NOT PUBLISHED. Neither jar has been uploaded anywhere and no tag has been moved.
