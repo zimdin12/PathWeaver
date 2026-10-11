@@ -1,0 +1,21 @@
+Release jar for the 26.3 port, built from a fresh clone rather than the working tree.
+
+  clone     git clone --branch mc-26.3 --single-branch <repo>
+  commit    53c591fac66d89a709e30801e01b9477c888e812
+  build     JAVA_HOME=jdk-25.0.3.9  ./gradlew build   ->  BUILD SUCCESSFUL in 42s
+            (the build runs the unit suite, so the fresh clone also confirms it green)
+
+  pathweaver-0.9.0+26.3.jar
+    bytes   386785
+    sha256  3de95e32dc43d6ad5890da6b88f6599450ab29b4efb0e7023122e9ceb2aad91d
+
+Read back from the built jar itself, not from the sources:
+
+  id/version   pathweaver 0.9.0+26.3
+  depends      minecraft >=26.3 <26.4, java >=25, fabricloader >=0.19, fabric-api *
+  suggests     lithium *, modmenu *, cloth-config >=26.1
+
+Note on the loader bound: the jar asks for 0.19 or newer, while Minecraft 26.3 itself needs 0.19.5.
+The game, not this mod, enforces that.
+
+NOT PUBLISHED. This jar has not been uploaded anywhere and no tag has been moved.

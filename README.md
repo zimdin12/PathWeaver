@@ -1,8 +1,10 @@
 # PathWeaver
 
-**Experimental server-side mod for Minecraft 26.1.1, 26.1.2 and 26.2 (Fabric). Moves vanilla mob path searches off the server thread.**
+**Experimental server-side mod for Minecraft 26.3 (Fabric). Moves vanilla mob path searches off the server thread.**
 
-26.1.1 and 26.1.2 are served by one file — every pathfinding and navigation class is byte-identical between them. 26.2 is built separately from the `mc-26.2` branch; the mod needs no code change there, only a retarget. **`AUDITED` works on all three.** Each audit is pinned to the exact bytecode it was derived against, so when 26.2 changed four of those classes every audit refused and the mod did nothing at that setting. That was the pins failing closed rather than a bug, and it is fixed: the 26.2 artifacts were re-derived, three by new hashes whose shape proofs still passed and one by a new proof because the mod had changed mechanism. The working is in `docs/AUDITS-ON-26.2.md`.
+This branch builds for **26.3**. `master` serves 26.1.1 and 26.1.2 from one file and `mc-26.2` serves 26.2; the pathfinding and navigation classes differ between those versions, so each gets its own build. On 26.3 one hook moved. Vanilla added `PathNavigation.moveTo(Entity, int, double)`, the old two-argument method now only delegates to it, and `MeleeAttackGoal` calls the new one directly, so the entity-target hooks sit on the inner overload here. Nothing about which path a mob gets changes.
+
+**`AUDITED` is narrower on 26.3: Lithium is not audited.** Lithium 0.26.2 moved a field write onto a lock-guarded path that a search can reach, which is a different safety argument from the one this audit proves, so the audit refuses it by version and that tier denies every movement family on any pack containing Lithium. The shipped default, `UNSAFE`, reads none of this. `LithiumPathfindingCompatibility` says what a re-pin would have to show, `COMPATIBILITY.md` has the table, and `release/notes-26.3.md` says it in release terms. ServerCore, rabbit-pathfinding-fix, Diagonal Blocks and both audited Fabric API modules do verify on 26.3.
 
 **Read this first: PathWeaver ships with its compatibility checking turned off, so out of the box it runs other mods' uninspected pathfinding code on worker threads. Back up worlds you care about.**
 
@@ -455,7 +457,7 @@ above is still the honest statement of what is unmeasured.
 
 ## Requirements
 
-Minecraft 26.1.x, Fabric Loader 0.19+, Fabric API, Java 25. That is the whole list.
+Minecraft 26.3, Fabric Loader 0.19.5 or newer, Fabric API, Java 25. That is the whole list.
 
 Cloth Config and ModMenu are optional and only draw the settings screen. Without them the mod reads and writes the same `config/pathweaver.json` and behaves identically, which is what a dedicated server wants: it never shows a settings screen, so it should not have to install one.
 
