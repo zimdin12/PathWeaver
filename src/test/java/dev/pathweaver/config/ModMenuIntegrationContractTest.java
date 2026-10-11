@@ -25,6 +25,52 @@ class ModMenuIntegrationContractTest {
     private static final Path RESOURCES = Path.of("src", "main", "resources");
     private static final String ENTRYPOINT = "dev.pathweaver.config.PathWeaverModMenu";
 
+    /**
+     * The declared Minecraft range must contain the version this branch builds against.
+     *
+     * <p>The bug this catches: the 26.3 port bumped every dependency, compiled, and passed 515 unit
+     * tests while declaring {@code >=26.2 <26.3}, so Fabric Loader refused the mod on 26.3 with
+     * "only the wrong version is present". Nothing in the suite compared the two numbers, and the
+     * first thing to notice was a game-test series that could not boot a single harness. A port
+     * that cannot load is not a port, and this is the cheapest place to say so.
+     */
+    @Test
+    void manifestAcceptsTheMinecraftVersionThisBranchBuildsFor() throws Exception {
+        JsonObject manifest = JsonParser.parseString(
+            Files.readString(RESOURCES.resolve("fabric.mod.json"))).getAsJsonObject();
+        String range = manifest.getAsJsonObject("depends").get("minecraft").getAsString();
+
+        var properties = new java.util.Properties();
+        try (var in = Files.newInputStream(Path.of("gradle.properties"))) {
+            properties.load(in);
+        }
+        String built = properties.getProperty("minecraft_version");
+        assertNotNull(built, "gradle.properties has no minecraft_version");
+
+        // Only the shape this project uses: ">=<lower> <<upper>", both plain dotted versions.
+        var bounds = java.util.regex.Pattern.compile(">=([0-9.]+) <([0-9.]+)").matcher(range);
+        assertTrue(bounds.matches(),
+            "fabric.mod.json declares minecraft as '" + range + "', which this check cannot read;"
+                + " keep it as '>=<lower> <<upper>' or teach this test the new shape");
+        assertTrue(compare(built, bounds.group(1)) >= 0,
+            "built for " + built + " but the manifest requires at least " + bounds.group(1)
+                + "; the loader would refuse this jar on the version it was compiled against");
+        assertTrue(compare(built, bounds.group(2)) < 0,
+            "built for " + built + " but the manifest excludes " + bounds.group(2) + " and above;"
+                + " the loader would refuse this jar on the version it was compiled against");
+    }
+
+    /** Dotted numeric compare, so 26.10 sorts above 26.9 rather than below it. */
+    private static int compare(String left, String right) {
+        String[] a = left.split("[.]"), b = right.split("[.]");
+        for (int i = 0; i < Math.max(a.length, b.length); i++) {
+            int x = i < a.length ? Integer.parseInt(a[i]) : 0;
+            int y = i < b.length ? Integer.parseInt(b[i]) : 0;
+            if (x != y) return Integer.compare(x, y);
+        }
+        return 0;
+    }
+
     @Test
     void manifestRegistersExplicitModMenuEntrypoint() throws Exception {
         JsonObject manifest = JsonParser.parseString(
