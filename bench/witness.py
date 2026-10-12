@@ -505,7 +505,7 @@ WITNESSES = [
     (
         "pathfinder-pin-value",
         "src/main/java/dev/pathweaver/gate/AuditedMixinCompatibility.java",
-        '"095d620eaac37aa71af017858682e89689039a3b999cf2a5fcfce3f1c3973b2c"',
+        '"218423d307dd3952c9b8d64b9a5ba811c9280ec5d65163fbc40a04fe47250d67"',
         '"' + "0" * 64 + '"',
         "*PathFinderPinTest*",
         "the pin is not the digest of the shipped class",
