@@ -1,0 +1,52 @@
+PathWeaver 0.9.0 real-client singleplayer game test (mc-26.3 branch)
+
+command      ./gradlew runClientGameTest
+commit       5dfed2b0cabad21a09eb8e6759b3ce2cafc9a0ae
+attempts     3: the first two crashed before the test began, the third passed
+result       BUILD SUCCESSFUL: 1, PW_CLIENT DONE: 1
+
+A real client with an integrated server: searches dispatch and install on the integrated server, and
+the settings screen is drawn and captured. Same report as the 26.2 run in ../CLIENT-0.9.0.txt, line for
+line. The lines below are the test's own report from the passing attempt, paths removed.
+
+[01:44:16] [Server thread/INFO] (pathweaver) PathWeaver is ACTIVE: all 6 movement families can path off-thread (waived: 1 mod(s)).
+[01:44:20] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT runtime running=true
+[01:44:20] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT workers=8
+[01:44:20] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT deniedFamilies=0
+[01:44:20] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT zombie accepted=true registered=true alive=true removed=false onGround=true tick=0 pos=BlockPos{x=-10, y=101, z=-3} below=Block{minecraft:stone} path=null difficulty=NORMAL
+[01:44:20] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT bee accepted=true registered=true alive=true removed=false onGround=true tick=0 pos=BlockPos{x=-10, y=101, z=0} below=Block{minecraft:stone} path=null difficulty=NORMAL
+[01:44:20] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT drowned accepted=true registered=true alive=true removed=false onGround=true tick=0 pos=BlockPos{x=-10, y=101, z=3} below=Block{minecraft:stone} path=null difficulty=NORMAL
+[01:44:20] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT dispatchedDelta=3
+[01:44:20] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT drownedMalus 0.0 -> 6.0
+[01:44:23] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT installed=3
+[01:44:23] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT discarded=0
+[01:44:23] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT dispatched=3
+[01:44:24] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT configScreen=me.shedaniel.clothconfig2.gui.ClothConfigScreen
+[01:44:24] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT screenshot=<RUN>/screenshots/0000_pathweaver-config-general.png
+[01:44:24] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT screenshot=<RUN>/screenshots/0001_pathweaver-config-general-scrolled.png
+[01:44:24] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT category-tab-not-clickable=Worker capacity (restart required)
+[01:44:24] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT category-tab-not-clickable=Repath and result validity
+[01:44:24] [Test thread/INFO] (Minecraft) [STDOUT]: PW_CLIENT DONE
+[01:44:24] [Server thread/INFO] (pathweaver) PathWeaver stats: dispatched=3, installed=3, discarded=0.
+
+THE TWO CRASHED ATTEMPTS ARE 26.3 ITSELF, NOT PATHWEAVER
+
+Both died with NTSTATUS 0xC0000005 (access violation) a second after the window opened, after
+"Reloading ResourceManager" and before "OpenAL initialized" / "Sound engine started". No JVM crash
+dump, no game crash report, no Windows application-error event. Nothing PathWeaver-specific had run.
+
+To find out whose crash it is, a scratch Loom project ran the same 26.3 client with only the mods named
+below, through runClient (main menu, no test), on the same machine, 2026-10-13 01:40-01:43 local:
+
+  mods on top of Minecraft 26.3 + loader 0.19.5      reached "Sound engine started"
+  none                                               2 of 3
+  Fabric API 0.162.0+26.3                            1 of 4
+  Fabric API + Cloth 26.3.159                        0 of 1
+  Fabric API + PathWeaver jar 7905f731               0 of 1
+  Fabric API + Cloth + PathWeaver jar 7905f731       0 of 1
+
+The crash happens with no PathWeaver and no mods at all, so PathWeaver is not needed to cause it.
+The counts are too small to say whether mods change how often it happens.
+
+Control: the 26.2 branch's identical client test, run on this machine the same night (01:39), passed
+on its first attempt. One run, so it shows the machine can pass this test, not that 26.2 never crashes.
