@@ -1,5 +1,21 @@
 # What the live Modrinth page currently shows
 
+**body-0.9.0-correction-2.md**. The 0.9.0+26.1.2 and 0.9.0+26.2 versions carry
+**changelog-0.9.0-correction-2.md**; 0.9.0+26.3 carries **changelog-0.9.0-26.3.md**.
+
+Published 2026-10-13 by `release/publish-0.9.0-26.3.py` (mc-26.3 branch): the 0.9.0+26.3 version
+(game version 26.3, beta, featured, jar sha256 `7905f731...` built in a clean worktree at tag
+`v0.9.0-26.3`), the page body, and the two older changelogs, all read back as matching. The served
+jar was also downloaded from the CDN and hashed: `7905f731...`. 18 versions listed, the three 0.9.0
+builds featured.
+
+The correction: the busy-server table described its zombies as chasing a player, but that run's
+test player had been removed a second after joining, so they wandered. It now shows the re-run with
+the player present (`docs/evidence/perf-2026-10/` on master): 4 to 12% instead of 5 to 11%, with the
+old numbers named in the page's Corrections section.
+
+## Before that
+
 **body-0.9.0-correction-1.md**, with **changelog-0.9.0-correction-1.md** on both 0.9.0 versions.
 
 Corrected 2026-09-14 by `release/correct-0.9.0-page.py`, which read the text back from the public API
