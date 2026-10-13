@@ -34,24 +34,21 @@ prove, for whoever picks it up.
 Diagonal Blocks 26.3.0, ServerCore 1.5.20+26.3, rabbit-pathfinding-fix 1.5.0 and both Fabric API
 modules are audited on 26.3, all re-derived against the artifacts a 26.3 install resolves.
 
-### Verified on 26.3, at the commit this jar was built from
+### Verified on 26.3
 
 - 69 suites, 515 unit tests, 0 failures
 - 9 of 9 game-test harnesses, one attempt each and no reruns, every row checked against the
   manifest it actually consumed and the providers on its classpath at launch: 21 tests
   (`docs/evidence/port-26.3/HARNESS-26.3.txt`)
-- two four-state witnesses for the two things 26.3 broke, each with a cause-specific red on
-  reverting exactly the production change: the navigation hook
-  (`docs/evidence/port-26.3/WITNESS-hook-retarget.txt`) and the manifest range
-- the 0.9.0 witness ledger was not re-executed on this branch. Those witnesses are the record of
-  fixes made then, and each one's test is in the suite above, green here
+- a real 26.3 client with an integrated server: searches dispatch and install, and the settings
+  screen draws (`docs/evidence/port-26.3/CLIENT-26.3.txt`)
+- a clean 26.3 server without Cloth Config starts with PathWeaver active, and a control build with
+  the old Cloth dependency put back fails to start (`docs/evidence/port-26.3/no-cloth/`)
+- all 36 of the 0.9.0 four-state witnesses re-run here, each fix reverted and its test seen to fail
+  for the expected reason (`docs/evidence/port-26.3/WITNESS-26.3.txt`), plus two more for the two
+  things 26.3 broke: the navigation hook and the manifest range
 - the jar was built from a fresh clone, and its declared versions were read back out of the built
   jar (`docs/evidence/port-26.3/RELEASE-JAR.txt`)
-- Cloth Config being optional is covered on every build by `NoClothOnTheServerPathTest`, which
-  reads the compiled bytes a server loads and refuses any `clothconfig2` reference, with
-  `ClothScreen` as its positive control. The one-off server boots that first demonstrated it were
-  taken on 26.2 and were not retaken here
-- NOT DONE: no real client launch on 26.3. Everything above is headless
 
 ### Also worth knowing
 
