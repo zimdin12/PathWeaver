@@ -25,6 +25,7 @@
 set -u
 # Hold and restore live in one place; see bench/lib/hold.sh for the bug that made that matter.
 . "$(cd "$(dirname "$0")" && pwd)/lib/hold.sh"
+. "$(cd "$(dirname "$0")" && pwd)/lib/arena.sh"
 SERVER="${PW_SERVER:-$HOME/AppData/Roaming/.minecraft_server}"
 # The Adoptium patch version moves, so it is discovered rather than pinned, and a miss is fatal
 # rather than a path that does not exist being handed to the launcher.
@@ -42,8 +43,56 @@ RESERVE="${RESERVE:-45}"  # shutdown, readout and the controls still happen insi
 BURSTS=2            # player teleports per rung: each one makes the whole population re-path at once
 BURST_GAP=11        # seconds between them; spark health's 10 s window must land on a burst
 
+# THE DRIFT EXPERIMENT (docs/evidence/diag-phase1-2026-09-14/w1-drift-proposal/PROPOSAL.md) sets PW_DRIFT_DIR,
+# PW_DRIFT_RAW (the load monitor's -Raw file) and PW_AFFINITY (the arm's processor mask, from the topology
+# receipt). Unset, nothing below changes what this script does. Set, it refuses to launch unless the minute before
+# launch was quiet, sets the mask on the process that creates Java rather than on Java afterwards, freezes the
+# JVM's processor count and PathWeaver's pool, and binds the server's Windows process before the server-up mark
+# and the arena. Each of those steps lives in bench/drift/drift.sh; a failure here refuses or voids the run.
+DRIFT="${PW_DRIFT_DIR:-}"
+POOL_FIELD=""
+JVM_EXTRA=()
+if [ -n "$DRIFT" ]; then
+  : "${PW_AFFINITY:?PW_DRIFT_DIR needs PW_AFFINITY}" "${PW_DRIFT_RAW:?PW_DRIFT_DIR needs PW_DRIFT_RAW}"
+  DRIFT_BIN="$(cd "$(dirname "$0")" && pwd)/drift"
+  mkdir -p "$DRIFT" || exit 8
+  DRIFT="$(cd "$DRIFT" && pwd)" || exit 8
+  POOL_FIELD=',"poolThreads":8'
+  JVM_EXTRA=(-XX:ActiveProcessorCount=16)
+  . "$DRIFT_BIN/drift.sh" || exit 8
+  drift_begin || { echo "REFUSING: could not open the preflight phase"; exit 8; }
+fi
+# PHASE 1 COUNTED RUNS (docs/research/phase1-diagnostics-v6.md, W1) set PW_TRACE to the diagnostic jar's state:
+# absent (no property), idle or record. PW_TRACE_RUNGS names the rungs whose measurement phase is marked: the
+# window opens before the rung's first burst and closes just before spark health reads the tick distribution.
+# The jar writes one trace file per window; after the run they are renamed <label>.<rung>.trace.txt in PW_OUT.
+# PW_TRACE_BURSTS sets the number of player teleports on a marked rung (default: the same as every rung). v6's W1
+# exposure needs 2000 dispatched in the window, and two bursts gave 1734 at rung 1000 in the first smoke run.
+# Unset, nothing below changes what this script does.
+TRACE="${PW_TRACE:-}"
+TRACE_RUNGS=" ${PW_TRACE_RUNGS:-} "
+case "$TRACE" in
+  "") ;;
+  absent) ;;
+  idle|record) JVM_EXTRA+=("-Dpathweaver.trace=$TRACE") ;;
+  *) echo "REFUSING: PW_TRACE must be absent, idle or record, not $TRACE"; exit 8 ;;
+esac
+if [ -n "$TRACE" ]; then
+  [ -n "${PW_TRACE_RUNGS:-}" ] || { echo "REFUSING: PW_TRACE needs PW_TRACE_RUNGS"; exit 8; }
+  for r in $PW_TRACE_RUNGS; do
+    case " $* " in *" $r "*) ;; *) echo "REFUSING: traced rung $r is not on the ladder"; exit 8 ;; esac
+  done
+fi
+marked_rung() { [ -n "$TRACE" ] && case "$TRACE_RUNGS" in *" $1 "*) return 0 ;; esac; return 1; }
+
+run_jvm() {
+  if [ -n "$DRIFT" ]; then drift_pin_self "$PW_AFFINITY" || exit 9; fi
+  exec "$@"
+}
+
 START=$(date +%s)
 elapsed() { echo $(( $(date +%s) - START )); }
+[ -n "$DRIFT" ] && echo "  start clock $(date -u -d "@$START" +%H:%M:%S)"
 
 mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 LOG="$OUT/$LABEL.log"; IN="$OUT/$LABEL.stdin"; SPARKDIR="$SERVER/config/spark"
@@ -54,13 +103,16 @@ if grep -q '^level-name=pw-bench' server.properties 2>/dev/null; then
 else
   cp -f server.properties server.properties.pristine
 fi
-[ -f config/pathweaver.json ] && [ ! -f config/pathweaver.json.pristine ] &&
+# The pristine copy follows the operator's file: refreshed whenever the live file is not one a bench run wrote.
+[ -f config/pathweaver.json ] && ! grep -q '"compatibilityTier":"UNSAFE","brainSinkAsync":true,"resultCacheMode"' config/pathweaver.json &&
   cp -f config/pathweaver.json config/pathweaver.json.pristine
 
 # ---- the arm, and putting the server back exactly as it was found -------------------------------
 INSTALLED=""     # jar copied into mods/ for this run
 restore() {
   for pid in "${TAILPID:-}" "${SERVERPID:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null; done
+  # Windows holds a jar open until its JVM is gone; deleting earlier can leave the arm jar in the real mods/.
+  for _ in $(seq 1 30); do [ -n "${SERVERPID:-}" ] && kill -0 "$SERVERPID" 2>/dev/null || break; sleep 1; done
   # The installed arm jar comes out BEFORE the held jar goes back: they can share a filename, and the
   # other order would overwrite the operator's jar with the one under test.
   [ -n "$INSTALLED" ] && rm -f "$SERVER/mods/$(basename "$INSTALLED")"
@@ -69,6 +121,8 @@ restore() {
     cp -f "$SERVER/server.properties.pristine" "$SERVER/server.properties"
   [ -f "$SERVER/config/pathweaver.json.pristine" ] &&
     cp -f "$SERVER/config/pathweaver.json.pristine" "$SERVER/config/pathweaver.json"
+  # A trace that was collected has been moved out; one that was not stays, and so does the folder holding it.
+  rmdir "$SERVER/pathweaver-trace" 2>/dev/null
 }
 trap restore EXIT INT TERM HUP
 
@@ -91,14 +145,16 @@ else
   ENABLED=false
 fi
 
-rm -rf "$SERVER/pw-bench"; mkdir -p config
+rm -rf "$SERVER/pw-bench" "$SERVER/pathweaver-trace"; mkdir -p config
 # PW_CACHE selects the route-cache mode for OUR arm only. The default is SHADOW because that is what
 # the mod ships: the cache measures and does not serve. A competitor arm is left on its own defaults,
 # which is what its users actually run. That asymmetry is real and is reported rather than equalised.
 cat > config/pathweaver.json <<CFG
-{"configVersion":3,"enabled":${ENABLED},"compatibilityTier":"UNSAFE","brainSinkAsync":true,"resultCacheMode":"${PW_CACHE:-SHADOW}"}
+{"configVersion":3,"enabled":${ENABLED},"compatibilityTier":"UNSAFE","brainSinkAsync":true,"resultCacheMode":"${PW_CACHE:-SHADOW}"${POOL_FIELD}}
 CFG
 rm -f config/pathwright.json
+# The bytes the server will read, kept with the run, so a run can be checked against what FROZEN.txt pinned.
+cp -f config/pathweaver.json "$OUT/$LABEL.config-used.json"
 
 python - <<'PY'
 import pathlib
@@ -119,54 +175,39 @@ PY
 echo "arm=$ARM (id=$ARM_ID)  rungs=${RUNGS[*]}  budget=${BUDGET}s (reserve ${RESERVE}s)  pwCache=${PW_CACHE:-SHADOW}"
 
 : > "$IN"; : > "$LOG"; mkdir -p "$SPARKDIR"
-( tail -f "$IN" & echo $! > "$OUT/$LABEL.tailpid"; wait ) | "$JAVA" -Xmx12G -Xms4G \
+if [ -n "$DRIFT" ]; then
+  rm -f "$DRIFT/$LABEL.affinity"
+  drift_preflight_launch_mark "$START" || { echo "REFUSING: the minute before launch was not quiet"; exit 8; }
+fi
+( tail -f "$IN" & echo $! > "$OUT/$LABEL.tailpid"; wait ) | run_jvm "$JAVA" -Xmx12G -Xms4G "${JVM_EXTRA[@]}" \
     -XX:+UseG1GC -XX:+ParallelRefProcEnabled \
     -jar fabric-server-mc.26.1.2-loader.0.19.3-launcher.jar nogui >> "$LOG" 2>&1 &
 SERVERPID=$!
 sleep 1
 TAILPID="$(cat "$OUT/$LABEL.tailpid" 2>/dev/null)"
+if [ -n "$DRIFT" ]; then
+  # The pinning shell writes its record before it execs Java or exits; nothing is judged until it exists.
+  for _ in $(seq 1 30); do [ -f "$DRIFT/$LABEL.affinity" ] && break; sleep 1; done
+  grep -q 'match=yes$' "$DRIFT/$LABEL.affinity" 2>/dev/null ||
+    { echo "VOID RUN: the JVM was not started under the arm's mask"; exit 3; }
+fi
 
 say() { echo "$1" >> "$IN"; }
 wait_for() { for _ in $(seq 1 "$2"); do grep -aq "$1" "$LOG" && return 0; sleep 1; done; return 1; }
 
 wait_for 'Done (' 300 || { echo "SERVER NEVER STARTED"; exit 2; }
+# Bound before the server-up mark, so every sample of the measured span carries the SERVER phase. The monitor
+# stamps a sample's second before it reads the phase file, so a sample in the same second as the phase write can
+# still carry PREFLIGHT; the pause puts the mark past that second.
+if [ -n "$DRIFT" ]; then
+  drift_bind_server "$SERVERPID" "$JAVA" || { echo "VOID RUN: the server could not be bound as this run's subject"; exit 3; }
+  sleep 2
+fi
 echo "  server up at $(elapsed)s"
 
-# The same flat arena as bench/saturate.sh: empty sky so worldgen cannot vary between arms, walls so
-# nothing falls out, pillars with gaps so a route is a search and not a straight line.
-say "forceload add -60 -60 60 60"
-say "fill -60 200 -60 60 200 60 minecraft:stone"
-for y in 201 202 203; do say "fill -60 $y -60 60 $y 60 minecraft:air"; done
-say "fill -60 201 -60 60 203 -60 minecraft:stone"
-say "fill -60 201 60 60 203 60 minecraft:stone"
-say "fill -60 201 -60 -60 203 60 minecraft:stone"
-say "fill 60 201 -60 60 203 60 minecraft:stone"
-for x in -40 -24 -8 8 24 40; do say "fill $x 201 -56 $x 203 56 minecraft:stone"; done
-for x in -40 -24 -8 8 24 40; do say "fill $x 201 -2 $x 203 2 minecraft:air"; done
-sleep 5
-say "gamerule doMobSpawning false"
-say "gamerule randomTickSpeed 0"
-say "gamerule doDaylightCycle false"
-say "gamerule doWeatherCycle false"
-say "gamerule doFireTick false"
-say "gamerule doMobLoot false"
-say "gamerule doImmediateRespawn true"
-say "gamerule maxEntityCramming 0"
-say "time set midnight"
-say "kill @e[type=!minecraft:player]"
-sleep 3
-
-# A player must be present: this pack ships letmedespawn, which removes mobs with no player nearby
-# whatever PersistenceRequired says. The fake player is also what every zombie paths toward, and it
-# is in SURVIVAL because a spectator is not a valid target and the swarm would have nothing to chase.
-say "carpet commandPlayer true"
-sleep 2
-say "player Bench spawn at 0 201 0 facing 0 0"
-wait_for 'Bench.*logged in with entity id' 60 || echo "  WARNING: fake player never joined"
-say "gamemode survival Bench"
-say "effect give Bench minecraft:resistance 99999 255 true"
-say "effect give Bench minecraft:regeneration 99999 255 true"
-sleep 2
+# The arena lives in bench/lib/arena.sh, shared with the Phase 1 W4 workload. It checks its own gamerules and
+# that the fake player is online, and a run without either measured something else.
+pw_arena || { echo "VOID RUN: the arena is not the one this ladder describes"; exit 3; }
 echo "  arena ready at $(elapsed)s"
 
 say "pathweaver status"
@@ -199,7 +240,8 @@ for want in "${RUNGS[@]}"; do
   # Can the next rung finish inside the cap? Summon cost scales with the increment, and the measuring
   # window is fixed. Guessing low here is how a run silently truncates its own ladder.
   add=$(( want - present ))
-  need=$(( 8 + add / 120 + BURSTS * BURST_GAP + 10 ))
+  bursts="$BURSTS"; marked_rung "$want" && bursts="${PW_TRACE_BURSTS:-$BURSTS}"
+  need=$(( 8 + add / 120 + bursts * BURST_GAP + 10 ))
   left=$(( BUDGET - RESERVE - $(elapsed) ))
   if [ "$need" -gt "$left" ]; then
     stopped_because="rung $want needs about ${need}s and only ${left}s of budget remained"
@@ -226,15 +268,18 @@ PY
 
   # Bursts, then read the distribution. spark health's 10 s window has to land ON a burst, because a
   # steady state is the thing any server absorbs and the spikes are what this mod is sold against.
-  for _ in $(seq 1 "$BURSTS"); do
+  if marked_rung "$want"; then say "pathweaver trace mark begin"; sleep 1; fi
+  for _ in $(seq 1 "$bursts"); do
     say "tp Bench ${CORNERS[$(( corner % 4 ))]}"
     corner=$(( corner + 1 ))
+    TP_SENT=$(( ${TP_SENT:-0} + 1 ))
     sleep "$BURST_GAP"
   done
 
   say "execute if entity @e[type=!minecraft:player]"
   sleep 2
   alive="$(grep -aoE 'Test passed. Count: [0-9]+' "$LOG" | tail -1 | grep -oE '[0-9]+$')"
+  if marked_rung "$want"; then say "pathweaver trace mark end"; sleep 1; MARKED="${MARKED:-} $want"; fi
   say "spark health"
   sleep 3
   ticks="$(grep -aA1 'Tick durations' "$LOG" | tail -1 | sed 's/^[^0-9]*//')"
@@ -264,6 +309,29 @@ echo "rung    population          dispatch            tick durations (min/med/95
 cat "$ROWS"
 
 void() { echo "VOID RUN: $1"; exit 3; }
+# Every burst is a teleport, and a teleport that did not land means the mobs were not chasing what the rungs
+# say they were. Until 2026-09-18 none landed and nothing looked.
+[ "$(pw_arena_teleports_landed "$LOG")" -eq "${TP_SENT:-0}" ] ||
+  void "$(pw_arena_teleports_landed "$LOG") of ${TP_SENT:-0} teleports of the fake player landed"
+if [ -n "$TRACE" ]; then
+  # Every mark must have been accepted, every requested rung marked, and one file written per window, in order.
+  want_marks="$(echo $PW_TRACE_RUNGS | wc -w)"
+  [ "$(echo ${MARKED:-} | wc -w)" -eq "$want_marks" ] || void "traced rungs marked: ${MARKED:-none}, asked for: $PW_TRACE_RUNGS"
+  for which in begin end; do
+    [ "$(grep -ac "PWTRACE mark $which queued" "$LOG")" -eq "$want_marks" ] || void "not every trace mark $which was accepted"
+  done
+  grep -aq "PWTRACE mark .* refused" "$LOG" && void "a trace mark was refused"
+  traces=()
+  while IFS= read -r f; do traces+=("$f"); done < <(ls "$SERVER/pathweaver-trace"/trace-*.txt 2>/dev/null |
+    awk -F- '{ print $NF "\t" $0 }' | sed 's/\.txt\t/\t/' | sort -n | cut -f2-)
+  [ "${#traces[@]}" -eq "$want_marks" ] || void "${#traces[@]} trace files for $want_marks marked windows"
+  i=0
+  for r in ${MARKED}; do
+    mv -f "${traces[$i]}" "$OUT/$LABEL.$r.trace.txt" || void "could not move the trace for rung $r"
+    echo "  trace for rung $r: $LABEL.$r.trace.txt"
+    i=$(( i + 1 ))
+  done
+fi
 grep -aq 'Bench.*logged in with entity id' "$LOG" || void "the fake player never joined, so nothing had a target"
 grep -aqiE 'Bench (was slain|died|drowned|fell)' "$LOG" &&
   void "the target died during the run, so part of the window measured mobs with no target"

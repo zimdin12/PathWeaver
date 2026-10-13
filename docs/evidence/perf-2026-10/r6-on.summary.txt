@@ -1,0 +1,15 @@
+arm=<JARS>/pathweaver-0.9.0+26.1.2.jar (id=pathweaver)  rungs=100 500 1000 2500 5000 10000  budget=570s (reserve 90s)  pwCache=SHADOW
+  server up at 31s
+  arena ready at 50s
+  baseline population before any summon: 67
+
+arm=<JARS>/pathweaver-0.9.0+26.1.2.jar  reached rung 10000  elapsed=343s
+ladder stopped because: completed every rung
+rung    population          dispatch            tick durations (min/med/95%ile/max ms, 10s; 1m)
+   100  zombies=100    total=180    dispatched=261      at=100s  1.7/2.9/4.9/7.8; 0.4/2.9/11.8/116.5
+   500  zombies=500    total=600    dispatched=1564     at=137s  4.3/6.9/12.2/24.5; 1.6/6.1/13.5/61.6
+  1000  zombies=1000   total=1089   dispatched=4214     at=176s  9.3/13.4/21.4/27.4; 4.3/11.3/19.2/65.8
+  2500  zombies=2500   total=2597   dispatched=11901    at=221s  23.1/32.6/47.7/71.4; 8.2/31.6/49.1/184.9
+  5000  zombies=5000   total=5089   dispatched=28529    at=272s  71.1/80.7/117.5/158.9; 23.1/47.4/107.0/307.6
+ 10000  zombies=10000  total=10100  dispatched=53199    at=341s  186.1/200.1/266.5/315.3; 23.1/79.6/236.1/442.3
+run r6-on complete in 343s, dispatchDelta=53716

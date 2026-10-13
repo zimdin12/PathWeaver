@@ -1,8 +1,9 @@
-# Hold every resident pathfinding jar out of the server's mods/ for one run, and give each one back.
+# Hold every resident pathfinding jar out of the server's mods/ for one run, and give each one back. e4mc is held
+# too (see WHY E4MC below).
 #
 #   . bench/lib/hold.sh
 #   pw_hold_init "$SERVER"       || exit 8     # refuses if an earlier run left something held
-#   pw_hold_residents            || exit 8     # moves pathweaver-*.jar and pathwright-*.jar aside
+#   pw_hold_residents            || exit 8     # moves pathweaver-*.jar, pathwright-*.jar and e4mc-*.jar aside
 #   ...run...
 #   pw_hold_restore                            # call from the script's EXIT/INT/TERM/HUP trap
 #
@@ -23,6 +24,12 @@
 # it back, and starting another run on top of that is how one lost jar becomes a permanent state.
 # Refusing is recoverable; carrying on silently is not.
 
+# WHY E4MC. e4mc tunnels the server to the public internet, and with it installed Carpet's fake player is removed
+# about a second after it joins: no "joined the game", and `list` reports no players. Every ladder run from
+# 2026-09-12 to 2026-09-18 lost its Bench player this way, so no teleport landed and the zombies had no one to
+# chase. A bisect of the server's 219 mods on a scratch server found e4mc alone reproduces it, and fabric-api plus
+# Carpet alone do not (docs/evidence/phase1-counted/fake-player/). A benchmark has no use for a public tunnel.
+
 PW_HOLD_SERVER=""
 PW_HELD=()
 
@@ -42,7 +49,10 @@ pw_hold_init() {
 pw_hold_residents() {
   [ -n "$PW_HOLD_SERVER" ] || { echo "pw_hold_residents: call pw_hold_init first" >&2; return 1; }
   local jar
-  for jar in "$PW_HOLD_SERVER"/mods/pathweaver-*.jar "$PW_HOLD_SERVER"/mods/pathwright-*.jar; do
+  local extra=() pattern
+  # PW_HOLD_EXTRA: space-separated jar globs a workload also holds, each with its reason in the caller.
+  for pattern in ${PW_HOLD_EXTRA:-}; do extra+=("$PW_HOLD_SERVER"/mods/$pattern); done
+  for jar in "$PW_HOLD_SERVER"/mods/pathweaver-*.jar "$PW_HOLD_SERVER"/mods/pathwright-*.jar              "$PW_HOLD_SERVER"/mods/e4mc-*.jar "${extra[@]}"; do
     [ -f "$jar" ] || continue
     mkdir -p "$PW_HOLD_SERVER/.pw-held" || return 1
     # Recorded BEFORE the move, so a failure part-way still leaves restore knowing what to look for.
